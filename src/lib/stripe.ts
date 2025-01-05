@@ -9,31 +9,24 @@ dotenv.config();
 // Definindo os tipos para os planos
 type PlanType = "free" | "basic" | "pro" | "enterprise";
 
-// Definindo tipos do Stripe
-type StripeCustomer = Stripe.Customer;
-type StripeCheckoutSession = Stripe.Checkout.Session;
-type StripeSubscription = Stripe.Subscription;
-
-// Criando a instância do Stripe
-const stripe = new Stripe(config.stripe.secretKey, {
+// Criando a instância do Stripe com o tipo correto
+const stripeClient = new Stripe(config.stripe.secretKey, {
 	apiVersion: "2024-12-18.acacia",
-});
+}) as any;
 
-export const getStripeCustomerByEmail = async (
-	email: string,
-): Promise<StripeCustomer | undefined> => {
-	const customers = await stripe.customers.list({ email });
+export const getStripeCustomerByEmail = async (email: string): Promise<any> => {
+	const customers = await stripeClient.customers.list({ email });
 	return customers.data[0];
 };
 
 export const createStripeCustomer = async (input: {
 	email: string;
 	name?: string;
-}): Promise<StripeCustomer> => {
+}): Promise<any> => {
 	const customer = await getStripeCustomerByEmail(input.email);
 	if (customer) return customer;
 
-	return stripe.customers.create({
+	return stripeClient.customers.create({
 		email: input.email,
 		name: input.name,
 	});
@@ -50,7 +43,7 @@ export const createCheckoutSession = async (
 			email: userEmail,
 		});
 
-		const session = await stripe.checkout.sessions.create({
+		const session = await stripeClient.checkout.sessions.create({
 			payment_method_types: ["card"],
 			mode: "subscription",
 			client_reference_id: userId,
@@ -87,7 +80,7 @@ interface StripeEvent {
 export const handleProcessWebhookCheckout = async (
 	event: StripeEvent,
 ): Promise<void> => {
-	const checkoutSession = event.data.object as StripeCheckoutSession;
+	const checkoutSession = event.data.object;
 	const clientReferenceId = checkoutSession.client_reference_id;
 	const stripeSubscriptionId = checkoutSession.subscription as string;
 	const stripeCustomerId = checkoutSession.customer as string;
@@ -124,7 +117,7 @@ export const handleProcessWebhookCheckout = async (
 export const handleProcessWebhookUpdatedSubscription = async (
 	event: StripeEvent,
 ): Promise<void> => {
-	const subscription = event.data.object as StripeSubscription;
+	const subscription = event.data.object;
 	const stripeCustomerId = subscription.customer as string;
 	const stripeSubscriptionId = subscription.id;
 	const stripeSubscriptionStatus = subscription.status;
@@ -153,4 +146,4 @@ const determinePlan = (priceId: string): PlanType => {
 	return "free";
 };
 
-export default stripe;
+export default stripeClient;
