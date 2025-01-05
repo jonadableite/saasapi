@@ -1,27 +1,31 @@
-# Use a imagem oficial do Node.js como base
 FROM node:18-alpine
 
-# Definir diretório de trabalho
+# Criar diretório da aplicação
 WORKDIR /app
 
-# Copiar arquivos de dependências
+# Copiar package.json e package-lock.json
 COPY package*.json ./
-COPY prisma ./prisma/
 
-# Instalar dependências
+# Instalar todas as dependências (incluindo devDependencies)
 RUN npm install
 
-# Gerar Prisma Client
+# Copiar arquivos do prisma
+COPY prisma ./prisma/
+
+# Gerar cliente Prisma
 RUN npx prisma generate
 
-# Copiar o resto dos arquivos do projeto
+# Copiar resto dos arquivos
 COPY . .
 
 # Compilar TypeScript
 RUN npm run build
 
-# Expor a porta que a aplicação usa
+# Remover devDependencies para produção
+RUN npm prune --production
+
+# Expor porta
 EXPOSE 9000
 
-# Comando para iniciar a aplicação
+# Comando para iniciar
 CMD ["npm", "start"]

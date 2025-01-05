@@ -30,6 +30,7 @@
 		"jsonwebtoken": "^9.0.2",
 		"nodemailer": "^6.9.16",
 		"prisma": "^6.1.0",
+		"stripe": "^17.5.0",
 		"tsx": "^4.19.2",
 		"uuid": "^11.0.3",
 		"yup": "^1.6.1"
@@ -43,6 +44,7 @@
 		"@types/jsonwebtoken": "^9.0.7",
 		"@types/node": "^22.10.2",
 		"@types/nodemailer": "^6.4.17",
+		"@types/stripe": "^8.0.416",
 		"biome": "^0.3.3",
 		"nodemon": "^3.1.9",
 		"ts-node": "^10.9.2",

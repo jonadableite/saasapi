@@ -1,12 +1,20 @@
 // src/services/plan.service.ts
 
-const PLAN_LIMITS = {
-	free: 1,
-	basic: 3,
-	pro: 5,
-	enterprise: 10,
+type PlanLimits = {
+	[key: string]: number;
+	free: number;
+	basic: number;
+	pro: number;
+	enterprise: number;
 };
 
-export const getPlanLimit = (plan: string): number => {
-	return PLAN_LIMITS[plan.toLowerCase()] || 1;
+const PLAN_LIMITS = {
+	free: 2,
+	basic: 4,
+	pro: 6,
+	enterprise: 20,
+};
+
+export const getPlanLimits = (): PlanLimits => {
+	return PLAN_LIMITS;
 };

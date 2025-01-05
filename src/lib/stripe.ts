@@ -1,28 +1,39 @@
+import dotenv from "dotenv";
 // src/lib/stripe.ts
 import Stripe from "stripe";
 import { config } from "./config";
 import { prisma } from "./prisma";
 
-export const stripeInstance = new Stripe(config.stripe.secretKey, {
-	apiVersion: "2024-06-20",
-	httpClient: Stripe.createFetchHttpClient(),
+dotenv.config();
+
+// Definindo os tipos para os planos
+type PlanType = "free" | "basic" | "pro" | "enterprise";
+
+// Definindo tipos do Stripe
+type StripeCustomer = Stripe.Customer;
+type StripeCheckoutSession = Stripe.Checkout.Session;
+type StripeSubscription = Stripe.Subscription;
+
+// Criando a instância do Stripe
+const stripe = new Stripe(config.stripe.secretKey, {
+	apiVersion: "2024-12-18.acacia",
 });
 
 export const getStripeCustomerByEmail = async (
 	email: string,
-): Promise<Stripe.Customer | undefined> => {
-	const customers = await stripeInstance.customers.list({ email });
+): Promise<StripeCustomer | undefined> => {
+	const customers = await stripe.customers.list({ email });
 	return customers.data[0];
 };
 
 export const createStripeCustomer = async (input: {
 	email: string;
 	name?: string;
-}): Promise<Stripe.Customer> => {
+}): Promise<StripeCustomer> => {
 	const customer = await getStripeCustomerByEmail(input.email);
 	if (customer) return customer;
 
-	return stripeInstance.customers.create({
+	return stripe.customers.create({
 		email: input.email,
 		name: input.name,
 	});
@@ -39,7 +50,7 @@ export const createCheckoutSession = async (
 			email: userEmail,
 		});
 
-		const session = await stripeInstance.checkout.sessions.create({
+		const session = await stripe.checkout.sessions.create({
 			payment_method_types: ["card"],
 			mode: "subscription",
 			client_reference_id: userId,
@@ -54,8 +65,12 @@ export const createCheckoutSession = async (
 			],
 		});
 
+		if (!session.url) {
+			throw new Error("Session URL is undefined");
+		}
+
 		return {
-			url: session.url!,
+			url: session.url,
 		};
 	} catch (error) {
 		console.error("Error to create checkout session", error);
@@ -63,15 +78,21 @@ export const createCheckoutSession = async (
 	}
 };
 
+interface StripeEvent {
+	data: {
+		object: any;
+	};
+}
+
 export const handleProcessWebhookCheckout = async (
-	event: Stripe.Event,
+	event: StripeEvent,
 ): Promise<void> => {
-	const checkoutSession = event.data.object as Stripe.Checkout.Session;
+	const checkoutSession = event.data.object as StripeCheckoutSession;
 	const clientReferenceId = checkoutSession.client_reference_id;
 	const stripeSubscriptionId = checkoutSession.subscription as string;
 	const stripeCustomerId = checkoutSession.customer as string;
 	const checkoutStatus = checkoutSession.status;
-	const priceId = checkoutSession.line_items?.data[0].price?.id;
+	const priceId = checkoutSession.line_items?.data[0]?.price?.id;
 
 	if (checkoutStatus !== "complete") return;
 
@@ -86,6 +107,10 @@ export const handleProcessWebhookCheckout = async (
 		throw new Error("Invalid client reference ID");
 	}
 
+	if (!priceId) {
+		throw new Error("Price ID is required");
+	}
+
 	await prisma.user.update({
 		where: { id: clientReferenceIdNumber },
 		data: {
@@ -97,13 +122,17 @@ export const handleProcessWebhookCheckout = async (
 };
 
 export const handleProcessWebhookUpdatedSubscription = async (
-	event: Stripe.Event,
+	event: StripeEvent,
 ): Promise<void> => {
-	const subscription = event.data.object as Stripe.Subscription;
+	const subscription = event.data.object as StripeSubscription;
 	const stripeCustomerId = subscription.customer as string;
 	const stripeSubscriptionId = subscription.id;
 	const stripeSubscriptionStatus = subscription.status;
-	const priceId = subscription.items.data[0].price.id;
+	const priceId = subscription.items.data[0]?.price?.id;
+
+	if (!priceId) {
+		throw new Error("Price ID is required");
+	}
 
 	await prisma.user.updateMany({
 		where: {
@@ -117,9 +146,11 @@ export const handleProcessWebhookUpdatedSubscription = async (
 	});
 };
 
-const determinePlan = (priceId: string): string => {
+const determinePlan = (priceId: string): PlanType => {
 	if (priceId === config.stripe.enterprisePriceId) return "enterprise";
 	if (priceId === config.stripe.proPriceId) return "pro";
 	if (priceId === config.stripe.basicPriceId) return "basic";
 	return "free";
 };
+
+export default stripe;
