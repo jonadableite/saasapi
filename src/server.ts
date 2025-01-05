@@ -1,0 +1,65 @@
+// src/server.ts
+import cors from "cors";
+import dotenv from "dotenv";
+import express from "express";
+import { createUsersController } from "./controllers/user.controller";
+import { prisma } from "./lib/prisma";
+import { authMiddleware } from "./middlewares/authenticate";
+import dashboardRoutes from "./routes/dashboard.routes";
+import instanceRoutes from "./routes/instance.routes";
+import passwordRoutes from "./routes/password.routes";
+import sessionRoutes from "./routes/session.routes";
+import userRoutes from "./routes/user.routes";
+import warmupRoutes from "./routes/warmup.routes";
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 9000;
+
+// Configurações de CORS
+const corsOptions = {
+	origin: "*",
+	methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+	allowedHeaders: ["Content-Type", "Authorization"],
+	credentials: true,
+};
+app.use(cors(corsOptions));
+
+// Aumentar o limite
+app.use(express.json({ limit: "300mb" }));
+app.use(express.urlencoded({ limit: "300mb", extended: true }));
+
+// Middleware para parsear JSON
+app.use(express.json());
+
+// Rotas públicas
+app.use("/api/session", sessionRoutes); // Rota de login
+app.use("/api/password", passwordRoutes); // Rota de recuperação de senha
+app.use("/api/users/register", createUsersController);
+
+// Middleware de autenticação para rotas protegidas
+app.use(authMiddleware);
+
+// Rotas protegidas
+app.use("/api/users", userRoutes);
+app.use("/api/instances", instanceRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/warmup", warmupRoutes);
+
+// Inicia o servidor
+const server = app.listen(PORT, () => {
+	console.log(`🚀 Servidor rodando na porta ${PORT}`);
+});
+
+// Encerramento limpo do Prisma Client
+const gracefulShutdown = async () => {
+	console.log("Encerrando servidor...");
+	await prisma.$disconnect();
+	server.close(() => {
+		console.log("Servidor encerrado.");
+	});
+};
+
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);

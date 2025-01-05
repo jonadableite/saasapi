@@ -1,0 +1,78 @@
+{
+	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": false,
+		"ignore": ["node_modules", "dist"]
+	},
+	"formatter": {
+		"enabled": true,
+		"formatWithErrors": false,
+		"attributePosition": "auto",
+		"indentStyle": "space",
+		"indentWidth": 2,
+		"lineWidth": 80,
+		"lineEnding": "lf"
+	},
+	"organizeImports": {
+		"enabled": true
+	},
+	"linter": {
+		"ignore": ["node_modules", "dist"],
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"complexity": {
+				"noExtraBooleanCast": "error",
+				"noMultipleSpacesInRegularExpressionLiterals": "error",
+				"noUselessCatch": "error",
+				"noUselessConstructor": "error",
+				"noUselessLabel": "error",
+				"noUselessLoneBlockStatements": "error",
+				"noUselessRename": "error",
+				"noUselessTernary": "error",
+				"noVoid": "error",
+				"noWith": "error",
+				"useLiteralKeys": "error",
+				"useRegexLiterals": "error"
+			},
+			"correctness": {
+				"noConstAssign": "error",
+				"noConstantCondition": "error",
+				"noConstructorReturn": "error",
+				"noEmptyCharacterClassInRegex": "error",
+				"noEmptyPattern": "error",
+				"noGlobalObjectCalls": "error",
+				"noInnerDeclarations": "error",
+				"noInvalidConstructorSuper": "error",
+				"noSelfAssign": "error",
+				"noUnsafeFinally": "error",
+				"noUnusedLabels": "error"
+			},
+			"style": {
+				"noShoutyConstants": "warn",
+				"useNamingConvention": "error"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"arrowParentheses": "always",
+			"bracketSameLine": false,
+			"bracketSpacing": true,
+			"jsxQuoteStyle": "double",
+			"quoteProperties": "asNeeded",
+			"semicolons": "always",
+			"trailingCommas": "all"
+		}
+	},
+	"json": {
+		"formatter": {
+			"trailingCommas": "none"
+		}
+	}
+}

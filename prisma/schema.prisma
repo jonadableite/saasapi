@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int           @id @default(autoincrement())
+  name                 String
+  email                String        @unique
+  password             String
+  plan                 String        @default("free")
+  status               Boolean       @default(true)
+  maxInstances         Int           @default(2)
+  trialEndDate         DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripeSubscriptionStatus String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  instances            Instance[]
+  warmupStats          WarmupStats[]
+}
+
+model Instance {
+  id                    Int           @id @default(autoincrement())
+  instanceName          String        @unique
+  connectionStatus      String        @default("pending")
+  number                String?
+  ownerJid              String?
+  profilePicUrl         String?
+  integration           String        @default("WHATSAPP-BAILEYS")
+  token                 String?
+  clientName            String?
+  profileName           String?
+  userId                Int
+  user                  User          @relation(fields: [userId], references: [id])
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  disconnectedAt        DateTime?
+  disconnectionObject   Json?
+  disconnectionReasonCode String?
+  warmupStats           WarmupStats?
+
+  // Campos do Typebot
+  typebot              Json?         // Armazenará toda a configuração do typebot
+}
+
+model MediaStats {
+  id                Int      @id @default(autoincrement())
+  instanceName      String
+  date             DateTime  @default(now())
+  text             Int      @default(0)
+  image            Int      @default(0)
+  video            Int      @default(0)
+  audio            Int      @default(0)
+  sticker          Int      @default(0)
+  reaction         Int      @default(0)
+  isReceived       Boolean  @default(false)
+  totalDaily       Int      @default(0)
+  totalAllTime     Int      @default(0)
+  totalSent        Int      @default(0)
+  totalReceived    Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  warmupStatsSent     WarmupStats[] @relation(name: "WarmupStatsToMediaStatsSent")
+  warmupStatsReceived WarmupStats[] @relation(name: "WarmupStatsToMediaStatsReceived")
+
+  @@index([instanceName])
+  @@index([date])
+}
+
+
+model WarmupStats {
+  id                Int       @id @default(autoincrement())
+  instanceName      String    @unique
+  status            String    @default("paused")
+  messagesSent      Int       @default(0)
+  messagesReceived  Int       @default(0)
+  mediaStats        MediaStats? @relation(name: "WarmupStatsToMediaStatsSent", fields: [mediaStatsId], references: [id])
+  mediaReceived     MediaStats? @relation(name: "WarmupStatsToMediaStatsReceived", fields: [mediaReceivedId], references: [id])
+  warmupTime        Int       @default(0)
+  lastActive        DateTime  @default(now())
+  startTime         DateTime?
+  pauseTime         DateTime?
+  progress          Int       @default(0)
+  userId            Int
+  user              User      @relation(fields: [userId], references: [id])
+  instance          Instance  @relation(fields: [instanceName], references: [instanceName])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  mediaStatsId      Int?
+  mediaReceivedId   Int?
+}
