@@ -6,7 +6,7 @@ WORKDIR /app
 # Copiar package.json e package-lock.json
 COPY package*.json ./
 
-# Instalar todas as dependências (incluindo devDependencies)
+# Instalar dependências
 RUN npm install
 
 # Copiar arquivos do prisma
@@ -21,11 +21,11 @@ COPY . .
 # Compilar TypeScript
 RUN npm run build
 
-# Remover devDependencies para produção
+# Remover dependências de desenvolvimento
 RUN npm prune --production
 
 # Expor porta
 EXPOSE 9000
 
 # Comando para iniciar
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]
