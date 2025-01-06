@@ -23,6 +23,28 @@ model User {
   updatedAt            DateTime      @updatedAt
   instances            Instance[]
   warmupStats          WarmupStats[]
+  payments             Payment[]
+}
+
+model Payment {
+    id              Int       @id @default(autoincrement())
+    stripePaymentId String    @unique
+    amount          Int
+    currency        String
+    status          String
+    customerId      String?
+    metadata        Json?
+    disputeStatus   String?
+    disputeReason   String?
+    cancelReason    String?
+    createdAt       DateTime  @default(now())
+    updatedAt       DateTime  @updatedAt
+    userId          Int?
+    user            User?     @relation(fields: [userId], references: [id])
+
+    @@index([customerId])
+    @@index([status])
+    @@index([userId])
 }
 
 model Instance {
