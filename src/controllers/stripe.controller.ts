@@ -257,58 +257,53 @@ export const handleWebhook = async (req: Request, res: Response) => {
 	const sig = req.headers["stripe-signature"] as string;
 	const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-	console.log("Webhook recebido");
-	console.log("Headers:", req.headers);
-	console.log("Body:", req.body);
-
 	if (!webhookSecret) {
 		console.error("Webhook secret não configurado");
 		return res.status(500).json({ error: "Configuração de webhook inválida" });
 	}
 
 	try {
-		const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+		console.log("Webhook recebido");
+		console.log("Headers:", req.headers);
 
-		console.log("Evento processado:", event.type);
+		// Converter o buffer para string se necessário
+		const rawBody =
+			req.body instanceof Buffer ? req.body : JSON.stringify(req.body);
+
+		const event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+
+		console.log("Evento recebido:", event.type);
+		console.log("Dados do evento:", event.data.object);
 
 		switch (event.type) {
+			case "payment_intent.succeeded": {
+				const paymentIntent = event.data.object as Stripe.PaymentIntent;
+				console.log("Processando payment_intent.succeeded:", paymentIntent.id);
+
+				await handlePaymentIntentSucceeded(paymentIntent);
+				break;
+			}
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
-				console.log("Session data:", session);
+				console.log("Processando checkout.session.completed:", session.id);
+
 				await handleCheckoutSessionCompleted(session);
 				break;
 			}
-
-			case "customer.subscription.updated":
-				const subscription = event.data.object as Stripe.Subscription;
-				console.log("Subscription updated:", subscription);
-				await handleSubscriptionUpdated(subscription);
-				break;
-
-			case "customer.subscription.deleted":
-				const deletedSubscription = event.data.object as Stripe.Subscription;
-				console.log("Subscription deleted:", deletedSubscription);
-				await handleSubscriptionDeleted(deletedSubscription);
-				break;
-
 			default:
-				console.log(`Unhandled event type: ${event.type}`);
+				console.log(`Evento não processado: ${event.type}`);
 		}
 
-		return res.json({ received: true });
-	} catch (err: any) {
+		return res.json({ received: true, type: event.type });
+	} catch (err) {
 		console.error("Erro no webhook:", err);
-
-		// Tratamento de erro tipado
-		if (err instanceof Error) {
-			return res.status(400).send(`Webhook Error: ${err.message}`);
-		}
-
-		// Fallback para erro desconhecido
-		return res.status(400).send("Webhook Error: Unknown error occurred");
+		return res.status(400).json({
+			error: err instanceof Error ? err.message : "Erro desconhecido",
+		});
 	}
 };
 
+// Função para processar checkout.session.completed
 const handleCheckoutSessionCompleted = async (
 	session: Stripe.Checkout.Session,
 ) => {
@@ -318,47 +313,114 @@ const handleCheckoutSessionCompleted = async (
 
 		const userId = session.metadata?.userId;
 		if (!userId) {
-			console.error("UserId não encontrado nos metadados");
+			console.error("UserId não encontrado nos metadados da sessão");
 			return;
 		}
 
 		const subscriptionId = session.subscription as string;
 		if (!subscriptionId) {
-			console.error("SubscriptionId não encontrado");
+			console.error("SubscriptionId não encontrado na sessão");
 			return;
 		}
 
+		// Buscar detalhes da assinatura
 		const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-		console.log("Subscription:", subscription);
+		console.log("Detalhes da assinatura:", subscription);
 
-		const priceId = subscription.items.data[0].price.id;
-		console.log("PriceId:", priceId);
-
-		// Mapeamento de preços para planos
-		const planMap: Record<string, string> = {
-			[process.env.STRIPE_PRICE_BASIC!]: "basic",
-			[process.env.STRIPE_PRICE_PRO!]: "pro",
-			[process.env.STRIPE_PRICE_ENTERPRISE!]: "enterprise",
-		};
-
-		const plan = planMap[priceId] || "free";
-		console.log("Plano determinado:", plan);
-
-		// Atualizar usuário
-		const user = await prisma.user.update({
+		// Atualizar usuário no banco de dados
+		const updatedUser = await prisma.user.update({
 			where: { id: Number(userId) },
 			data: {
 				stripeCustomerId: session.customer as string,
 				stripeSubscriptionId: subscriptionId,
 				stripeSubscriptionStatus: subscription.status,
-				plan,
+				plan: determinePlanFromSubscription(subscription),
 				updatedAt: new Date(),
 			},
 		});
 
-		console.log("Usuário atualizado:", user);
+		console.log("Usuário atualizado:", updatedUser);
 	} catch (error) {
-		console.error("Erro ao processar checkout:", error);
+		console.error("Erro ao processar checkout completado:", error);
+		throw error;
+	}
+};
+
+// Função auxiliar para determinar o plano baseado na assinatura
+const determinePlanFromSubscription = (
+	subscription: Stripe.Subscription,
+): string => {
+	const priceId = subscription.items.data[0].price.id;
+
+	// Mapear priceId para plano
+	const planMap: Record<string, string> = {
+		[process.env.STRIPE_PRICE_BASIC!]: "basic",
+		[process.env.STRIPE_PRICE_PRO!]: "pro",
+		[process.env.STRIPE_PRICE_ENTERPRISE!]: "enterprise",
+	};
+
+	return planMap[priceId];
+};
+
+const handlePaymentIntentSucceeded = async (
+	paymentIntent: Stripe.PaymentIntent,
+) => {
+	try {
+		console.log("Detalhes do PaymentIntent:", {
+			id: paymentIntent.id,
+			amount: paymentIntent.amount,
+			status: paymentIntent.status,
+			customer: paymentIntent.customer,
+			metadata: paymentIntent.metadata,
+		});
+
+		// Se houver um customer associado
+		if (paymentIntent.customer) {
+			const user = await prisma.user.findFirst({
+				where: { stripeCustomerId: paymentIntent.customer as string },
+			});
+
+			if (user) {
+				// Atualizar o status do usuário/assinatura
+				await prisma.user.update({
+					where: { id: user.id },
+					data: {
+						stripeSubscriptionStatus: "active",
+						// Outros campos que precisam ser atualizados
+					},
+				});
+
+				console.log(`Usuário ${user.id} atualizado com sucesso`);
+			} else {
+				console.log(
+					`Usuário não encontrado para o customer: ${paymentIntent.customer}`,
+				);
+			}
+		}
+
+		// Se houver metadata com informações adicionais
+		if (paymentIntent.metadata && paymentIntent.metadata.userId) {
+			const userId = Number.parseInt(paymentIntent.metadata.userId);
+			const user = await prisma.user.findUnique({
+				where: { id: userId },
+			});
+
+			if (user) {
+				await prisma.user.update({
+					where: { id: userId },
+					data: {
+						// Atualize os campos necessários
+						stripeSubscriptionStatus: "active",
+						plan: paymentIntent.metadata.plan as string,
+						updatedAt: new Date(),
+					},
+				});
+
+				console.log(`Usuário ${userId} atualizado via metadata`);
+			}
+		}
+	} catch (error) {
+		console.error("Erro ao processar payment_intent.succeeded:", error);
 		throw error;
 	}
 };
