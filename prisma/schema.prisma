@@ -71,11 +71,13 @@ model Instance {
   warmupStats           WarmupStats?
   proxyConfig           Json?
   typebot               Json?
+  mediaStats            MediaStats[]
 }
 
 model MediaStats {
   id                Int      @id @default(autoincrement())
   instanceName      String
+  instance          Instance @relation(fields: [instanceName], references: [instanceName])
   date             DateTime  @default(now())
   text             Int      @default(0)
   image            Int      @default(0)
@@ -97,7 +99,6 @@ model MediaStats {
   @@index([instanceName])
   @@index([date])
 }
-
 
 model WarmupStats {
   id                Int       @id @default(autoincrement())
