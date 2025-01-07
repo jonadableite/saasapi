@@ -3,7 +3,7 @@
 import type { NextFunction, Response } from "express";
 import { PLAN_LIMITS } from "../constants/planLimits";
 import { prisma } from "../lib/prisma";
-import type { RequestWithUser } from "./authenticate";
+import type { RequestWithUser } from "../types";
 
 export const checkPlanLimits = async (
 	req: RequestWithUser,
@@ -47,7 +47,9 @@ export const checkPlanLimits = async (
 
 			const messageCount = await prisma.mediaStats.findFirst({
 				where: {
-					userId: userId,
+					instance: {
+						userId: userId,
+					},
 					date: {
 						gte: today,
 					},
