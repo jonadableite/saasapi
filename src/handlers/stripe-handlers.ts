@@ -1,12 +1,14 @@
 // src/handlers/stripe-handlers.ts
 
 import type { Stripe } from "stripe";
+import { PLAN_LIMITS } from "../constants/planLimits";
+import { PRICE_TO_PLAN_MAPPING } from "../constants/stripe";
 import { prisma } from "../lib/prisma";
 import stripe from "../lib/stripe";
+import { getPlanLimits } from "../utils/planUtils";
 import {
 	determinePlanFromSubscription,
 	updatePaymentStatus,
-	updateUserPlan,
 	updateUserStatus,
 } from "../utils/stripe-helpers";
 
@@ -14,16 +16,44 @@ export const handlePaymentIntentSucceeded = async (
 	paymentIntent: Stripe.PaymentIntent,
 ) => {
 	try {
-		console.log("Processando pagamento bem-sucedido:", paymentIntent.id);
+		console.log("Processando pagamento bem-sucedido:", paymentIntent);
+
+		const priceId = paymentIntent.metadata.priceId;
+		const userId = Number(paymentIntent.metadata.userId);
+		const planType = PRICE_TO_PLAN_MAPPING[
+			priceId as keyof typeof PRICE_TO_PLAN_MAPPING
+		] as keyof typeof PLAN_LIMITS;
+
+		if (!planType || !userId) {
+			console.error("Dados inválidos no metadata:", {
+				priceId,
+				userId,
+				planType,
+			});
+			return;
+		}
+
+		const planLimits = PLAN_LIMITS[planType];
+		console.log("Atualizando plano com limites:", { planType, planLimits });
+
+		await prisma.user.update({
+			where: { id: userId },
+			data: {
+				plan: planType,
+				maxInstances: planLimits.numbers,
+				messagesPerDay: planLimits.messagesPerDay,
+				features: planLimits.features,
+				support: planLimits.support,
+				stripeSubscriptionStatus: "active",
+				updatedAt: new Date(),
+			},
+		});
+
+		console.log(`Plano atualizado com sucesso para usuário ${userId}`);
 		await updatePaymentStatus(paymentIntent);
 
 		if (paymentIntent.customer) {
 			await updateUserStatus(paymentIntent.customer as string, "active");
-		}
-
-		if (paymentIntent.metadata?.userId) {
-			const userId = Number.parseInt(paymentIntent.metadata.userId);
-			await updateUserPlan(userId, paymentIntent);
 		}
 	} catch (error) {
 		console.error("Erro ao processar pagamento bem-sucedido:", error);
@@ -128,6 +158,8 @@ export const handleCheckoutSessionCompleted = async (
 		}
 
 		const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+		const plan = determinePlanFromSubscription(subscription);
+		const planLimits = getPlanLimits(plan);
 
 		await prisma.user.update({
 			where: { id: Number(userId) },
@@ -135,9 +167,18 @@ export const handleCheckoutSessionCompleted = async (
 				stripeCustomerId: session.customer as string,
 				stripeSubscriptionId: subscriptionId,
 				stripeSubscriptionStatus: subscription.status,
-				plan: determinePlanFromSubscription(subscription),
+				plan,
+				maxInstances: planLimits.maxInstances,
+				messagesPerDay: planLimits.messagesPerDay,
+				features: planLimits.features,
+				support: planLimits.support,
 				updatedAt: new Date(),
 			},
+		});
+
+		console.log(`Plano atualizado com sucesso para usuário ${userId}:`, {
+			plan,
+			limits: planLimits,
 		});
 	} catch (error) {
 		console.error("Erro ao processar checkout completado:", error);

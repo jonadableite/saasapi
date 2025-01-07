@@ -5,7 +5,6 @@ import express from "express";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
 import { prisma } from "./lib/prisma";
-import { authMiddleware } from "./middlewares/authenticate";
 import dashboardRoutes from "./routes/dashboard.routes";
 import instanceRoutes from "./routes/instance.routes";
 import passwordRoutes from "./routes/password.routes";
@@ -20,13 +19,14 @@ const app = express();
 const PORT = process.env.PORT || 9000;
 
 // Configurações de CORS
-const corsOptions = {
-	origin: "*",
-	methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-	allowedHeaders: ["Content-Type", "Authorization"],
-	credentials: true,
-};
-app.use(cors(corsOptions));
+app.use(
+	cors({
+		origin: "*",
+		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowedHeaders: ["Content-Type", "Authorization"],
+		credentials: true,
+	}),
+);
 
 // webhook do Stripe ANTES dos parsers
 app.post(
@@ -35,7 +35,7 @@ app.post(
 	handleWebhook,
 );
 
-// Aumentar o limite
+// Parsers
 app.use(express.json({ limit: "300mb" }));
 app.use(express.urlencoded({ limit: "300mb", extended: true }));
 
@@ -43,9 +43,6 @@ app.use(express.urlencoded({ limit: "300mb", extended: true }));
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
-
-// Middleware de autenticação para rotas protegidas
-app.use(authMiddleware);
 
 // Rotas protegidas
 app.use("/api/users", userRoutes);
@@ -59,14 +56,17 @@ const server = app.listen(PORT, () => {
 	console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
 
-// Encerramento limpo do Prisma Client
-const gracefulShutdown = async () => {
+// Encerramento limpo
+process.on("SIGTERM", () => gracefulShutdown());
+process.on("SIGINT", () => gracefulShutdown());
+
+async function gracefulShutdown() {
 	console.log("Encerrando servidor...");
 	await prisma.$disconnect();
 	server.close(() => {
 		console.log("Servidor encerrado.");
+		process.exit(0);
 	});
-};
+}
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+export default app;

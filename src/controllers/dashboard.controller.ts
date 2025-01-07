@@ -3,7 +3,8 @@
 import { PrismaClient } from "@prisma/client";
 import type { Response } from "express";
 import type { WarmupStat } from "../@types/prismaModels";
-import type { RequestWithUser } from "../middlewares/authenticate";
+import type { RequestWithUser } from '../types';
+
 
 const prisma = new PrismaClient();
 

@@ -1,53 +1,35 @@
 // src/routes/instance.routes.ts
-import express from "express";
-import {
-	createInstanceController,
-	deleteInstanceController,
-	deleteTypebotConfig,
-	listInstancesController,
-	updateInstanceController,
-	updateInstanceStatusController,
-	updateInstanceStatusesController,
-	updateTypebotConfigController,
-} from "../controllers/instance.controller";
+import { Router } from "express";
+import * as instanceController from "../controllers/instance.controller";
 import { authMiddleware } from "../middlewares/authenticate";
+import { checkPlanLimits } from "../middlewares/planLimits";
 
-const router = express.Router();
+const router = Router();
 
-// Rota para criar uma nova instância
-router.post("/create", authMiddleware, createInstanceController);
+router.use(authMiddleware);
+router.use(checkPlanLimits);
 
-// Rota para listar todas as instâncias
-router.get("/", authMiddleware, listInstancesController);
-
-// Rota para deletar uma instância
-router.delete("/instance/:id", authMiddleware, deleteInstanceController);
-
-// Rota para atualizar uma instância
-router.put("/instance/:id", authMiddleware, updateInstanceController);
-
-// Rota para atualizar config do typebot
+// Rotas
+router.post("/create", instanceController.createInstanceController);
+router.get("/", instanceController.listInstancesController);
+router.delete("/instance/:id", instanceController.deleteInstanceController);
+router.put("/instance/:id", instanceController.updateInstanceController);
 router.put(
 	"/instance/:id/typebot",
-	authMiddleware,
-	updateTypebotConfigController,
+	instanceController.updateTypebotConfigController,
 );
-
-// Rota para buscar e atualizar status das instâncias
+router.put(
+	"/instance/:id/proxy",
+	instanceController.updateProxyConfigController,
+);
 router.put(
 	"/update-statuses",
-	authMiddleware,
-	updateInstanceStatusesController,
+	instanceController.updateInstanceStatusesController,
 );
-
-// Rota para conectar atualizar o status de uma instância
 router.put(
 	"/instance/:id/connection-status",
-	authMiddleware,
-	updateInstanceStatusController,
+	instanceController.updateInstanceStatusController,
 );
-
-// Rota para deletar config do typebot
-router.delete("/instance/:id/typebot", authMiddleware, deleteTypebotConfig);
+router.delete("/instance/:id/typebot", instanceController.deleteTypebotConfig);
 
 export default router;

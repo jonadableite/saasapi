@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import type { Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
-import type { RequestWithUser } from "../middlewares/authenticate";
+import type { RequestWithUser } from "../types";
+
 import {
 	createInstance,
 	deleteInstance,
@@ -63,7 +64,49 @@ const typebotConfigSchema = yup.object().shape({
 		.required(),
 });
 
-// src/controllers/instance.controller.ts
+export const updateProxyConfigController = async (
+	req: RequestWithUser,
+	res: Response,
+): Promise<Response> => {
+	const userId = req.user?.id;
+
+	if (!userId) {
+		return res.status(401).json({ error: "Usuário não autenticado" });
+	}
+
+	const instanceId = Number(req.params.id);
+
+	if (Number.isNaN(instanceId)) {
+		return res.status(400).json({ error: "ID da instância inválido" });
+	}
+
+	try {
+		const { host, port, username, password } = req.body;
+
+		const updatedInstance = await prisma.instance.update({
+			where: {
+				id: instanceId,
+				userId,
+			},
+			data: {
+				proxyConfig: {
+					host,
+					port,
+					username,
+					password,
+				},
+			},
+		});
+
+		return res.status(200).json(updatedInstance);
+	} catch (error) {
+		console.error("Erro ao atualizar configuração de proxy:", error);
+		return res.status(500).json({
+			error: "Erro ao atualizar configuração de proxy",
+		});
+	}
+};
+
 export const updateTypebotConfigController = async (
 	req: TypebotRequest,
 	res: Response,

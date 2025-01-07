@@ -1,55 +1,72 @@
 // src/utils/stripe-helpers.ts
-
 import type { Stripe } from "stripe";
+import type { PlanType } from "../constants/planLimits";
 import { prisma } from "../lib/prisma";
+import { getPlanLimits } from "./planUtils";
 
-export const determineUserPlan = (amount: number): string => {
-	if (amount >= 10000) return "enterprise";
-	if (amount >= 5000) return "pro";
-	return "basic";
+export const determinePlanFromSubscription = (
+	subscription: Stripe.Subscription,
+): PlanType => {
+	const priceId = subscription.items.data[0].price.id;
+
+	// Mapeamento de price IDs para planos
+	const planMapping: Record<string, PlanType> = {
+		price_basic: "basic",
+		price_pro: "pro",
+		price_enterprise: "enterprise",
+	};
+
+	return planMapping[priceId] || "free";
 };
 
-export const updatePaymentStatus = async (
+export const updateUserPlan = async (
+	userId: number,
 	paymentIntent: Stripe.PaymentIntent,
 ) => {
 	try {
-		const existingPayment = await prisma.payment.findUnique({
-			where: { stripePaymentId: paymentIntent.id },
+		const plan = determinePlanFromSubscription(
+			paymentIntent as any,
+		) as PlanType;
+		const planLimits = getPlanLimits(plan);
+
+		await prisma.user.update({
+			where: { id: userId },
+			data: {
+				plan,
+				maxInstances: planLimits.maxInstances,
+				messagesPerDay: planLimits.messagesPerDay,
+				features: planLimits.features,
+				support: planLimits.support,
+				updatedAt: new Date(),
+			},
 		});
 
-		const paymentData = {
-			status: paymentIntent.status,
-			amount: paymentIntent.amount,
-			currency: paymentIntent.currency,
-			customerId: paymentIntent.customer as string,
-			metadata: paymentIntent.metadata as any,
-			updatedAt: new Date(),
-		};
-
-		if (existingPayment) {
-			await prisma.payment.update({
-				where: { id: existingPayment.id },
-				data: paymentData,
-			});
-		} else {
-			await prisma.payment.create({
-				data: {
-					...paymentData,
-					stripePaymentId: paymentIntent.id,
-					createdAt: new Date(paymentIntent.created * 1000),
-				},
-			});
-		}
+		console.log(`Plano atualizado para usuário ${userId}:`, {
+			plan,
+			limits: planLimits,
+		});
 	} catch (error) {
-		console.error("Erro ao atualizar status do pagamento:", error);
+		console.error("Erro ao atualizar plano do usuário:", error);
 		throw error;
 	}
 };
 
-export const updateUserStatus = async (customerId: string, status: string) => {
+export const updateUserStatus = async (
+	stripeCustomerId: string,
+	status: string,
+) => {
 	try {
-		await prisma.user.updateMany({
-			where: { stripeCustomerId: customerId },
+		const user = await prisma.user.findFirst({
+			where: { stripeCustomerId },
+		});
+
+		if (!user) {
+			console.error("Usuário não encontrado:", stripeCustomerId);
+			return;
+		}
+
+		await prisma.user.update({
+			where: { id: user.id },
 			data: {
 				stripeSubscriptionStatus: status,
 				updatedAt: new Date(),
@@ -61,34 +78,25 @@ export const updateUserStatus = async (customerId: string, status: string) => {
 	}
 };
 
-export const updateUserPlan = async (
-	userId: number,
+export const updatePaymentStatus = async (
 	paymentIntent: Stripe.PaymentIntent,
 ) => {
 	try {
-		await prisma.user.update({
-			where: { id: userId },
-			data: {
-				plan: determineUserPlan(paymentIntent.amount),
-				updatedAt: new Date(),
-			},
+		const payment = await prisma.payment.findFirst({
+			where: { stripePaymentId: paymentIntent.id },
 		});
+
+		if (payment) {
+			await prisma.payment.update({
+				where: { id: payment.id },
+				data: {
+					status: paymentIntent.status,
+					updatedAt: new Date(),
+				},
+			});
+		}
 	} catch (error) {
-		console.error("Erro ao atualizar plano do usuário:", error);
+		console.error("Erro ao atualizar status do pagamento:", error);
 		throw error;
 	}
-};
-
-export const determinePlanFromSubscription = (
-	subscription: Stripe.Subscription,
-): string => {
-	const priceId = subscription.items.data[0].price.id;
-
-	const planMap: Record<string, string> = {
-		[process.env.STRIPE_PRICE_BASIC!]: "basic",
-		[process.env.STRIPE_PRICE_PRO!]: "pro",
-		[process.env.STRIPE_PRICE_ENTERPRISE!]: "enterprise",
-	};
-
-	return planMap[priceId];
 };

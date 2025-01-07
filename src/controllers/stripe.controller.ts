@@ -1,13 +1,12 @@
+// src/controllers/stripe.controller.ts
 import type { Request, Response } from "express";
 import type { Stripe } from "stripe";
+import { PRICE_TO_PLAN_MAPPING } from "../constants/stripe";
 import * as handlers from "../handlers/stripe-handlers";
 import { prisma } from "../lib/prisma";
 import stripe from "../lib/stripe";
-import type { RequestWithUser } from "../middlewares/authenticate";
+import type { RequestWithUser } from "../types";
 
-// Defina o tipo Stripe.Stripe
-type StripeType = Stripe;
-// Cria uma sessão de checkout do Stripe
 export const createCheckoutSession = async (
 	req: RequestWithUser,
 	res: Response,
@@ -205,6 +204,12 @@ export const createPaymentIntent = async (
 			return res.status(400).json({ error: "Preço inválido" });
 		}
 
+		const planType =
+			PRICE_TO_PLAN_MAPPING[priceId as keyof typeof PRICE_TO_PLAN_MAPPING];
+		if (!planType) {
+			return res.status(400).json({ error: "Plano inválido" });
+		}
+
 		let stripeCustomer = user.stripeCustomerId;
 		if (!stripeCustomer) {
 			const customer = await stripe.customers.create({
@@ -225,7 +230,11 @@ export const createPaymentIntent = async (
 			amount: price.unit_amount,
 			currency: "brl",
 			automatic_payment_methods: { enabled: true },
-			metadata: { priceId, userId: userId.toString() },
+			metadata: {
+				priceId,
+				userId: userId.toString(),
+				planType,
+			},
 		});
 
 		return res.json({ clientSecret: paymentIntent.client_secret });
@@ -246,8 +255,11 @@ export const handleWebhook = async (req: Request, res: Response) => {
 	}
 
 	try {
-		console.log("Webhook recebido");
+		console.log("Webhook recebido - Headers:", req.headers);
+		console.log("Webhook recebido - Body:", req.body);
+
 		const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+		console.log("Evento Stripe processado:", event.type);
 
 		switch (event.type) {
 			case "payment_intent.succeeded":

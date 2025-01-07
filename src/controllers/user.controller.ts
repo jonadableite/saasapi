@@ -1,6 +1,7 @@
 // src/controllers/user.controller.ts
 import type { Request, Response } from "express";
 import * as yup from "yup";
+import { prisma } from "../lib/prisma";
 import {
 	createUser,
 	deleteUser,
@@ -8,6 +9,7 @@ import {
 	listUsers,
 	updateUser,
 } from "../services/user.service";
+import type { RequestWithUser } from "../types";
 
 // Esquema de validação para criação e atualização de usuário
 const userSchema = yup.object().shape({
@@ -35,6 +37,85 @@ export const listUsersController = async (
 	} catch (error) {
 		console.error("Erro ao listar usuários:", error);
 		return res.status(500).json({ error: "Erro interno do servidor" });
+	}
+};
+
+// Controlador para verificar o status do plano
+export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
+	try {
+		console.log("Verificando status do plano para usuário:", req.user);
+		const userId = req.user?.id;
+
+		if (!userId) {
+			console.log("Usuário não autenticado");
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				id: true,
+				plan: true,
+				maxInstances: true,
+				messagesPerDay: true,
+				features: true,
+				support: true,
+				stripeSubscriptionStatus: true,
+				stripeSubscriptionId: true,
+				updatedAt: true,
+			},
+		});
+
+		if (!user) {
+			console.log("Usuário não encontrado:", userId);
+			return res.status(404).json({ error: "Usuário não encontrado" });
+		}
+
+		console.log("Dados do usuário encontrados:", user);
+
+		return res.json({
+			success: true,
+			user,
+			subscription: {
+				status: user.stripeSubscriptionStatus,
+				plan: user.plan,
+				maxInstances: user.maxInstances,
+				messagesPerDay: user.messagesPerDay,
+			},
+		});
+	} catch (error) {
+		console.error("Erro ao verificar status do plano:", error);
+		return res.status(500).json({ error: "Erro interno do servidor" });
+	}
+};
+
+export const checkPlanUpdateStatus = async (
+	req: RequestWithUser,
+	res: Response,
+) => {
+	try {
+		const userId = req.user?.id;
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				plan: true,
+				maxInstances: true,
+				messagesPerDay: true,
+				features: true,
+				support: true,
+				stripeSubscriptionStatus: true,
+				updatedAt: true,
+			},
+		});
+
+		return res.json({ success: true, user });
+	} catch (error) {
+		console.error("Erro ao verificar status do plano:", error);
+		return res.status(500).json({ error: "Erro ao verificar status do plano" });
 	}
 };
 

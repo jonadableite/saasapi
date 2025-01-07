@@ -1,6 +1,7 @@
 // src/routes/user.routes.ts
 import { Router } from "express";
 import {
+	checkPlanStatus,
 	createUsersController,
 	deleteUserController,
 	findOneUsersController,
@@ -15,9 +16,11 @@ const router = Router();
 router.post("/register", createUsersController);
 
 // Rotas protegidas pelo middleware de autenticação
-router.get("/", authMiddleware, listUsersController);
-router.get("/:id", authMiddleware, findOneUsersController);
-router.put("/:id", authMiddleware, updateUserController);
-router.delete("/:id", authMiddleware, deleteUserController);
+router.use(authMiddleware); // Aplica o middleware a todas as rotas abaixo
+router.get("/", listUsersController);
+router.get("/plan-status", checkPlanStatus);
+router.get("/:id", findOneUsersController);
+router.put("/:id", updateUserController);
+router.delete("/:id", deleteUserController);
 
 export default router;
