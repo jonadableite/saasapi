@@ -55,6 +55,8 @@ export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
 			where: { id: userId },
 			select: {
 				id: true,
+				name: true,
+				email: true,
 				plan: true,
 				maxInstances: true,
 				messagesPerDay: true,
