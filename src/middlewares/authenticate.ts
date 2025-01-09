@@ -6,7 +6,8 @@ import type { RequestWithUser } from "../types";
 
 // Interface para o payload do token JWT
 interface JwtPayload {
-	userId: string; // Alterado de number para string
+	userId?: string;
+	id?: string;
 	plan?: string;
 }
 
@@ -40,10 +41,19 @@ export const authMiddleware = async (
 			const decoded = jwt.verify(token, secret) as JwtPayload;
 			console.log("Token decodificado:", decoded);
 
+			// Usar userId se disponível, caso contrário usar id
+			const userIdFromToken = decoded.userId || decoded.id;
+
+			if (!userIdFromToken) {
+				return res
+					.status(401)
+					.json({ error: "Token inválido: ID não encontrado" });
+			}
+
 			const user = await prisma.user.findUnique({
-				where: { id: decoded.userId }, // Usando userId em vez de id
+				where: { id: userIdFromToken },
 				include: {
-					company: true, // Incluindo a relação com company se necessário
+					company: true,
 				},
 			});
 

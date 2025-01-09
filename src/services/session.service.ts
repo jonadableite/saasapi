@@ -29,7 +29,7 @@ export const authenticateUser = async (email: string, password: string) => {
 	}
 };
 
-export const generateToken = (user: { id: string; plan: string }): string => {
+export const generateToken = (user: TokenUser): string => {
 	try {
 		const secretKey = process.env.JWT_SECRET;
 		if (!secretKey) {
@@ -38,7 +38,8 @@ export const generateToken = (user: { id: string; plan: string }): string => {
 
 		return jwt.sign(
 			{
-				userId: user.id, // Usando userId em vez de id
+				id: user.id,
+				userId: user.id,
 				plan: user.plan,
 			},
 			secretKey,
