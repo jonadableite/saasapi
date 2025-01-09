@@ -3,7 +3,7 @@ import { EventEmitter } from "events";
 import axios from "axios";
 import { PLAN_LIMITS } from "../constants/planLimits";
 import { prisma } from "../lib/prisma";
-import type { MessageType } from '../types/messageTypes';
+import type { MessageType } from "../types/messageTypes";
 import type { MediaContent, WarmupConfig } from "../types/warmup";
 
 const URL_API = "https://evo.whatlead.com.br";
@@ -17,11 +17,10 @@ interface ApiError {
 }
 
 interface SendMessageConfig {
-  endpoint: string;
-  payload: any;
-  delay: number;
+	endpoint: string;
+	payload: any;
+	delay: number;
 }
-
 
 interface MediaStats {
 	id: string;
@@ -47,7 +46,7 @@ interface WarmupStats {
 	warmupTime?: number;
 	progress?: number;
 	lastActive?: Date;
-	userId: number;
+	userId: string;
 	mediaStatsId: string;
 	mediaReceivedId: string;
 }
@@ -115,12 +114,11 @@ export class WarmupService {
 	private eventEmitter: EventEmitter;
 
 	constructor() {
-  this.activeInstances = new Map();
-  this.stop = false;
-  this.eventEmitter = new EventEmitter();
-  this.eventEmitter.setMaxListeners(20);
-}
-
+		this.activeInstances = new Map();
+		this.stop = false;
+		this.eventEmitter = new EventEmitter();
+		this.eventEmitter.setMaxListeners(20);
+	}
 
 	async startWarmup(config: WarmupConfig): Promise<void> {
 		this.stop = false;
@@ -135,7 +133,7 @@ export class WarmupService {
 
 	private async checkDailyMessageLimit(
 		instanceId: string,
-		userId: number,
+		userId: string,
 	): Promise<boolean> {
 		try {
 			const user = await prisma.user.findUnique({
@@ -237,7 +235,7 @@ export class WarmupService {
 
 	private async startInstanceTimer(
 		instanceId: string,
-		userId: number,
+		userId: string,
 	): Promise<void> {
 		const today = new Date();
 		today.setHours(0, 0, 0, 0);
@@ -541,24 +539,23 @@ export class WarmupService {
 	}
 
 	async stopWarmup(instanceId: string): Promise<void> {
-  const timer = this.activeInstances.get(instanceId);
-  if (timer) {
-    clearInterval(timer);
-    this.activeInstances.delete(instanceId);
-  }
+		const timer = this.activeInstances.get(instanceId);
+		if (timer) {
+			clearInterval(timer);
+			this.activeInstances.delete(instanceId);
+		}
 
-  // Remove todos os listeners específicos desta instância
-  this.eventEmitter.removeAllListeners();
+		// Remove todos os listeners específicos desta instância
+		this.eventEmitter.removeAllListeners();
 
-  await prisma.warmupStats.update({
-    where: { instanceName: instanceId },
-    data: {
-      status: "paused",
-      pauseTime: new Date(),
-    },
-  });
-}
-
+		await prisma.warmupStats.update({
+			where: { instanceName: instanceId },
+			data: {
+				status: "paused",
+				pauseTime: new Date(),
+			},
+		});
+	}
 
 	async getInstanceStats(instanceId: string) {
 		try {
@@ -626,9 +623,9 @@ export class WarmupService {
 	}
 
 	private async startInstanceWarmup(
-  instance: PhoneInstance,
-  config: WarmupConfig,
-): Promise<void> {
+		instance: PhoneInstance,
+		config: WarmupConfig,
+	): Promise<void> {
 		console.log(
 			`Iniciando aquecimento para a instância ${instance.instanceId}`,
 		);
@@ -645,23 +642,35 @@ export class WarmupService {
 
 		const planLimits = PLAN_LIMITS[user.plan as keyof typeof PLAN_LIMITS];
 
-  // Validar tipos de mensagem conforme o plano
-  const allowedTypes = planLimits.features as MessageType[];
+		// Validar tipos de mensagem conforme o plano
+		const allowedTypes = planLimits.features as MessageType[];
 
-  // Verifica se o usuário tem conteúdo disponível para enviar
-  const availableContent = {
-    text: Array.isArray(config.contents.texts) && config.contents.texts.length > 0,
-    audio: Array.isArray(config.contents.audios) && config.contents.audios.length > 0,
-    image: Array.isArray(config.contents.images) && config.contents.images.length > 0,
-    video: Array.isArray(config.contents.videos) && config.contents.videos.length > 0,
-    sticker: Array.isArray(config.contents.stickers) && config.contents.stickers.length > 0,
-  };
+		// Verifica se o usuário tem conteúdo disponível para enviar
+		const availableContent = {
+			text:
+				Array.isArray(config.contents.texts) &&
+				config.contents.texts.length > 0,
+			audio:
+				Array.isArray(config.contents.audios) &&
+				config.contents.audios.length > 0,
+			image:
+				Array.isArray(config.contents.images) &&
+				config.contents.images.length > 0,
+			video:
+				Array.isArray(config.contents.videos) &&
+				config.contents.videos.length > 0,
+			sticker:
+				Array.isArray(config.contents.stickers) &&
+				config.contents.stickers.length > 0,
+		};
 
-  // Filtrar tipos de mensagem permitidos pelo plano
-  const filteredContentTypes = Object.keys(availableContent).filter((type) => {
-    const messageType = type.replace("Chance", "") as MessageType;
-    return allowedTypes.includes(messageType);
-  });
+		// Filtrar tipos de mensagem permitidos pelo plano
+		const filteredContentTypes = Object.keys(availableContent).filter(
+			(type) => {
+				const messageType = type.replace("Chance", "") as MessageType;
+				return allowedTypes.includes(messageType);
+			},
+		);
 		if (!filteredContentTypes.length) {
 			console.log(
 				"Nenhum conteúdo disponível para envio conforme o plano do usuário",
@@ -854,7 +863,7 @@ export class WarmupService {
 
 	private async checkPlanLimits(
 		instanceId: string,
-		userId: number,
+		userId: string,
 	): Promise<boolean> {
 		const user = await prisma.user.findUnique({
 			where: { id: userId },
@@ -888,131 +897,135 @@ export class WarmupService {
 	}
 
 	private async sendMessage(
-  instanceId: string,
-  to: string,
-  content: any,
-  messageType: string,
-  userId: number,
-): Promise<string | false> {
-  try {
-    const canSend = await this.checkPlanLimits(instanceId, userId);
-    if (!canSend) {
-      throw new Error("Limite do plano atingido");
-    }
+		instanceId: string,
+		to: string,
+		content: any,
+		messageType: string,
+		userId: string,
+	): Promise<string | false> {
+		try {
+			const canSend = await this.checkPlanLimits(instanceId, userId);
+			if (!canSend) {
+				throw new Error("Limite do plano atingido");
+			}
 
-    const formattedNumber = to.replace("@s.whatsapp.net", "");
-    const config = this.createMessageConfig(
-      instanceId,
-      formattedNumber,
-      content,
-      messageType
-    );
+			const formattedNumber = to.replace("@s.whatsapp.net", "");
+			const config = this.createMessageConfig(
+				instanceId,
+				formattedNumber,
+				content,
+				messageType,
+			);
 
-    console.log(`\n=== Iniciando envio de ${messageType} ===`);
-    console.log(`Instância: ${instanceId}`);
-    console.log(`Destinatário: ${formattedNumber}`);
-    console.log(`Endpoint: ${config.endpoint}`);
-    console.log("Payload:", {
-      ...config.payload,
-      media: config.payload.media ? "[BASE64]" : undefined,
-      audio: config.payload.audio ? "[BASE64]" : undefined,
-      sticker: config.payload.sticker ? "[BASE64]" : undefined,
-    });
+			console.log(`\n=== Iniciando envio de ${messageType} ===`);
+			console.log(`Instância: ${instanceId}`);
+			console.log(`Destinatário: ${formattedNumber}`);
+			console.log(`Endpoint: ${config.endpoint}`);
+			console.log("Payload:", {
+				...config.payload,
+				media: config.payload.media ? "[BASE64]" : undefined,
+				audio: config.payload.audio ? "[BASE64]" : undefined,
+				sticker: config.payload.sticker ? "[BASE64]" : undefined,
+			});
 
-    await this.delay(config.delay, config.delay + 1000);
+			await this.delay(config.delay, config.delay + 1000);
 
-    const response = await axios.post<ApiResponse>(
-      config.endpoint,
-      config.payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          apikey: API_KEY,
-        },
-      }
-    );
+			const response = await axios.post<ApiResponse>(
+				config.endpoint,
+				config.payload,
+				{
+					headers: {
+						"Content-Type": "application/json",
+						apikey: API_KEY,
+					},
+				},
+			);
 
-    if (response.data?.key?.id) {
-      console.log(`Mensagem ${messageType} enviada com sucesso`);
-      await this.updateMediaStats(instanceId, messageType, true);
-      return response.data.key.id;
-    }
+			if (response.data?.key?.id) {
+				console.log(`Mensagem ${messageType} enviada com sucesso`);
+				await this.updateMediaStats(instanceId, messageType, true);
+				return response.data.key.id;
+			}
 
-    console.error(`Falha ao enviar ${messageType}: Resposta inválida`, response.data);
-    return false;
-  } catch (error) {
-    const apiError = error as ApiError;
-    console.error(`Erro ao enviar ${messageType}:`, {
-      error: apiError.response?.data || apiError.message || "Erro desconhecido",
-      instanceId,
-      to,
-      messageType,
-    });
-    return false;
-  }
-}
+			console.error(
+				`Falha ao enviar ${messageType}: Resposta inválida`,
+				response.data,
+			);
+			return false;
+		} catch (error) {
+			const apiError = error as ApiError;
+			console.error(`Erro ao enviar ${messageType}:`, {
+				error:
+					apiError.response?.data || apiError.message || "Erro desconhecido",
+				instanceId,
+				to,
+				messageType,
+			});
+			return false;
+		}
+	}
 
-private createMessageConfig(
-  instanceId: string,
-  formattedNumber: string,
-  content: any,
-  messageType: string
-): SendMessageConfig {
-  const isMedia = typeof content === "object";
-  let config: SendMessageConfig = {
-    endpoint: "",
-    payload: {},
-    delay: 1000
-  };
+	private createMessageConfig(
+		instanceId: string,
+		formattedNumber: string,
+		content: any,
+		messageType: string,
+	): SendMessageConfig {
+		const isMedia = typeof content === "object";
+		const config: SendMessageConfig = {
+			endpoint: "",
+			payload: {},
+			delay: 1000,
+		};
 
-  if (isMedia && content) {
-    const mediaContent = content as MediaContent;
+		if (isMedia && content) {
+			const mediaContent = content as MediaContent;
 
-    if (messageType === "sticker") {
-      config.endpoint = `${URL_API}/message/sendSticker/${instanceId}`;
-      config.delay = Math.floor(Math.random() * 2000) + 1000;
-      config.payload = {
-        number: formattedNumber,
-        sticker: mediaContent.base64,
-        delay: config.delay,
-      };
-    } else if (messageType === "image" || messageType === "video") {
-      config.endpoint = `${URL_API}/message/sendMedia/${instanceId}`;
-      const base64Length = mediaContent.base64?.length || 0;
-      config.delay = Math.min(5000, Math.floor(base64Length / 1000) + 2000);
-      config.payload = {
-        number: formattedNumber,
-        mediatype: messageType,
-        media: mediaContent.base64,
-        mimetype: mediaContent.mimetype,
-        fileName: mediaContent.fileName,
-        caption: mediaContent.caption,
-        delay: config.delay,
-      };
-    } else if (messageType === "audio") {
-      config.endpoint = `${URL_API}/message/sendWhatsAppAudio/${instanceId}`;
-      config.delay = Math.floor(Math.random() * 10000) + 5000;
-      config.payload = {
-        number: formattedNumber,
-        audio: mediaContent.base64,
-        encoding: true,
-        delay: config.delay,
-      };
-    }
-  } else {
-    config.endpoint = `${URL_API}/message/sendText/${instanceId}`;
-    const textLength = (content as string).length;
-    config.delay = Math.min(8000, Math.floor(textLength * 100) + 2000);
-    config.payload = {
-      number: formattedNumber,
-      text: content,
-      delay: config.delay,
-      linkPreview: true,
-    };
-  }
+			if (messageType === "sticker") {
+				config.endpoint = `${URL_API}/message/sendSticker/${instanceId}`;
+				config.delay = Math.floor(Math.random() * 2000) + 1000;
+				config.payload = {
+					number: formattedNumber,
+					sticker: mediaContent.base64,
+					delay: config.delay,
+				};
+			} else if (messageType === "image" || messageType === "video") {
+				config.endpoint = `${URL_API}/message/sendMedia/${instanceId}`;
+				const base64Length = mediaContent.base64?.length || 0;
+				config.delay = Math.min(5000, Math.floor(base64Length / 1000) + 2000);
+				config.payload = {
+					number: formattedNumber,
+					mediatype: messageType,
+					media: mediaContent.base64,
+					mimetype: mediaContent.mimetype,
+					fileName: mediaContent.fileName,
+					caption: mediaContent.caption,
+					delay: config.delay,
+				};
+			} else if (messageType === "audio") {
+				config.endpoint = `${URL_API}/message/sendWhatsAppAudio/${instanceId}`;
+				config.delay = Math.floor(Math.random() * 10000) + 5000;
+				config.payload = {
+					number: formattedNumber,
+					audio: mediaContent.base64,
+					encoding: true,
+					delay: config.delay,
+				};
+			}
+		} else {
+			config.endpoint = `${URL_API}/message/sendText/${instanceId}`;
+			const textLength = (content as string).length;
+			config.delay = Math.min(8000, Math.floor(textLength * 100) + 2000);
+			config.payload = {
+				number: formattedNumber,
+				text: content,
+				delay: config.delay,
+				linkPreview: true,
+			};
+		}
 
-  return config;
-}
+		return config;
+	}
 
 	// Função auxiliar para extrair o ID da mensagem de forma segura
 	private getMessageId(response: any): string | undefined {
@@ -1087,7 +1100,7 @@ private createMessageConfig(
 						to,
 						content,
 						type,
-						config.userId || 0,
+						config.userId || "",
 					);
 				}
 			}

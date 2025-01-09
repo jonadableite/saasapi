@@ -1,7 +1,8 @@
 // src/@types/instance.ts
 export interface Instance {
-	instanceId: number;
+	id: string; // Alterado para string
 	instanceName: string;
+	name: string;
 	connectionStatus: string;
 	phoneNumber?: string;
 	integration: string;

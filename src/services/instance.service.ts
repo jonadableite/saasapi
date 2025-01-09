@@ -88,7 +88,7 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
  * @param instanceName - Nome da instância.
  * @returns A instância criada.
  */
-export const createInstance = async (userId: number, instanceName: string) => {
+export const createInstance = async (userId: string, instanceName: string) => {
 	try {
 		// Passo 1: Verificar se a instância já existe no banco de dados
 		const existingInstance = await prisma.instance.findUnique({
@@ -178,7 +178,7 @@ export const createInstance = async (userId: number, instanceName: string) => {
  * @param userId - ID do usuário.
  * @returns Lista de instâncias.
  */
-export const listInstances = async (userId: number) => {
+export const listInstances = async (userId: string) => {
 	try {
 		const instances = await prisma.instance.findMany({
 			where: { userId },
@@ -212,7 +212,7 @@ export const listInstances = async (userId: number) => {
  * @param instanceId - ID da instância.
  * @param userId - ID do usuário.
  */
-export const deleteInstance = async (instanceId: number, userId: number) => {
+export const deleteInstance = async (instanceId: string, userId: string) => {
 	try {
 		return await prisma.$transaction(async (transaction) => {
 			// Primeiro, busque a instância para obter o instanceName
@@ -269,8 +269,8 @@ export const deleteInstance = async (instanceId: number, userId: number) => {
  * @returns Instância atualizada.
  */
 export const updateInstance = async (
-	instanceId: number,
-	userId: number,
+	instanceId: string,
+	userId: string,
 	updateData: Partial<{ instanceName: string; connectionStatus: string }>,
 ) => {
 	try {
@@ -307,8 +307,8 @@ export const updateInstance = async (
  * @returns Instância atualizada.
  */
 export const updateInstanceConnectionStatus = async (
-	instanceId: number,
-	userId: number,
+	instanceId: string,
+	userId: string,
 	connectionStatus: string,
 ) => {
 	try {
@@ -348,7 +348,7 @@ export const updateInstanceConnectionStatus = async (
  * Atualiza os campos: ownerJid, profileName, profilePicUrl, e outros necessários.
  */
 export const syncInstancesWithExternalApi = async (
-	userId: number,
+	userId: string,
 ): Promise<void> => {
 	try {
 		console.log("Sincronizando instâncias com a API externa...");

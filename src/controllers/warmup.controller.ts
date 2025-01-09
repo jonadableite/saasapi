@@ -8,6 +8,8 @@ interface TextContent {
 	text: string;
 }
 
+// src/controllers/warmup.controller.ts
+
 export const configureWarmup = async (
 	req: Request,
 	res: Response,
@@ -20,7 +22,7 @@ export const configureWarmup = async (
 			userId,
 			instancesCount: config.phoneInstances?.length,
 			textsCount: config.contents?.texts?.length,
-			texts: config.contents?.texts, // Adicionando log para verificar os textos
+			texts: config.contents?.texts,
 		});
 
 		if (!userId) {
@@ -73,7 +75,7 @@ export const configureWarmup = async (
 
 		// Preparar configuração final
 		const warmupConfig: WarmupConfig = {
-			userId: Number(userId),
+			userId, // Removido Number(), mantendo como string
 			phoneInstances: config.phoneInstances,
 			contents: {
 				texts: config.contents.texts.map((text: string | TextContent) =>
@@ -107,7 +109,7 @@ export const configureWarmup = async (
 		};
 
 		// Iniciar o warmup
-		await warmupService.startWarmup({ ...warmupConfig, userId });
+		await warmupService.startWarmup(warmupConfig);
 
 		// Aguardar um momento para garantir que o status foi atualizado
 		await new Promise((resolve) => setTimeout(resolve, 1000));

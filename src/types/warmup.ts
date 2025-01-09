@@ -10,7 +10,7 @@ export interface MediaContent {
 }
 
 export interface WarmupConfig {
-	userId: number;
+	userId: string;
 	phoneInstances: Array<{
 		instanceId: string;
 		phoneNumber: string;

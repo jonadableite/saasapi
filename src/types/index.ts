@@ -1,10 +1,19 @@
 // src/types/index.ts
-import type { User } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import type { PLAN_LIMITS } from "../constants/planLimits";
 
 export interface RequestWithUser extends Request {
-	user?: User;
+	user?: {
+		id: string;
+		email: string;
+		name: string;
+		plan: string;
+		maxInstances: number;
+		company?: {
+			id: string;
+			name: string;
+		};
+	};
 	planLimits?: (typeof PLAN_LIMITS)[keyof typeof PLAN_LIMITS];
 }
 

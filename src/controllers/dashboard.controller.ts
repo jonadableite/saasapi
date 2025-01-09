@@ -2,9 +2,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import type { Response } from "express";
-import type { WarmupStat } from "../@types/prismaModels";
-import type { RequestWithUser } from '../types';
-
+import type { RequestWithUser } from "../types";
 
 const prisma = new PrismaClient();
 
@@ -37,15 +35,15 @@ export const getDashboardStats = async (
 	}
 
 	try {
-		const stats = (await prisma.warmupStats.findMany({
-			where: { userId: Number(userId) },
+		const stats = await prisma.warmupStats.findMany({
+			where: { userId },
 			include: {
 				user: true,
 				instance: true,
 				mediaStats: true,
 				mediaReceived: true,
 			},
-		})) as WarmupStat[];
+		});
 
 		if (!stats || stats.length === 0) {
 			res.json({
@@ -161,7 +159,7 @@ export const getDashboardStats = async (
 
 		const previousStats = await prisma.warmupStats.findMany({
 			where: {
-				userId: Number(userId),
+				userId,
 				createdAt: {
 					gte: previousDate,
 					lt: new Date(),
@@ -206,10 +204,16 @@ export const getDashboardStats = async (
 		);
 
 		res.json({
-			totalWarmups,
-			activeInstances,
-			totalMessages,
-			averageTime: averageTimeInHours.toFixed(2),
+			totalWarmups: stats.length,
+			activeInstances: stats.filter((stat) => stat.status === "active").length,
+			totalMessages: stats.reduce(
+				(sum, stat) => sum + (stat.messagesSent || 0),
+				0,
+			),
+			averageTime: (
+				stats.reduce((sum, stat) => sum + (stat.warmupTime || 0), 0) /
+				(stats.length * 3600)
+			).toFixed(2),
 			instanceProgress,
 			messageTypes,
 			instances: processedStats,

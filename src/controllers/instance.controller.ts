@@ -69,16 +69,11 @@ export const updateProxyConfigController = async (
 	res: Response,
 ): Promise<Response> => {
 	const userId = req.user?.id;
-
 	if (!userId) {
 		return res.status(401).json({ error: "Usuário não autenticado" });
 	}
 
-	const instanceId = Number(req.params.id);
-
-	if (Number.isNaN(instanceId)) {
-		return res.status(400).json({ error: "ID da instância inválido" });
-	}
+	const instanceId = req.params.id;
 
 	try {
 		const { host, port, username, password } = req.body;
@@ -125,7 +120,7 @@ export const updateTypebotConfigController = async (
 		// Verifica se a instância pertence ao usuário
 		const instance = await prisma.instance.findFirst({
 			where: {
-				id: Number(id),
+				id: req.params.id,
 				userId: req.user?.id,
 			},
 		});
@@ -137,7 +132,7 @@ export const updateTypebotConfigController = async (
 		// Atualiza a instância
 		const updatedInstance = await prisma.instance.update({
 			where: {
-				id: Number(id),
+				id: req.params.id,
 			},
 			data: {
 				typebot,
@@ -296,8 +291,8 @@ export const deleteInstanceController = async (
 		return res.status(401).json({ error: "Usuário não autenticado" });
 	}
 
-	const instanceId = Number(req.params.id);
-	if (isNaN(instanceId)) {
+	const instanceId = req.params.id; // Removido Number()
+	if (!instanceId) {
 		return res.status(400).json({ error: "ID da instância inválido" });
 	}
 
@@ -339,7 +334,7 @@ export const updateInstanceController = async (
 
 	try {
 		await updateInstanceSchema.validate(req.body, { abortEarly: false });
-		const instanceId = Number(req.params.id);
+		const instanceId = req.params.id; // Removido Number()
 		const updateData = req.body;
 		const updatedInstance = await updateInstance(
 			instanceId,
@@ -367,7 +362,7 @@ export const updateInstanceStatusController = async (
 	}
 
 	try {
-		const instanceId = Number(req.params.id);
+		const instanceId = req.params.id; // Removido Number()
 		const { connectionStatus } = req.body;
 
 		if (!connectionStatus) {
@@ -387,6 +382,7 @@ export const updateInstanceStatusController = async (
 	}
 };
 
+// Controlador para deletar configuração do Typebot
 export const deleteTypebotConfig = async (
 	req: RequestWithUser,
 	res: Response,
@@ -395,9 +391,9 @@ export const deleteTypebotConfig = async (
 		const { id } = req.params;
 
 		const updatedInstance = await prisma.instance.update({
-			where: { id: Number(id) },
+			where: { id }, // Removido Number()
 			data: {
-				typebot: Prisma.JsonNull, // O backend converte o null recebido para Prisma.JsonNull
+				typebot: Prisma.JsonNull,
 			},
 		});
 

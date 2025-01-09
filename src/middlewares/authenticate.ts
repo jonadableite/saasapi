@@ -4,6 +4,12 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import type { RequestWithUser } from "../types";
 
+// Interface para o payload do token JWT
+interface JwtPayload {
+	userId: string; // Alterado de number para string
+	plan?: string;
+}
+
 export const authMiddleware = async (
 	req: RequestWithUser,
 	res: Response,
@@ -31,11 +37,14 @@ export const authMiddleware = async (
 		}
 
 		try {
-			const decoded = jwt.verify(token, secret) as { id: number };
+			const decoded = jwt.verify(token, secret) as JwtPayload;
 			console.log("Token decodificado:", decoded);
 
 			const user = await prisma.user.findUnique({
-				where: { id: decoded.id },
+				where: { id: decoded.userId }, // Usando userId em vez de id
+				include: {
+					company: true, // Incluindo a relação com company se necessário
+				},
 			});
 
 			if (!user) {

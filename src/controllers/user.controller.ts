@@ -40,7 +40,7 @@ export const listUsersController = async (
 	}
 };
 
-// Controlador para verificar o status do plano
+/// Controladores de verificação de plano
 export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
 	try {
 		console.log("Verificando status do plano para usuário:", req.user);
@@ -72,8 +72,6 @@ export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
 			console.log("Usuário não encontrado:", userId);
 			return res.status(404).json({ error: "Usuário não encontrado" });
 		}
-
-		console.log("Dados do usuário encontrados:", user);
 
 		return res.json({
 			success: true,
@@ -128,7 +126,7 @@ export const findOneUsersController = async (
 ): Promise<Response> => {
 	const { id } = req.params;
 	try {
-		const { user, instancesCount } = await getUser(Number(id));
+		const { user, instancesCount } = await getUser(id); // Removido Number()
 
 		if (!user) {
 			return res.status(404).json({ message: "Usuário não encontrado" });
@@ -175,7 +173,7 @@ export const updateUserController = async (
 			abortEarly: false,
 		});
 
-		const user = await updateUser(Number(id), validatedData);
+		const user = await updateUser(id, validatedData); // Removido Number()
 
 		return res.json(user);
 	} catch (error) {
@@ -197,7 +195,7 @@ export const deleteUserController = async (
 ): Promise<Response> => {
 	const { id } = req.params;
 	try {
-		await deleteUser(Number(id));
+		await deleteUser(id); // Removido Number()
 		return res.status(204).send();
 	} catch (error) {
 		if (isPrismaError(error) && error.code === "P2025") {

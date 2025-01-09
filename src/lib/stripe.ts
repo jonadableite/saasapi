@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
 // src/lib/stripe.ts
+import dotenv from "dotenv";
 import Stripe from "stripe";
 import { config } from "./config";
 import { prisma } from "./prisma";
@@ -46,7 +46,7 @@ export const createCheckoutSession = async (
 		const session = await stripeClient.checkout.sessions.create({
 			payment_method_types: ["card"],
 			mode: "subscription",
-			client_reference_id: userId,
+			client_reference_id: userId, // Já é string, não precisa converter
 			customer: customer.id,
 			success_url: `${config.frontendUrl}/return?session_id={CHECKOUT_SESSION_ID}`,
 			cancel_url: `${config.frontendUrl}/checkout`,
@@ -95,8 +95,8 @@ export const handleProcessWebhookCheckout = async (
 		);
 	}
 
-	const clientReferenceIdNumber = Number.parseInt(clientReferenceId, 10);
-	if (isNaN(clientReferenceIdNumber)) {
+	// Removida a conversão para número, já que clientReferenceId já é string
+	if (!clientReferenceId) {
 		throw new Error("Invalid client reference ID");
 	}
 
@@ -105,7 +105,7 @@ export const handleProcessWebhookCheckout = async (
 	}
 
 	await prisma.user.update({
-		where: { id: clientReferenceIdNumber },
+		where: { id: clientReferenceId }, // Usando diretamente como string
 		data: {
 			stripeCustomerId,
 			stripeSubscriptionId,

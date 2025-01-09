@@ -20,7 +20,7 @@ export const determinePlanFromSubscription = (
 };
 
 export const updateUserPlan = async (
-	userId: number,
+	userId: string, // Alterado de number para string
 	paymentIntent: Stripe.PaymentIntent,
 ) => {
 	try {
@@ -66,7 +66,7 @@ export const updateUserStatus = async (
 		}
 
 		await prisma.user.update({
-			where: { id: user.id },
+			where: { id: user.id }, // user.id já é string
 			data: {
 				stripeSubscriptionStatus: status,
 				updatedAt: new Date(),
@@ -88,7 +88,7 @@ export const updatePaymentStatus = async (
 
 		if (payment) {
 			await prisma.payment.update({
-				where: { id: payment.id },
+				where: { id: payment.id }, // payment.id já é string
 				data: {
 					status: paymentIntent.status,
 					updatedAt: new Date(),

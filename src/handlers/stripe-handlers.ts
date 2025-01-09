@@ -19,7 +19,7 @@ export const handlePaymentIntentSucceeded = async (
 		console.log("Processando pagamento bem-sucedido:", paymentIntent);
 
 		const priceId = paymentIntent.metadata.priceId;
-		const userId = Number(paymentIntent.metadata.userId);
+		const userId = paymentIntent.metadata.userId;
 		const planType = PRICE_TO_PLAN_MAPPING[
 			priceId as keyof typeof PRICE_TO_PLAN_MAPPING
 		] as keyof typeof PLAN_LIMITS;
@@ -162,7 +162,7 @@ export const handleCheckoutSessionCompleted = async (
 		const planLimits = getPlanLimits(plan);
 
 		await prisma.user.update({
-			where: { id: Number(userId) },
+			where: { id: userId },
 			data: {
 				stripeCustomerId: session.customer as string,
 				stripeSubscriptionId: subscriptionId,

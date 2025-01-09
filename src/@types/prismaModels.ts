@@ -1,8 +1,7 @@
 // src/types/prismaModels.ts
-
 // Interface para o modelo User
 export interface User {
-	id: number;
+	id: string;
 	name: string;
 	email: string;
 	plan: string;
@@ -13,18 +12,16 @@ export interface User {
 	createdAt: Date;
 	updatedAt: Date;
 }
-
 // Interface para o modelo Instance
 export interface Instance {
-	id: number;
+	id: string;
 	instanceName: string;
 	connectionStatus: string;
-	userId: number;
+	userId: string;
 }
-
 // Interface para o modelo MediaStats
 export interface MediaStats {
-	id: number;
+	id: string;
 	instanceName: string;
 	date: Date;
 	text: number;
@@ -38,10 +35,9 @@ export interface MediaStats {
 	createdAt: Date;
 	updatedAt: Date;
 }
-
 // Interface para o modelo WarmupStat
 export interface WarmupStat {
-	id: number;
+	id: string;
 	instanceName: string;
 	status: string;
 	messagesSent: number;
@@ -51,24 +47,24 @@ export interface WarmupStat {
 	startTime: Date | null;
 	pauseTime: Date | null;
 	progress: number;
-	userId: number;
-	mediaStatsId: number | null;
-	mediaReceivedId: number | null;
+	userId: string;
+	mediaStatsId: string | null;
+	mediaReceivedId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 	user: {
-		id: number;
+		id: string;
 		name: string;
 		email: string;
 		plan: string;
 	};
 	instance: {
-		id: number;
+		id: string;
 		instanceName: string;
 		connectionStatus: string;
 	};
 	mediaStats: {
-		id: number;
+		id: string;
 		instanceName: string;
 		date: Date;
 		text: number;
@@ -83,7 +79,7 @@ export interface WarmupStat {
 		updatedAt: Date;
 	} | null;
 	mediaReceived: {
-		id: number;
+		id: string;
 		instanceName: string;
 		date: Date;
 		text: number;
