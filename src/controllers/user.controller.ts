@@ -149,9 +149,13 @@ export const createUsersController = async (
 			abortEarly: false,
 		});
 
-		const { user, token } = await createUser(validatedData);
+		const { user, companyId, token } = await createUser(validatedData);
 
-		return res.status(201).json({ user, token });
+		return res.status(201).json({
+			user,
+			companyId, // Retorna o ID da empresa para ser usado posteriormente
+			token,
+		});
 	} catch (error) {
 		if (error instanceof yup.ValidationError) {
 			return res.status(400).json({ errors: error.errors });
@@ -159,6 +163,118 @@ export const createUsersController = async (
 			console.error("Erro ao criar usuário:", error);
 			return res.status(500).json({ error: "Erro interno do servidor" });
 		}
+	}
+};
+
+export const checkCompanyStatus = async (
+	req: RequestWithUser,
+	res: Response,
+) => {
+	try {
+		const userId = req.user?.id;
+
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			include: {
+				company: {
+					select: {
+						id: true,
+						name: true,
+						active: true,
+					},
+				},
+			},
+		});
+
+		if (!user) {
+			return res.status(404).json({ error: "Usuário não encontrado" });
+		}
+
+		// Verifica se a empresa é temporária ou tem nome padrão
+		const isTemporary =
+			!user.company ||
+			user.company.name === "Temporary Company" ||
+			user.company.name === `${user.name}'s Company`;
+
+		return res.json({
+			hasCompany: !!user.company,
+			isTemporaryCompany: isTemporary,
+			company: user.company
+				? {
+						id: user.company.id,
+						name: user.company.name,
+						active: user.company.active,
+					}
+				: null,
+		});
+	} catch (error) {
+		console.error("Erro ao verificar status da empresa:", error);
+		return res.status(500).json({ error: "Erro interno do servidor" });
+	}
+};
+
+export const updateCompanyController = async (
+	req: RequestWithUser,
+	res: Response,
+) => {
+	try {
+		const userId = req.user?.id;
+		const { name } = req.body;
+
+		console.log("Atualizando empresa:", { userId, name });
+
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		if (!name || typeof name !== "string" || !name.trim()) {
+			return res.status(400).json({ error: "Nome da empresa é obrigatório" });
+		}
+
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			include: { company: true },
+		});
+
+		if (!user) {
+			return res.status(404).json({ error: "Usuário não encontrado" });
+		}
+
+		if (!user.company) {
+			return res.status(404).json({ error: "Empresa não encontrada" });
+		}
+
+		// Verificar se a empresa atual é temporária
+		const isTemporary =
+			user.company.name === "Temporary Company" ||
+			user.company.name === `${user.name}'s Company`;
+
+		if (!isTemporary) {
+			return res.status(403).json({
+				error: "Não é possível atualizar uma empresa já configurada",
+			});
+		}
+
+		const updatedCompany = await prisma.company.update({
+			where: { id: user.company.id },
+			data: {
+				name: name.trim(),
+			},
+		});
+
+		console.log("Empresa atualizada:", updatedCompany);
+
+		return res.json({
+			success: true,
+			company: updatedCompany,
+		});
+	} catch (error) {
+		console.error("Erro ao atualizar empresa:", error);
+		return res.status(500).json({ error: "Erro ao atualizar empresa" });
 	}
 };
 

@@ -65,44 +65,64 @@ export const createUser = async (userData: {
 		const trialEndDate = new Date();
 		trialEndDate.setDate(trialEndDate.getDate() + 7);
 
-		const company = await prisma.company.create({
-			data: {
-				name: `${name}'s Company`,
-				active: true,
-			},
-		});
+		// Criar usuário usando transação para garantir consistência
+		const result = await prisma.$transaction(async (tx) => {
+			// Criar uma empresa temporária para o usuário
+			const tempCompany = await tx.company.create({
+				data: {
+					name: "Temporary Company", // Será atualizado posteriormente
+					active: true,
+				},
+			});
 
-		const user = await prisma.user.create({
-			data: {
-				name,
-				email,
-				password: hashedPassword,
-				plan: plan || "free",
-				profile: "user",
-				phone: "",
-				trialEndDate,
-				company: {
-					connect: {
-						id: company.id,
+			// Criar o usuário associado à empresa temporária
+			const user = await tx.user.create({
+				data: {
+					name,
+					email,
+					password: hashedPassword,
+					plan: plan || "free",
+					profile: "user",
+					phone: "",
+					trialEndDate,
+					company: {
+						connect: {
+							id: tempCompany.id,
+						},
 					},
 				},
-			},
+				select: {
+					id: true,
+					name: true,
+					email: true,
+					plan: true,
+					company: {
+						select: {
+							id: true,
+							name: true,
+						},
+					},
+				},
+			});
+
+			return { user, companyId: tempCompany.id };
 		});
 
 		const tokenUser: TokenUser = {
-			id: user.id,
-			plan: user.plan,
+			id: result.user.id,
+			plan: result.user.plan,
 		};
 
 		const token = generateToken(tokenUser);
 
 		return {
 			user: {
-				id: user.id,
-				name: user.name,
-				email: user.email,
-				plan: user.plan,
+				id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				plan: result.user.plan,
 			},
+			companyId: result.companyId, // Retorna o ID da empresa temporária
 			token,
 		};
 	} catch (error) {
@@ -111,6 +131,31 @@ export const createUser = async (userData: {
 			throw new Error(error.message);
 		}
 		throw new Error("Erro ao criar usuário");
+	}
+};
+
+/**
+ * Atualiza os dados da empresa do usuário.
+ * @param companyId - ID da empresa.
+ * @param companyData - Dados da empresa.
+ */
+export const updateCompany = async (
+	companyId: string,
+	companyData: {
+		name: string;
+		// Adicione outros campos conforme necessário
+	},
+) => {
+	try {
+		const updatedCompany = await prisma.company.update({
+			where: { id: companyId },
+			data: companyData,
+		});
+
+		return updatedCompany;
+	} catch (error) {
+		console.error("Erro ao atualizar empresa:", error);
+		throw new Error("Erro ao atualizar empresa");
 	}
 };
 

@@ -41,7 +41,6 @@ export const authMiddleware = async (
 			const decoded = jwt.verify(token, secret) as JwtPayload;
 			console.log("Token decodificado:", decoded);
 
-			// Usar userId se disponível, caso contrário usar id
 			const userIdFromToken = decoded.userId || decoded.id;
 
 			if (!userIdFromToken) {
@@ -53,7 +52,15 @@ export const authMiddleware = async (
 			const user = await prisma.user.findUnique({
 				where: { id: userIdFromToken },
 				include: {
-					company: true,
+					company: {
+						select: {
+							id: true,
+							name: true,
+							active: true,
+							createdAt: true,
+							updatedAt: true,
+						},
+					},
 				},
 			});
 
@@ -61,8 +68,15 @@ export const authMiddleware = async (
 				return res.status(401).json({ error: "Usuário não encontrado" });
 			}
 
+			console.log("Usuário encontrado:", {
+				id: user.id,
+				email: user.email,
+				companyId: user.company?.id,
+				companyName: user.company?.name,
+			});
+
 			req.user = user;
-			next();
+			return next();
 		} catch (error) {
 			console.error("Erro na verificação do token:", error);
 			if (error instanceof jwt.TokenExpiredError) {
@@ -76,5 +90,40 @@ export const authMiddleware = async (
 	} catch (error) {
 		console.error("Erro na autenticação:", error);
 		return res.status(500).json({ error: "Erro interno no servidor" });
+	}
+};
+
+// Middleware específico para rotas que requerem empresa configurada
+export const requireCompanySetup = async (
+	req: RequestWithUser,
+	res: Response,
+	next: NextFunction,
+) => {
+	try {
+		const user = req.user;
+
+		if (!user) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		if (!user.company) {
+			return res.status(403).json({ error: "Empresa não configurada" });
+		}
+
+		const isTemporaryCompany =
+			user.company.name === "Temporary Company" ||
+			user.company.name === `${user.name}'s Company`;
+
+		if (isTemporaryCompany) {
+			return res.status(403).json({
+				error: "Configuração da empresa necessária",
+				requiresSetup: true,
+			});
+		}
+
+		return next();
+	} catch (error) {
+		console.error("Erro ao verificar configuração da empresa:", error);
+		return res.status(500).json({ error: "Erro interno do servidor" });
 	}
 };
