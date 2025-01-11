@@ -6,34 +6,43 @@ import minioClient from "../config/minioClient";
 export const uploadFileController = async (req: Request, res: Response) => {
 	try {
 		const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-		const uploadedFiles: { url: string; fieldname: string }[] = [];
 
-		for (const fieldname in files) {
-			const file = files[fieldname][0];
-			const fileStream = fs.createReadStream(file.path);
-			const objectName = `${Date.now()}-${file.originalname}`;
-
-			await minioClient.putObject(
-				process.env.MINIO_BUCKET_NAME!,
-				objectName,
-				fileStream,
-				file.size,
-				{
-					"Content-Type": file.mimetype,
-				},
-			);
-
-			// Gerar URL permanente
-			const url = `${process.env.MINIO_SERVER_URL}/${process.env.MINIO_BUCKET_NAME}/${objectName}`;
-
-			uploadedFiles.push({
-				url,
-				fieldname,
+		if (!files || !files.file) {
+			return res.status(400).json({
+				success: false,
+				error: "Nenhum arquivo foi enviado",
 			});
-
-			// Limpar arquivo temporário
-			fs.unlinkSync(file.path);
 		}
+
+		const uploadedFiles = await Promise.all(
+			Object.entries(files).map(async ([fieldname, fileArray]) => {
+				const file = fileArray[0];
+				const fileStream = fs.createReadStream(file.path);
+				const objectName = `${Date.now()}-${file.originalname}`;
+
+				await minioClient.putObject(
+					process.env.MINIO_BUCKET_NAME!,
+					objectName,
+					fileStream,
+					file.size,
+					{
+						"Content-Type": file.mimetype,
+					},
+				);
+
+				const url = `${process.env.MINIO_SERVER_URL}/${process.env.MINIO_BUCKET_NAME}/${objectName}`;
+
+				// Limpar arquivo temporário
+				fs.unlinkSync(file.path);
+
+				return {
+					fieldname,
+					originalname: file.originalname,
+					mimetype: file.mimetype,
+					url,
+				};
+			}),
+		);
 
 		return res.json({
 			success: true,
@@ -43,7 +52,10 @@ export const uploadFileController = async (req: Request, res: Response) => {
 		console.error("Erro no upload:", error);
 		return res.status(500).json({
 			success: false,
-			error: "Erro ao fazer upload do arquivo",
+			error:
+				error instanceof Error
+					? error.message
+					: "Erro ao fazer upload do arquivo",
 		});
 	}
 };
