@@ -1,0 +1,163 @@
+// src/services/message-log.service.ts
+
+import { PrismaClient } from "@prisma/client";
+import { endOfDay, startOfDay } from "date-fns";
+import Redis from "ioredis";
+import type { StatusUpdate } from "../interface";
+
+const prisma = new PrismaClient();
+const redis = new Redis({
+	host: process.env.REDIS_HOST,
+	port: Number.parseInt(process.env.REDIS_PORT || "6379"),
+	password: process.env.REDIS_PASSWORD,
+});
+
+export class MessageLogService {
+	async updateMessageStatus(
+		messageId: string,
+		newStatus: string,
+		reason?: string,
+	): Promise<void> {
+		const today = new Date();
+		const cacheKey = `message:${messageId}:${today.toISOString().split("T")[0]}`;
+
+		let messageLog = await this.getMessageLogFromCache(cacheKey);
+
+		if (!messageLog) {
+			messageLog = await prisma.messageLog.findFirst({
+				where: {
+					messageId,
+					messageDate: {
+						gte: startOfDay(today),
+						lte: endOfDay(today),
+					},
+				},
+			});
+		}
+
+		const statusUpdate: StatusUpdate = {
+			status: newStatus,
+			timestamp: new Date(),
+			...(reason && { reason }),
+		};
+
+		if (messageLog) {
+			// Atualizar registro existente
+			const updatedLog = await prisma.messageLog.update({
+				where: { id: messageLog.id },
+				data: {
+					status: newStatus,
+					statusHistory: [...messageLog.statusHistory, statusUpdate],
+					...(newStatus === "sent" && { sentAt: new Date() }),
+					...(newStatus === "delivered" && { deliveredAt: new Date() }),
+					...(newStatus === "read" && { readAt: new Date() }),
+					...(newStatus === "failed" && {
+						failedAt: new Date(),
+						failureReason: reason,
+					}),
+				},
+			});
+
+			await this.setMessageLogCache(cacheKey, updatedLog);
+		} else {
+			// Criar novo registro
+			const newLog = await prisma.messageLog.create({
+				data: {
+					messageId,
+					messageDate: startOfDay(today),
+					status: newStatus,
+					statusHistory: [statusUpdate],
+					...(newStatus === "sent" && { sentAt: new Date() }),
+					...(newStatus === "delivered" && { deliveredAt: new Date() }),
+					...(newStatus === "read" && { readAt: new Date() }),
+					...(newStatus === "failed" && {
+						failedAt: new Date(),
+						failureReason: reason,
+					}),
+					// Adicione os campos campaignId, leadId, messageType e content conforme necessário
+				},
+			});
+
+			await this.setMessageLogCache(cacheKey, newLog);
+		}
+	}
+
+	async getMessageStatusHistory(messageId: string, date?: Date): Promise<any> {
+		const queryDate = date || new Date();
+		const cacheKey = `message:${messageId}:${queryDate.toISOString().split("T")[0]}`;
+
+		const cachedLog = await this.getMessageLogFromCache(cacheKey);
+		if (cachedLog) {
+			return cachedLog;
+		}
+
+		const messageLog = await prisma.messageLog.findFirst({
+			where: {
+				messageId,
+				messageDate: {
+					gte: startOfDay(queryDate),
+					lte: endOfDay(queryDate),
+				},
+			},
+			select: {
+				status: true,
+				statusHistory: true,
+				sentAt: true,
+				deliveredAt: true,
+				readAt: true,
+				failedAt: true,
+				failureReason: true,
+			},
+		});
+
+		if (messageLog) {
+			await this.setMessageLogCache(cacheKey, messageLog);
+		}
+
+		return messageLog;
+	}
+
+	async getDailyStats(campaignId: string, date: Date) {
+		const cacheKey = `stats:campaign:${campaignId}:${date.toISOString().split("T")[0]}`;
+		const cachedStats = await redis.get(cacheKey);
+
+		if (cachedStats) {
+			return JSON.parse(cachedStats);
+		}
+
+		const stats = await prisma.messageLog.groupBy({
+			by: ["status"],
+			where: {
+				campaignId,
+				messageDate: {
+					gte: startOfDay(date),
+					lte: endOfDay(date),
+				},
+			},
+			_count: {
+				status: true,
+			},
+		});
+
+		const formattedStats = stats.reduce(
+			(acc, curr) => ({
+				...acc,
+				[curr.status]: curr._count.status,
+			}),
+			{},
+		);
+
+		await redis.set(cacheKey, JSON.stringify(formattedStats), "EX", 3600); // Cache por 1 hora
+
+		return formattedStats;
+	}
+
+	private async getMessageLogFromCache(key: string): Promise<any> {
+		const cachedLog = await redis.get(key);
+		return cachedLog ? JSON.parse(cachedLog) : null;
+	}
+
+	private async setMessageLogCache(key: string, log: any): Promise<void> {
+		await redis.set(key, JSON.stringify(log), "EX", 3600); // Cache por 1 hora
+	}
+}

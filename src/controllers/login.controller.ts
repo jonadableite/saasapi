@@ -1,3 +1,4 @@
+// src/controllers/login.controller.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import type { Request, Response } from "express";
@@ -16,7 +17,25 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
 		await loginSchema.validate(req.body, { abortEarly: false });
 
 		const { email, password } = req.body;
-		const user = await prisma.user.findUnique({ where: { email } });
+		const user = await prisma.user.findUnique({
+			where: { email },
+			select: {
+				id: true,
+				name: true,
+				email: true,
+				password: true,
+				profile: true,
+				plan: true,
+				whatleadCompanyId: true,
+				stripeSubscriptionStatus: true,
+				trialEndDate: true,
+				maxInstances: true,
+				messagesPerDay: true,
+				features: true,
+				support: true,
+				status: true,
+			},
+		});
 
 		if (!user) {
 			return res.status(401).json({ error: "Credenciais inválidas" });
@@ -35,7 +54,37 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
 
 		const token = jwt.sign({ id: user.id }, secretKey, { expiresIn: "20d" });
 
-		return res.json({ token, user });
+		// Verificar status do plano
+		const now = new Date();
+		const trialEndDate = user.trialEndDate ? new Date(user.trialEndDate) : null;
+		const isTrialExpired = trialEndDate ? now > trialEndDate : false;
+
+		// Verificar status da assinatura
+		const hasActiveSubscription =
+			user.stripeSubscriptionStatus === "active" || user.plan !== "free";
+
+		const planStatus = {
+			plan: user.plan,
+			isTrialExpired,
+			hasActiveSubscription,
+			status: hasActiveSubscription
+				? "active"
+				: isTrialExpired
+					? "expired"
+					: "trial",
+		};
+
+		// Remover a senha antes de enviar
+		const { password: _, ...userWithoutPassword } = user;
+
+		return res.json({
+			token,
+			user: {
+				...userWithoutPassword,
+				companyId: user.whatleadCompanyId, // Manter compatibilidade com o frontend
+			},
+			planStatus,
+		});
 	} catch (error) {
 		if (error instanceof yup.ValidationError) {
 			return res.status(400).json({ errors: error.errors });

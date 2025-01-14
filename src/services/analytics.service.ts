@@ -1,0 +1,207 @@
+// src/services/analytics.service.ts
+import { type MessageLog, PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+interface MessageLogWithLead extends MessageLog {
+	lead: {
+		name: string;
+		phone: string;
+	};
+}
+
+interface LeadStats {
+	lead: {
+		name: string;
+		phone: string;
+	};
+	messagesReceived: number;
+	messagesRead: number;
+	responseTime: number[];
+	averageResponseTime: number | null;
+	engagementRate: number;
+}
+
+export class AnalyticsService {
+	async getCampaignStats(campaignId: string) {
+		try {
+			const logs = await prisma.messageLog.findMany({
+				where: {
+					campaignId,
+				},
+				include: {
+					lead: {
+						select: {
+							name: true,
+							phone: true,
+						},
+					},
+				},
+			});
+
+			const totalMessages = logs.length;
+			const delivered = logs.filter((log) => log.deliveredAt).length;
+			const read = logs.filter((log) => log.readAt).length;
+			const failed = logs.filter((log) => log.failedAt).length;
+
+			return {
+				totalMessages,
+				stats: {
+					deliveryRate:
+						totalMessages > 0 ? (delivered / totalMessages) * 100 : 0,
+					readRate: totalMessages > 0 ? (read / totalMessages) * 100 : 0,
+					failureRate: totalMessages > 0 ? (failed / totalMessages) * 100 : 0,
+					delivered,
+					read,
+					failed,
+				},
+				timeline: this.generateTimeline(logs as MessageLogWithLead[]),
+				messageStatus: this.getMessageStatusDistribution(logs),
+			};
+		} catch (error) {
+			console.error("Erro ao obter estatísticas da campanha:", error);
+			throw error;
+		}
+	}
+
+	async getDailyStats(campaignId: string, date: Date) {
+		try {
+			const startOfDay = new Date(date);
+			startOfDay.setHours(0, 0, 0, 0);
+
+			const endOfDay = new Date(date);
+			endOfDay.setHours(23, 59, 59, 999);
+
+			const logs = await prisma.messageLog.findMany({
+				where: {
+					campaignId,
+					messageDate: {
+						gte: startOfDay,
+						lte: endOfDay,
+					},
+				},
+			});
+
+			return this.calculateHourlyDistribution(logs);
+		} catch (error) {
+			console.error("Erro ao obter estatísticas diárias:", error);
+			throw error;
+		}
+	}
+
+	async getLeadEngagement(campaignId: string) {
+		try {
+			const logs = await prisma.messageLog.findMany({
+				where: {
+					campaignId,
+				},
+				include: {
+					lead: {
+						select: {
+							name: true,
+							phone: true,
+						},
+					},
+				},
+			});
+
+			const leadStats = new Map<string, LeadStats>();
+
+			logs.forEach((log) => {
+				const leadId = log.leadId;
+				if (!leadStats.has(leadId)) {
+					leadStats.set(leadId, {
+						lead: {
+							name: log.lead.name,
+							phone: log.lead.phone,
+						},
+						messagesReceived: 0,
+						messagesRead: 0,
+						responseTime: [],
+						averageResponseTime: null,
+						engagementRate: 0,
+					});
+				}
+
+				const stats = leadStats.get(leadId)!;
+				stats.messagesReceived++;
+				if (log.readAt) {
+					stats.messagesRead++;
+					if (log.deliveredAt && log.readAt) {
+						const responseTime =
+							log.readAt.getTime() - log.deliveredAt.getTime();
+						stats.responseTime.push(responseTime);
+					}
+				}
+			});
+
+			return Array.from(leadStats.values()).map((stats) => ({
+				...stats,
+				averageResponseTime:
+					stats.responseTime.length > 0
+						? stats.responseTime.reduce((a: number, b: number) => a + b, 0) /
+							stats.responseTime.length
+						: null,
+				engagementRate: (stats.messagesRead / stats.messagesReceived) * 100,
+			}));
+		} catch (error) {
+			console.error("Erro ao obter engajamento dos leads:", error);
+			throw error;
+		}
+	}
+
+	private generateTimeline(logs: MessageLogWithLead[]) {
+		return logs
+			.sort((a, b) => (a.sentAt?.getTime() || 0) - (b.sentAt?.getTime() || 0))
+			.map((log) => ({
+				messageId: log.messageId,
+				lead: {
+					name: log.lead.name,
+					phone: log.lead.phone,
+				},
+				events: [
+					...(log.sentAt ? [{ type: "sent", timestamp: log.sentAt }] : []),
+					...(log.deliveredAt
+						? [{ type: "delivered", timestamp: log.deliveredAt }]
+						: []),
+					...(log.readAt ? [{ type: "read", timestamp: log.readAt }] : []),
+					...(log.failedAt
+						? [{ type: "failed", timestamp: log.failedAt }]
+						: []),
+				].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()),
+			}));
+	}
+
+	private getMessageStatusDistribution(logs: MessageLog[]) {
+		return {
+			pending: logs.filter((log) => !log.sentAt).length,
+			sent: logs.filter((log) => log.sentAt && !log.deliveredAt).length,
+			delivered: logs.filter((log) => log.deliveredAt && !log.readAt).length,
+			read: logs.filter((log) => log.readAt).length,
+			failed: logs.filter((log) => log.failedAt).length,
+		};
+	}
+
+	private calculateHourlyDistribution(logs: MessageLog[]) {
+		const hourlyStats = Array(24)
+			.fill(0)
+			.map(() => ({
+				sent: 0,
+				delivered: 0,
+				read: 0,
+				failed: 0,
+			}));
+
+		logs.forEach((log) => {
+			if (log.sentAt) {
+				const hour = log.sentAt.getHours();
+				hourlyStats[hour].sent++;
+				if (log.deliveredAt) hourlyStats[hour].delivered++;
+				if (log.readAt) hourlyStats[hour].read++;
+				if (log.failedAt) hourlyStats[hour].failed++;
+			}
+		});
+
+		return hourlyStats;
+	}
+}

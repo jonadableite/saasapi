@@ -2,6 +2,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { extname, resolve } from "node:path";
 import { v4 as uuidv4 } from "uuid";
+import { BadRequestError } from "../errors/AppError";
 
 const uploadDirectory = resolve(__dirname, "..", "tmp");
 
@@ -163,3 +164,36 @@ export default {
 		fileSize: 100 * 1024 * 1024, // Limite de 100MB
 	},
 };
+
+export const uploadConfig = multer({
+	storage: multer.memoryStorage(),
+	fileFilter: (req, file, cb) => {
+		console.log("Multer receiving file:", {
+			fieldname: file.fieldname,
+			originalname: file.originalname,
+			mimetype: file.mimetype,
+		});
+
+		// Aceitar qualquer arquivo com extensão .csv ou .xlsx
+		const allowedExtensions = ["csv", "xlsx"];
+		const fileExtension =
+			file.originalname.split(".").pop()?.toLowerCase() || "";
+
+		if (allowedExtensions.includes(fileExtension)) {
+			// Força o mimetype para csv se a extensão for csv
+			if (fileExtension === "csv") {
+				file.mimetype = "text/csv";
+			}
+			cb(null, true);
+		} else {
+			cb(
+				new BadRequestError(
+					`Formato não suportado. Use arquivos .csv ou .xlsx`,
+				) as any, // Type assertion para compatibilidade com multer
+			);
+		}
+	},
+	limits: {
+		fileSize: 5 * 1024 * 1024, // 5MB
+	},
+});

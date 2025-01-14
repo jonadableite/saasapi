@@ -235,10 +235,8 @@ export const listInstancesController = async (
 	}
 
 	try {
-		// Sincronizar instâncias com a API externa
 		await syncInstancesWithExternalApi(userId);
 
-		// Buscar o usuário com suas informações de plano e instâncias
 		const user = await prisma.user.findUnique({
 			where: { id: userId },
 			select: {
@@ -255,9 +253,13 @@ export const listInstancesController = async (
 						number: true,
 						integration: true,
 						typebot: true,
-					},
-					where: {
-						userId: userId,
+						warmupStats: {
+							select: {
+								warmupTime: true,
+								status: true,
+								createdAt: true,
+							},
+						},
 					},
 				},
 			},
@@ -267,13 +269,46 @@ export const listInstancesController = async (
 			return res.status(404).json({ error: "Usuário não encontrado" });
 		}
 
-		const remainingSlots = user.maxInstances - user.instances.length;
+		const processedInstances = user.instances.map((instance) => {
+			// Sendo 'warmupStats' um único objeto, nenhuma necessidade de acessar o índice [0]
+			const warmupStats = instance.warmupStats;
+
+			const warmupTime = warmupStats?.warmupTime || 0;
+			const warmupHours = warmupTime / 3600;
+			const progress = Math.min((warmupHours / 400) * 100, 100);
+
+			return {
+				...instance,
+				warmupStatus: {
+					progress: Math.round(progress * 100) / 100,
+					isRecommended: warmupHours >= 300,
+					warmupHours: Math.round(warmupHours * 100) / 100,
+					status: warmupStats?.status || "inactive",
+					lastUpdate: warmupStats?.createdAt || null,
+				},
+			};
+		});
+
+		const remainingSlots = user.maxInstances - processedInstances.length;
+		const recommendedCount = processedInstances.filter(
+			(instance) => instance.warmupStatus.isRecommended,
+		).length;
+		const averageProgress =
+			processedInstances.reduce(
+				(acc, curr) => acc + curr.warmupStatus.progress,
+				0,
+			) / (processedInstances.length || 1);
 
 		return res.status(200).json({
-			instances: user.instances,
+			instances: processedInstances,
 			currentPlan: user.plan,
 			instanceLimit: user.maxInstances,
 			remainingSlots,
+			stats: {
+				total: processedInstances.length,
+				recommended: recommendedCount,
+				averageProgress: Math.round(averageProgress * 100) / 100,
+			},
 		});
 	} catch (error) {
 		console.error("Erro ao buscar instâncias:", error);
