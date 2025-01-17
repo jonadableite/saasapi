@@ -1,177 +1,205 @@
-// src/services/campaign-scheduler.service.ts
 import { PrismaClient } from "@prisma/client";
 import { type Job, scheduleJob } from "node-schedule";
-import { CampaignDispatcherService } from "./campaign-dispatcher.service";
+import { BadRequestError } from "../errors/AppError";
+import { campaignService } from "./campaign.service";
 
 const prisma = new PrismaClient();
 
 export class CampaignSchedulerService {
 	private scheduledJobs: Map<string, Job>;
-	private campaignDispatcher: CampaignDispatcherService;
 
 	constructor() {
 		this.scheduledJobs = new Map();
-		this.campaignDispatcher = new CampaignDispatcherService();
 	}
 
-	async scheduleCampaign(
+	public async scheduleCampaign(
 		campaignId: string,
 		scheduledDate: Date,
+		instanceName: string,
 	): Promise<void> {
-		try {
-			// Verificar se a campanha existe
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-			});
+		const campaign = await prisma.campaign.findUnique({
+			where: { id: campaignId },
+		});
 
-			if (!campaign) {
-				throw new Error("Campanha não encontrada");
-			}
-
-			// Atualizar status da campanha
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledDate,
-					scheduledStatus: "scheduled",
-				},
-			});
-
-			// Agendar a campanha
-			const job = scheduleJob(scheduledDate, async () => {
-				await this.startScheduledCampaign(campaignId);
-			});
-
-			this.scheduledJobs.set(campaignId, job);
-		} catch (error: any) {
-			console.error("Erro ao agendar campanha:", error);
-			throw new Error(`Erro ao agendar campanha: ${error.message}`);
+		if (!campaign) {
+			throw new BadRequestError("Campanha não encontrada");
 		}
+
+		if (campaign.status !== "draft") {
+			throw new BadRequestError(
+				"Apenas campanhas em rascunho podem ser agendadas",
+			);
+		}
+
+		if (scheduledDate <= new Date()) {
+			throw new BadRequestError("Data de agendamento deve ser futura");
+		}
+
+		const instance = await prisma.instance.findUnique({
+			where: { instanceName },
+		});
+
+		if (!instance) {
+			throw new BadRequestError("Instância não encontrada");
+		}
+
+		await prisma.campaign.update({
+			where: { id: campaignId },
+			data: {
+				status: "scheduled",
+				scheduledDate,
+			},
+		});
+
+		const job = scheduleJob(scheduledDate, async () => {
+			try {
+				await prisma.campaignDispatch.create({
+					data: {
+						campaignId,
+						instanceName,
+						status: "running",
+						startedAt: new Date(),
+					},
+				});
+
+				await campaignService.startCampaign({
+					campaignId,
+					instanceName,
+					message: campaign.message || "",
+					media: campaign.mediaUrl
+						? {
+								type: campaign.mediaType as "image" | "video" | "audio",
+								content: campaign.mediaUrl,
+								caption: campaign.mediaCaption ?? undefined,
+							}
+						: undefined,
+					minDelay: campaign.minDelay || 5,
+					maxDelay: campaign.maxDelay || 30,
+				});
+			} catch (error) {
+				console.error(
+					`Erro ao iniciar campanha agendada ${campaignId}:`,
+					error,
+				);
+				await prisma.campaign.update({
+					where: { id: campaignId },
+					data: {
+						status: "failed",
+						completedAt: new Date(),
+					},
+				});
+			}
+		});
+
+		this.scheduledJobs.set(campaignId, job);
 	}
 
-	async pauseCampaign(campaignId: string): Promise<void> {
-		try {
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-			});
+	public async pauseCampaign(campaignId: string): Promise<void> {
+		const campaign = await prisma.campaign.findUnique({
+			where: { id: campaignId },
+		});
 
-			if (!campaign) {
-				throw new Error("Campanha não encontrada");
-			}
-
-			// Cancelar job agendado se existir
-			const scheduledJob = this.scheduledJobs.get(campaignId);
-			if (scheduledJob) {
-				scheduledJob.cancel();
-				this.scheduledJobs.delete(campaignId);
-			}
-
-			// Atualizar status da campanha
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledStatus: "paused",
-					pausedAt: new Date(),
-				},
-			});
-		} catch (error: any) {
-			console.error("Erro ao pausar campanha:", error);
-			throw new Error(`Erro ao pausar campanha: ${error.message}`);
+		if (!campaign) {
+			throw new BadRequestError("Campanha não encontrada");
 		}
+
+		if (campaign.status !== "running") {
+			throw new BadRequestError("Campanha não está em execução");
+		}
+
+		await prisma.campaignDispatch.updateMany({
+			where: {
+				campaignId,
+				status: "running",
+			},
+			data: {
+				status: "paused",
+				completedAt: new Date(),
+			},
+		});
+
+		const scheduledJob = this.scheduledJobs.get(campaignId);
+		if (scheduledJob) {
+			scheduledJob.cancel();
+			this.scheduledJobs.delete(campaignId);
+		}
+
+		await campaignService.stopDispatch();
+
+		await prisma.campaign.update({
+			where: { id: campaignId },
+			data: {
+				status: "paused",
+				pausedAt: new Date(),
+			},
+		});
 	}
 
-	async resumeCampaign(campaignId: string): Promise<void> {
-		try {
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-			});
+	public async resumeCampaign(
+		campaignId: string,
+		instanceName: string,
+	): Promise<void> {
+		const campaign = await prisma.campaign.findUnique({
+			where: { id: campaignId },
+		});
 
-			if (!campaign) {
-				throw new Error("Campanha não encontrada");
-			}
-
-			// Se a campanha estava agendada, reagendar
-			if (campaign.scheduledDate && campaign.scheduledDate > new Date()) {
-				await this.scheduleCampaign(campaignId, campaign.scheduledDate);
-			}
-
-			// Atualizar status da campanha
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledStatus: "running",
-					pausedAt: null,
-				},
-			});
-		} catch (error: any) {
-			console.error("Erro ao retomar campanha:", error);
-			throw new Error(`Erro ao retomar campanha: ${error.message}`);
+		if (!campaign) {
+			throw new BadRequestError("Campanha não encontrada");
 		}
+
+		if (campaign.status !== "paused") {
+			throw new BadRequestError("Campanha não está pausada");
+		}
+
+		const instance = await prisma.instance.findUnique({
+			where: { instanceName },
+		});
+
+		if (!instance) {
+			throw new BadRequestError("Instância não encontrada");
+		}
+
+		await prisma.campaignDispatch.create({
+			data: {
+				campaignId,
+				instanceName,
+				status: "running",
+				startedAt: new Date(),
+			},
+		});
+
+		await prisma.campaign.update({
+			where: { id: campaignId },
+			data: {
+				status: "running",
+				pausedAt: null,
+			},
+		});
+
+		await campaignService.startCampaign({
+			campaignId,
+			instanceName,
+			message: campaign.message || "",
+			media: campaign.mediaUrl
+				? {
+						type: campaign.mediaType as "image" | "video" | "audio",
+						content: campaign.mediaUrl,
+						caption: campaign.mediaCaption ?? undefined,
+					}
+				: undefined,
+			minDelay: campaign.minDelay || 5,
+			maxDelay: campaign.maxDelay || 30,
+		});
 	}
 
-	private async startScheduledCampaign(campaignId: string): Promise<void> {
-		try {
-			// Atualizar status antes de iniciar
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledStatus: "running",
-					startedAt: new Date(),
-				},
-			});
-
-			// Iniciar a campanha
-			await this.campaignDispatcher.startCampaign(campaignId);
-
-			// Atualizar status após conclusão
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledStatus: "completed",
-					completedAt: new Date(),
-					progress: 100,
-				},
-			});
-		} catch (error: any) {
-			console.error("Erro ao executar campanha agendada:", error);
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					scheduledStatus: "failed",
-					completedAt: new Date(),
-				},
-			});
-			throw error;
-		}
-	}
-
-	async updateCampaignProgress(campaignId: string): Promise<void> {
-		try {
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-				include: {
-					leads: true,
-				},
-			});
-
-			if (!campaign) {
-				throw new Error("Campanha não encontrada");
-			}
-
-			const totalLeads = campaign.leads.length;
-			const processedLeads = campaign.leads.filter(
-				(lead) => lead.status !== "pending",
-			).length;
-
-			const progress = Math.floor((processedLeads / totalLeads) * 100);
-
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: { progress },
-			});
-		} catch (error: any) {
-			console.error("Erro ao atualizar progresso:", error);
-			throw new Error(`Erro ao atualizar progresso: ${error.message}`);
-		}
+	public async updateCampaignProgress(campaignId: string, progress: number) {
+		await prisma.campaign.update({
+			where: { id: campaignId },
+			data: {
+				progress,
+			},
+		});
 	}
 }
+
+export const campaignSchedulerService = new CampaignSchedulerService();

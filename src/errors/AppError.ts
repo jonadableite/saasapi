@@ -14,9 +14,14 @@ export class NotFoundError extends AppError {
 	}
 }
 
-export class BadRequestError extends AppError {
-	constructor(message: string) {
-		super(message, 400);
+export class BadRequestError extends Error {
+	public statusCode: number;
+	public details?: Record<string, unknown>;
+
+	constructor(message: string, details?: Record<string, unknown>) {
+		super(message);
+		this.statusCode = 400;
+		this.details = details;
 	}
 }
 

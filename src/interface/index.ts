@@ -1,7 +1,221 @@
 // src/interface/index.ts
 import type { CampaignLead, Instance, User, WarmupStats } from "@prisma/client";
-import type { Request } from "express";
+import type { Request, Response } from "express";
+import type { ParamsDictionary } from "express-serve-static-core";
 import type { MessageType } from "../enum";
+import type { CampaignStatus } from "./types";
+
+export interface CampaignError extends Error {
+	code?: string;
+	details?: any;
+}
+export interface MessageResponse {
+	key?: {
+		id: string;
+		remoteJid: string;
+		fromMe: boolean;
+	};
+	status: string;
+	message?: any;
+}
+
+export interface ApiError extends Error {
+	response?: {
+		data?: any;
+	};
+}
+
+export interface EvolutionApiResponse {
+	key?: {
+		remoteJid?: string;
+		fromMe?: boolean;
+		id: string;
+		participant?: string;
+	};
+	pushName?: string;
+	status?: string;
+	message?: {
+		conversation?: string;
+		imageMessage?: any;
+		videoMessage?: any;
+		audioMessage?: any;
+		stickerMessage?: any;
+		reactionMessage?: any;
+		messageContextInfo?: any;
+	};
+	contextInfo?: any;
+	messageType?: string;
+	messageTimestamp?: number;
+	instanceId?: string;
+	source?: string;
+}
+
+export interface AxiosErrorResponse {
+	message: any;
+	response?: {
+		data?: any;
+		status?: number;
+	};
+	config?: {
+		data?: string;
+		headers?: Record<string, string>;
+		method?: string;
+		url?: string;
+	};
+}
+
+export interface StartCampaignRequest extends RequestWithUser {
+	params: {
+		id: string;
+	};
+	body: {
+		instanceName: string;
+		message?: string;
+		media?: {
+			type: "image" | "video" | "audio";
+			base64: string;
+			fileName?: string;
+			mimetype?: string;
+			caption?: string;
+		};
+		minDelay?: number;
+		maxDelay?: number;
+	};
+}
+
+export interface BaseCampaignRequest extends Request {
+	body: {
+		name?: string;
+		description?: string;
+		type?: string;
+		userId?: string;
+		instanceName?: string;
+		status?: CampaignStatus;
+		message?: string;
+		minDelay?: number;
+		maxDelay?: number;
+		mediaType?: "image" | "video" | "audio";
+		mediaContent?: string;
+		mediaCaption?: string;
+		fileName?: string;
+	};
+}
+
+export interface PlanDetails {
+	maxLeads: number;
+	maxCampaigns: number;
+	features: string[];
+	name: string;
+	price: number;
+}
+
+export interface SegmentationRule {
+	field: string;
+	operator: string;
+	value: string;
+}
+
+export interface IMessageDispatcherService {
+	startDispatch(params: {
+		campaignId: string;
+		instanceName: string;
+		message: string;
+		media?: {
+			type: "image" | "video" | "audio" | "sticker";
+			base64?: string;
+			url?: string;
+			content?: string;
+			caption?: string;
+			fileName?: string;
+			mimetype?: string;
+		};
+		minDelay: number;
+		maxDelay: number;
+	}): Promise<void>;
+
+	stopDispatch(): void;
+
+	updateMessageStatus(
+		messageId: string,
+		status: string,
+		instanceId: string,
+		phone: string,
+		messageType: string,
+		content: string,
+		reason?: string,
+	): Promise<void>;
+
+	getDailyStats(
+		campaignId: string,
+		date: Date,
+	): Promise<Record<string, number>>;
+
+	getDetailedReport(
+		campaignId: string,
+		startDate: Date,
+		endDate: Date,
+	): Promise<any>;
+}
+
+export interface MediaParams {
+	type: "image" | "video" | "audio";
+	content: string;
+	caption?: string;
+}
+export interface CampaignParams {
+	campaignId: string;
+	instanceName: string;
+	message: string;
+	media?: {
+		type: "image" | "video" | "audio";
+		content: string;
+		caption?: string;
+		fileName?: string;
+		mimetype?: string;
+		preview?: string;
+		base64?: string;
+		url?: string;
+	};
+	minDelay: number;
+	maxDelay: number;
+}
+
+export interface MessageDispatchParams {
+	campaignId: string;
+	instanceName: string;
+	message: string;
+	media?: MediaContent;
+	minDelay: number;
+	maxDelay: number;
+}
+export interface MessageContent {
+	type: "image" | "video" | "audio" | "sticker";
+	base64: string;
+	url?: string;
+	content?: string;
+	fileName?: string;
+	mimetype?: string;
+	caption?: string;
+	preview?: string;
+}
+
+export interface MediaContent {
+	type: "image" | "video" | "audio" | "sticker";
+	base64: string;
+	url?: string;
+	content?: string;
+	fileName?: string;
+	mimetype?: string;
+	caption?: string;
+	preview?: string;
+}
+
+export interface ICampaignDispatcherController {
+	startCampaign(req: Request, res: Response): Promise<void>;
+	pauseCampaign(req: Request, res: Response): Promise<void>;
+	resumeCampaign(req: Request, res: Response): Promise<void>;
+	getCampaignProgress(req: Request, res: Response): Promise<void>;
+}
 
 export interface RequestWithUser extends Request {
 	user?: {
@@ -14,6 +228,21 @@ export interface RequestWithUser extends Request {
 			createdAt: Date;
 			updatedAt: Date;
 		};
+	};
+	params: ParamsDictionary & {
+		id?: string;
+		leadId?: string;
+	};
+}
+
+export interface FileUploadRequest extends RequestWithUser {
+	file?: Express.Multer.File;
+}
+
+export interface CampaignRequestWithId extends RequestWithUser {
+	params: {
+		id: string;
+		leadId?: string;
 	};
 }
 
@@ -176,7 +405,7 @@ export interface Lead {
 
 export interface StatusUpdate {
 	status: string;
-	timestamp: string;
+	timestamp: Date | string;
 	reason?: string;
 }
 
@@ -185,9 +414,10 @@ export interface ImportLeadsResult {
 	count: number;
 	leads: CampaignLead[];
 	summary: {
+		total: number;
 		totalInFile: number;
 		duplicatesInFile: number;
-		existingInDatabase: number;
+		existingInCampaign: number;
 		newLeadsImported: number;
 	};
 }

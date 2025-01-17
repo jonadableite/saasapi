@@ -42,74 +42,125 @@ export class CampaignLeadService {
 	public async importLeads(
 		file: Express.Multer.File,
 		campaignId: string,
-		userId: string,
 	): Promise<ImportLeadsResult> {
 		console.log("Iniciando importação de arquivo:", file.originalname);
 
-		const campaign = await prisma.campaign.findFirst({
-			where: {
-				id: campaignId,
-				userId: userId,
-			},
-		});
+		try {
+			// Primeiro, buscar o userId da campanha
+			const campaign = await prisma.campaign.findUnique({
+				where: { id: campaignId },
+				select: { userId: true },
+			});
 
-		if (!campaign) {
-			throw new NotFoundError("Campanha não encontrada ou sem permissão");
+			if (!campaign) {
+				throw new NotFoundError("Campanha não encontrada");
+			}
+
+			// Processar o arquivo para obter os leads
+			const leads = await this.processFile(file);
+
+			// Remover duplicatas do arquivo
+			const uniqueLeads = this.removeDuplicateLeads(leads);
+
+			// Verificar leads existentes
+			const existingLeads = await prisma.campaignLead.findMany({
+				where: {
+					campaignId,
+					phone: {
+						in: uniqueLeads.map((lead) => this.formatPhone(lead.phone)),
+					},
+				},
+			});
+
+			const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
+
+			// Filtrar apenas leads novos
+			const newLeads = uniqueLeads.filter((lead) => {
+				const formattedPhone = this.formatPhone(lead.phone);
+				return !existingPhones.has(formattedPhone);
+			});
+
+			// Se todos os leads já existem, ainda assim permitir o envio
+			if (newLeads.length === 0 && existingLeads.length > 0) {
+				// Resetar o status dos leads existentes para "pending"
+				await prisma.campaignLead.updateMany({
+					where: {
+						campaignId,
+						phone: { in: uniqueLeads.map((lead) => lead.phone) },
+					},
+					data: {
+						status: "pending",
+						sentAt: null,
+						deliveredAt: null,
+						readAt: null,
+						failedAt: null,
+						failureReason: null,
+						messageId: null,
+					},
+				});
+
+				// Buscar total de leads na campanha
+				const totalLeadsInCampaign = await prisma.campaignLead.count({
+					where: { campaignId },
+				});
+
+				return {
+					success: true,
+					count: existingLeads.length,
+					leads: existingLeads,
+					summary: {
+						total: totalLeadsInCampaign,
+						totalInFile: leads.length,
+						duplicatesInFile: leads.length - uniqueLeads.length,
+						existingInCampaign: existingLeads.length,
+						newLeadsImported: 0,
+					},
+				};
+			}
+
+			// Criar novos leads com userId
+			const createdLeads = await prisma.campaignLead.createMany({
+				data: newLeads.map((lead) => ({
+					campaignId,
+					userId: campaign.userId, // Adicionar userId da campanha
+					name: lead.name,
+					phone: this.formatPhone(lead.phone),
+					status: "pending",
+				})),
+			});
+
+			// Buscar total de leads na campanha após a criação
+			const totalLeadsInCampaign = await prisma.campaignLead.count({
+				where: { campaignId },
+			});
+
+			// Buscar todos os leads atualizados
+			const allLeads = await prisma.campaignLead.findMany({
+				where: {
+					campaignId,
+					phone: { in: uniqueLeads.map((lead) => lead.phone) },
+				},
+			});
+
+			// Atualizar estatísticas da campanha
+			await this.updateCampaignStats(campaignId, createdLeads.count);
+
+			return {
+				success: true,
+				count: allLeads.length,
+				leads: allLeads,
+				summary: {
+					total: totalLeadsInCampaign,
+					totalInFile: leads.length,
+					duplicatesInFile: leads.length - uniqueLeads.length,
+					existingInCampaign: existingLeads.length,
+					newLeadsImported: createdLeads.count,
+				},
+			};
+		} catch (error) {
+			console.error("Erro ao importar leads:", error);
+			throw error;
 		}
-
-		// Processar arquivo baseado no tipo
-		let leads: Lead[];
-		if (file.mimetype === "text/csv") {
-			console.log("Processando arquivo CSV...");
-			leads = await this.processCSV(file.buffer);
-		} else if (
-			file.mimetype ===
-			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-		) {
-			console.log("Processando arquivo Excel...");
-			leads = await this.processExcel(file.buffer);
-		} else {
-			throw new BadRequestError("Formato de arquivo não suportado");
-		}
-
-		console.log(`Leads encontrados no arquivo: ${leads.length}`);
-
-		if (leads.length === 0) {
-			throw new BadRequestError("Nenhum lead válido encontrado no arquivo");
-		}
-
-		// Verificar números duplicados no arquivo
-		const uniqueLeads = this.removeDuplicateLeads(leads);
-
-		// Verificar números existentes no banco
-		const newLeads = await this.filterExistingLeads(uniqueLeads);
-
-		if (newLeads.length === 0) {
-			throw new BadRequestError(
-				"Todos os números de telefone já existem no banco de dados",
-			);
-		}
-
-		// Validar limite do plano do usuário
-		await this.validateUserPlanLimits(userId, newLeads.length);
-
-		// Salvar leads
-		const savedLeads = await this.saveLeads(campaignId, newLeads);
-
-		// Atualizar estatísticas da campanha
-		await this.updateCampaignStats(campaignId, newLeads.length);
-
-		return {
-			success: true,
-			count: newLeads.length,
-			leads: savedLeads,
-			summary: {
-				totalInFile: leads.length,
-				duplicatesInFile: leads.length - uniqueLeads.length,
-				existingInDatabase: uniqueLeads.length - newLeads.length,
-				newLeadsImported: newLeads.length,
-			},
-		};
 	}
 
 	private removeDuplicateLeads(leads: Lead[]): Lead[] {
@@ -124,101 +175,6 @@ export class CampaignLeadService {
 		});
 
 		return uniqueLeads;
-	}
-
-	private async filterExistingLeads(leads: Lead[]): Promise<Lead[]> {
-		const phones = leads.map((lead) => lead.phone);
-
-		// Buscar leads existentes
-		const existingLeads = await prisma.campaignLead.findMany({
-			where: {
-				phone: {
-					in: phones,
-				},
-			},
-			select: {
-				phone: true,
-			},
-		});
-
-		// Criar um Set com os números existentes para busca rápida
-		const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
-
-		// Filtrar apenas leads com números novos
-		return leads.filter((lead) => !existingPhones.has(lead.phone));
-	}
-
-	private async saveLeads(campaignId: string, leads: Lead[]) {
-		try {
-			const savedLeads = await prisma.campaignLead.createMany({
-				data: leads.map((lead) => ({
-					name: lead.name,
-					phone: lead.phone,
-					campaignId,
-					status: "pending",
-				})),
-			});
-
-			return prisma.campaignLead.findMany({
-				where: {
-					campaignId,
-					createdAt: {
-						gte: new Date(Date.now() - 1000),
-					},
-				},
-			});
-		} catch (error) {
-			console.error("Erro ao salvar leads:", error);
-			throw new BadRequestError("Erro ao salvar leads no banco de dados");
-		}
-	}
-
-	private async validateUserPlanLimits(
-		userId: string,
-		newLeadsCount: number,
-	): Promise<void> {
-		const user = await prisma.user.findUnique({
-			where: { id: userId },
-			select: {
-				plan: true,
-			},
-		});
-
-		if (!user) {
-			throw new NotFoundError("Usuário não encontrado");
-		}
-
-		const campaignPlan = this.mapUserPlanToCampaignPlan(user.plan);
-		const planLimits = PLAN_LIMITS[campaignPlan];
-
-		// Contar leads existentes
-		const currentLeadCount = await prisma.campaignLead.count({
-			where: {
-				campaign: {
-					userId: userId,
-				},
-			},
-		});
-
-		if (currentLeadCount + newLeadsCount > planLimits.maxLeads) {
-			throw new BadRequestError(
-				`Limite de leads excedido. Seu plano ${campaignPlan} permite ${planLimits.maxLeads} leads. ` +
-					`Você já tem ${currentLeadCount} leads e está tentando adicionar ${newLeadsCount} novos leads.`,
-			);
-		}
-	}
-
-	private mapUserPlanToCampaignPlan(userPlan: string): CampaignPlan {
-		switch (userPlan.toLowerCase()) {
-			case "basic":
-				return CampaignPlan.STARTER;
-			case "pro":
-				return CampaignPlan.GROWTH;
-			case "enterprise":
-				return CampaignPlan.SCALE;
-			default:
-				return CampaignPlan.STARTER;
-		}
 	}
 
 	private async processFile(file: Express.Multer.File): Promise<Lead[]> {

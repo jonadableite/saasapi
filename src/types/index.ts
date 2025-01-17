@@ -2,6 +2,10 @@
 import type { NextFunction, Request, Response } from "express";
 import type { PLAN_LIMITS } from "../constants/planLimits";
 
+export * from "./campaign.types";
+export * from "./media";
+export * from "./request";
+
 export interface RequestWithUser extends Request {
 	user?: {
 		id: string;

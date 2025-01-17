@@ -1,6 +1,7 @@
 // src/services/user.service.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+import type { PlanDetails } from "../interface";
 import { generateToken } from "./session.service";
 
 const prisma = new PrismaClient();
@@ -270,4 +271,141 @@ export const updateUser = async (
  */
 export const deleteUser = async (id: string) => {
 	await prisma.user.delete({ where: { id } });
+};
+
+// Defina os limites para cada plano
+const PLAN_LIMITS: Record<string, PlanDetails> = {
+	free: {
+		maxLeads: 100,
+		maxCampaigns: 1,
+		features: ["TEXT"],
+		name: "Gratuito",
+		price: 0,
+	},
+	starter: {
+		maxLeads: 1000,
+		maxCampaigns: 2,
+		features: ["TEXT", "IMAGE"],
+		name: "Starter",
+		price: 47,
+	},
+	growth: {
+		maxLeads: 5000,
+		maxCampaigns: 5,
+		features: ["TEXT", "IMAGE", "VIDEO", "AUDIO"],
+		name: "Growth",
+		price: 97,
+	},
+	scale: {
+		maxLeads: 20000,
+		maxCampaigns: 15,
+		features: ["TEXT", "IMAGE", "VIDEO", "AUDIO", "STICKER"],
+		name: "Scale",
+		price: 197,
+	},
+};
+
+// Adicione esta função para buscar informações do plano do usuário
+export const fetchUserPlan = async (userId: string) => {
+	try {
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				id: true,
+				plan: true,
+				trialEndDate: true,
+				stripeSubscriptionStatus: true,
+				stripeSubscriptionId: true,
+				company: {
+					select: {
+						id: true,
+						name: true,
+					},
+				},
+			},
+		});
+
+		if (!user) {
+			throw new Error("Usuário não encontrado");
+		}
+
+		const planLimits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
+
+		// Buscar contagem atual de leads e campanhas do usuário
+		const [leadsCount, campaignsCount] = await Promise.all([
+			prisma.campaignLead.count({
+				where: {
+					campaign: {
+						userId,
+					},
+				},
+			}),
+			prisma.campaign.count({
+				where: {
+					userId,
+				},
+			}),
+		]);
+
+		// Verificar se está no período trial
+		const isInTrial = user.trialEndDate
+			? new Date() < user.trialEndDate
+			: false;
+
+		return {
+			currentPlan: {
+				name: planLimits.name,
+				type: user.plan,
+				price: planLimits.price,
+				isInTrial,
+				trialEndDate: user.trialEndDate,
+				subscriptionStatus: user.stripeSubscriptionStatus,
+				subscriptionId: user.stripeSubscriptionId,
+			},
+			limits: {
+				maxLeads: planLimits.maxLeads,
+				maxCampaigns: planLimits.maxCampaigns,
+				features: planLimits.features,
+			},
+			usage: {
+				currentLeads: leadsCount,
+				currentCampaigns: campaignsCount,
+				leadsPercentage: (leadsCount / planLimits.maxLeads) * 100,
+				campaignsPercentage: (campaignsCount / planLimits.maxCampaigns) * 100,
+			},
+			company: user.company,
+		};
+	} catch (error) {
+		console.error("Erro ao buscar informações do plano:", error);
+		throw new Error("Erro ao buscar informações do plano do usuário");
+	}
+};
+
+// Adicione esta função para verificar limites do plano
+export const checkPlanLimits = async (
+	userId: string,
+	operation: "leads" | "campaigns",
+	quantity = 1,
+) => {
+	const planInfo = await fetchUserPlan(userId);
+
+	if (operation === "leads") {
+		const newTotal = planInfo.usage.currentLeads + quantity;
+		if (newTotal > planInfo.limits.maxLeads) {
+			throw new Error(
+				`Limite de leads do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+			);
+		}
+	}
+
+	if (operation === "campaigns") {
+		const newTotal = planInfo.usage.currentCampaigns + quantity;
+		if (newTotal > planInfo.limits.maxCampaigns) {
+			throw new Error(
+				`Limite de campanhas do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+			);
+		}
+	}
+
+	return true;
 };

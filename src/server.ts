@@ -15,6 +15,7 @@ import { campaignRoutes } from "./routes/campaign.routes";
 import { companyRoutes } from "./routes/company.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import instanceRoutes from "./routes/instance.routes";
+import leadRoutes from "./routes/lead.routes";
 import passwordRoutes from "./routes/password.routes";
 import reportsRoutes from "./routes/reports.routes";
 import sessionRoutes from "./routes/session.routes";
@@ -60,6 +61,7 @@ app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
 
 // Rotas protegidas
+app.use("/api/leads", leadRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/instances", instanceRoutes);
 app.use("/api/dashboard", dashboardRoutes);

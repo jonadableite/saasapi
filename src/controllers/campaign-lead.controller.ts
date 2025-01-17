@@ -1,5 +1,7 @@
+// src/controllers/campaign-lead.controller.ts
 import type { Response } from "express";
 import type { AppError } from "../errors/AppError";
+import { BadRequestError } from "../errors/AppError";
 import type { FileUploadRequest, RequestWithUser } from "../interface";
 import { CampaignLeadService } from "../services/campaign-lead.service";
 
@@ -15,10 +17,13 @@ export class CampaignLeadController {
 		res: Response,
 	): Promise<void> => {
 		try {
+			const campaignId = req.params?.id;
+			const userId = req.user?.id;
+
 			console.log("Requisição recebida:", {
 				params: req.params,
-				campaignId: req.params.id,
-				userId: req.user?.id,
+				campaignId,
+				userId,
 				file: req.file
 					? {
 							originalname: req.file.originalname,
@@ -28,40 +33,50 @@ export class CampaignLeadController {
 					: null,
 			});
 
-			if (!req.user?.id) {
-				res.status(401).json({ error: "Usuário não autenticado." });
-				return;
+			// Validações
+			if (!userId) {
+				throw new BadRequestError("Usuário não autenticado.");
+			}
+
+			if (!campaignId) {
+				throw new BadRequestError("ID da campanha não fornecido.");
 			}
 
 			if (!req.file) {
-				res.status(400).json({
-					error: "Arquivo de leads obrigatório.",
-					debug: {
-						headers: req.headers["content-type"],
-						params: req.params,
-						body: req.body,
-					},
+				throw new BadRequestError("Arquivo de leads obrigatório.", {
+					headers: req.headers["content-type"],
+					params: req.params,
+					body: req.body,
 				});
-				return;
 			}
+
+			// Remove o prefixo ":" se existir
+			const cleanCampaignId = campaignId.replace(/^:/, "");
 
 			const result = await this.campaignLeadService.importLeads(
 				req.file,
-				req.params.id.replace(":", ""),
-				req.user.id,
+				cleanCampaignId,
 			);
 
-			res.status(201).json(result);
+			res.status(201).json({
+				success: true,
+				message: `${result.count} leads processados com sucesso`,
+				summary: result.summary,
+				leads: result.leads,
+			});
 		} catch (error) {
 			console.error("Erro completo:", error);
 			const appError = error as AppError;
 			res.status(appError.statusCode || 500).json({
-				error: appError.message || "Erro interno.",
-				debug: {
-					params: req.params,
-					campaignId: req.params.id,
-					userId: req.user?.id,
-				},
+				error: appError.message || "Erro interno ao importar leads.",
+				debug:
+					process.env.NODE_ENV === "development"
+						? {
+								params: req.params,
+								campaignId: req.params?.id,
+								userId: req.user?.id,
+							}
+						: undefined,
 			});
 		}
 	};
@@ -71,17 +86,26 @@ export class CampaignLeadController {
 		res: Response,
 	): Promise<void> => {
 		try {
-			if (!req.user?.id) {
-				res.status(401).json({ error: "Usuário não autenticado." });
-				return;
+			const userId = req.user?.id;
+			const campaignId = req.params?.id;
+
+			// Validações
+			if (!userId) {
+				throw new BadRequestError("Usuário não autenticado.");
+			}
+
+			if (!campaignId) {
+				throw new BadRequestError("ID da campanha não fornecido.");
 			}
 
 			const { page = "1", limit = "10", status } = req.query;
-			const campaignId = req.params.id.replace(":", "");
+
+			// Remove o prefixo ":" se existir
+			const cleanCampaignId = campaignId.replace(/^:/, "");
 
 			const result = await this.campaignLeadService.getLeads(
-				campaignId,
-				req.user.id,
+				cleanCampaignId,
+				userId,
 				Number(page),
 				Number(limit),
 				status as string,
@@ -92,12 +116,15 @@ export class CampaignLeadController {
 			console.error("Erro ao buscar leads:", error);
 			const appError = error as AppError;
 			res.status(appError.statusCode || 500).json({
-				error: appError.message || "Erro interno.",
-				debug: {
-					params: req.params,
-					campaignId: req.params.id,
-					userId: req.user?.id,
-				},
+				error: appError.message || "Erro interno ao buscar leads.",
+				debug:
+					process.env.NODE_ENV === "development"
+						? {
+								params: req.params,
+								campaignId: req.params?.id,
+								userId: req.user?.id,
+							}
+						: undefined,
 			});
 		}
 	};

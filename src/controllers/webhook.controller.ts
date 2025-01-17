@@ -1,7 +1,7 @@
 // src/controllers/webhook.controller.ts
 import type { Request, Response } from "express";
 import type { WebhookEvent } from "../interface";
-import { MessageDispatcherService } from "../services/message-dispatcher.service";
+import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 
 export class WebhookController {
 	private messageDispatcherService: MessageDispatcherService;

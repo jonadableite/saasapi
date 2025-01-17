@@ -3,8 +3,10 @@ import type { Request, Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
 import {
+	checkPlanLimits,
 	createUser,
 	deleteUser,
+	fetchUserPlan,
 	getUser,
 	listUsers,
 	updateUser,
@@ -41,51 +43,85 @@ export const listUsersController = async (
 };
 
 /// Controladores de verificação de plano
-export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
+export const getUserPlanController = async (
+	req: RequestWithUser,
+	res: Response,
+) => {
 	try {
-		console.log("Verificando status do plano para usuário:", req.user);
 		const userId = req.user?.id;
-
 		if (!userId) {
-			console.log("Usuário não autenticado");
 			return res.status(401).json({ error: "Usuário não autenticado" });
 		}
 
-		const user = await prisma.user.findUnique({
-			where: { id: userId },
-			select: {
-				id: true,
-				name: true,
-				email: true,
-				plan: true,
-				maxInstances: true,
-				messagesPerDay: true,
-				features: true,
-				support: true,
-				stripeSubscriptionStatus: true,
-				stripeSubscriptionId: true,
-				updatedAt: true,
-			},
+		const planInfo = await fetchUserPlan(userId);
+		return res.json(planInfo);
+	} catch (error) {
+		console.error("Erro ao buscar informações do plano:", error);
+		return res.status(500).json({
+			error: "Erro ao buscar informações do plano",
+			details: error instanceof Error ? error.message : "Erro desconhecido",
 		});
+	}
+};
 
-		if (!user) {
-			console.log("Usuário não encontrado:", userId);
-			return res.status(404).json({ error: "Usuário não encontrado" });
+export const checkPlanLimitsController = async (
+	req: RequestWithUser,
+	res: Response,
+) => {
+	try {
+		const userId = req.user?.id;
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
 		}
+
+		const { operation, quantity } = req.body;
+
+		if (!operation || !["leads", "campaigns"].includes(operation)) {
+			return res.status(400).json({ error: "Operação inválida" });
+		}
+
+		const canProceed = await checkPlanLimits(
+			userId,
+			operation as "leads" | "campaigns",
+			quantity || 1,
+		);
 
 		return res.json({
 			success: true,
-			user,
-			subscription: {
-				status: user.stripeSubscriptionStatus,
-				plan: user.plan,
-				maxInstances: user.maxInstances,
-				messagesPerDay: user.messagesPerDay,
-			},
+			canProceed,
+			message: "Operação permitida dentro dos limites do plano",
+		});
+	} catch (error) {
+		console.error("Erro ao verificar limites do plano:", error);
+		return res.status(403).json({
+			success: false,
+			error:
+				error instanceof Error
+					? error.message
+					: "Erro ao verificar limites do plano",
+		});
+	}
+};
+
+// Atualize o checkPlanStatus para usar as novas funções
+export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
+	try {
+		const userId = req.user?.id;
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
+
+		const planInfo = await fetchUserPlan(userId);
+
+		return res.json({
+			success: true,
+			plan: planInfo.currentPlan,
+			limits: planInfo.limits,
+			usage: planInfo.usage,
 		});
 	} catch (error) {
 		console.error("Erro ao verificar status do plano:", error);
-		return res.status(500).json({ error: "Erro interno do servidor" });
+		return res.status(500).json({ error: "Erro ao verificar status do plano" });
 	}
 };
 
@@ -321,4 +357,17 @@ export const deleteUserController = async (
 			return res.status(500).json({ error: "Erro interno do servidor" });
 		}
 	}
+};
+
+export const routes = {
+	listUsersController,
+	findOneUsersController,
+	createUsersController,
+	updateUserController,
+	deleteUserController,
+	checkPlanStatus,
+	checkCompanyStatus,
+	updateCompanyController,
+	getUserPlanController,
+	checkPlanLimitsController,
 };

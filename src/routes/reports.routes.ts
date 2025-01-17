@@ -1,7 +1,7 @@
 // src/routes/reports.routes.ts
 import express, { type Request, type Response } from "express";
 import { authMiddleware } from "../middlewares/authenticate";
-import { MessageDispatcherService } from "../services/message-dispatcher.service";
+import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 
 const router = express.Router();
 const dispatcherService = new MessageDispatcherService();

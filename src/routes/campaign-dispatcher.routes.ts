@@ -4,10 +4,13 @@ import { CampaignDispatcherController } from "../controllers/campaign-dispatcher
 import { authMiddleware } from "../middlewares/authenticate";
 
 const router = express.Router();
-const campaignDispatcherController = new CampaignDispatcherController();
+const controller = new CampaignDispatcherController();
 
-router.all("*", authMiddleware);
+router.use(authMiddleware);
 
-router.post("/:campaignId/start", campaignDispatcherController.startCampaign);
+router.post("/campaigns/:id/start", controller.startCampaign);
+router.post("/campaigns/:id/pause", controller.pauseCampaign);
+router.post("/campaigns/:id/resume", controller.resumeCampaign);
+router.get("/campaigns/:id/progress", controller.getCampaignProgress);
 
 export { router as campaignDispatcherRoutes };

@@ -1,39 +1,126 @@
-// src/routes/campaign.routes.ts
+import type { Request, Response } from "express";
 import express from "express";
-import { CampaignController } from "../controllers/campaign.controller";
+import multer from "multer";
+import CampaignController from "../controllers/campaign.controller";
+// src/routes/campaign.routes.ts
+import type {
+	CampaignRequestWithId,
+	RequestWithUser,
+	StartCampaignRequest,
+} from "../interface";
 import { authMiddleware } from "../middlewares/authenticate";
+import { validateCampaignId } from "../middlewares/validateCampaignId";
 
 const router = express.Router();
-const campaignController = new CampaignController();
+const controller = new CampaignController();
 
-router.all("*", authMiddleware);
+// Configuração do Multer para upload de arquivos
+const upload = multer({
+	storage: multer.memoryStorage(),
+	limits: {
+		fileSize: 5 * 1024 * 1024, // 5MB
+	},
+});
 
-// Rotas básicas
-router.post("/", (req, res) => campaignController.createCampaign(req, res));
-router.get("/", (req, res) => campaignController.listCampaigns(req, res));
+// Middleware de autenticação para todas as rotas
+router.use(authMiddleware);
 
-// Rotas com ID
-router.get("/:id", (req, res) => campaignController.getCampaign(req, res));
-router.get("/:id/stats", (req, res) =>
-	campaignController.getCampaignStats(req, res),
+// Rotas básicas de campanha
+router
+	.route("/")
+	.post((req: Request, res: Response) =>
+		controller.createCampaign(req as RequestWithUser, res),
+	)
+	.get((req: Request, res: Response) =>
+		controller.listCampaigns(req as RequestWithUser, res),
+	);
+
+// Rotas específicas de campanha (com ID)
+router
+	.route("/:id")
+	.all(validateCampaignId)
+	.get((req: Request, res: Response) =>
+		controller.getCampaign(req as CampaignRequestWithId, res),
+	)
+	.put((req: Request, res: Response) =>
+		controller.updateCampaign(req as CampaignRequestWithId, res),
+	)
+	.delete((req: Request, res: Response) =>
+		controller.deleteCampaign(req as CampaignRequestWithId, res),
+	);
+
+// Rotas de estatísticas e progresso
+router.get("/:id/stats", validateCampaignId, (req: Request, res: Response) =>
+	controller.getCampaignStats(req as CampaignRequestWithId, res),
 );
-router.put("/:id", (req, res) => campaignController.updateCampaign(req, res));
-router.delete("/:id", (req, res) =>
-	campaignController.deleteCampaign(req, res),
+router.get("/:id/progress", validateCampaignId, (req: Request, res: Response) =>
+	controller.getCampaignProgress(req as CampaignRequestWithId, res),
 );
 
-// Rotas de controle de estado
-router.post("/:id/start", (req, res) =>
-	campaignController.startCampaign(req, res),
+// Rotas de controle de estado da campanha
+router.post("/:id/start", validateCampaignId, (req: Request, res: Response) =>
+	controller.startCampaign(req as StartCampaignRequest, res),
 );
-router.post("/:id/pause", (req, res) =>
-	campaignController.pauseCampaign(req, res),
+router.post("/:id/pause", validateCampaignId, (req: Request, res: Response) =>
+	controller.pauseCampaign(req as CampaignRequestWithId, res),
 );
-router.post("/:id/resume", (req, res) =>
-	campaignController.resumeCampaign(req, res),
+router.post("/:id/resume", validateCampaignId, (req: Request, res: Response) =>
+	controller.resumeCampaign(req as CampaignRequestWithId, res),
 );
-router.post("/:id/stop", (req, res) =>
-	campaignController.stopCampaign(req, res),
+router.post("/:id/stop", validateCampaignId, (req: Request, res: Response) =>
+	controller.stopCampaign(req as CampaignRequestWithId, res),
 );
+
+// Rotas de importação de leads
+router.post(
+	"/:id/leads/import",
+	validateCampaignId,
+	upload.single("file"),
+	(req: Request, res: Response) =>
+		controller.importLeads(req as RequestWithUser, res),
+);
+
+// Rotas de gerenciamento de leads da campanha
+router.get("/:id/leads", validateCampaignId, (req: Request, res: Response) =>
+	controller.getCampaignLeads(req as CampaignRequestWithId, res),
+);
+
+router.get(
+	"/:id/leads/check",
+	validateCampaignId,
+	(req: RequestWithUser, res: Response) => controller.checkLead(req, res),
+);
+
+router.delete(
+	"/:id/leads/:leadId",
+	validateCampaignId,
+	(req: Request, res: Response) => {
+		const typedReq = req as CampaignRequestWithId & {
+			params: { leadId: string };
+		};
+		return controller.removeCampaignLead(typedReq, res);
+	},
+);
+
+// Middlewares de erro
+router.use((err: any, req: Request, res: Response, next: Function) => {
+	if (err instanceof multer.MulterError) {
+		if (err.code === "LIMIT_FILE_SIZE") {
+			return res.status(400).json({
+				error: "Arquivo muito grande. O tamanho máximo permitido é 5MB.",
+			});
+		}
+		return res.status(400).json({ error: err.message });
+	}
+	next(err);
+});
+
+router.use((err: any, req: Request, res: Response, next: Function) => {
+	console.error("Erro na rota de campanhas:", err);
+	res.status(500).json({
+		error: "Erro interno do servidor",
+		details: process.env.NODE_ENV === "development" ? err.message : undefined,
+	});
+});
 
 export { router as campaignRoutes };

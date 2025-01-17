@@ -49,6 +49,7 @@ model User {
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
+  CampaignLead CampaignLead[]
 }
 
 model CompaniesUnites {
@@ -171,7 +172,7 @@ model Instance {
   user                    User         @relation(fields: [userId], references: [id])
   mediaStats              MediaStats[]
   warmupStats             WarmupStats?
-  Campaign                Campaign[]
+  Campaign                CampaignDispatch[]
 
   @@index([userId])
 }
@@ -232,6 +233,10 @@ model Campaign {
   description   String?
   status        String              @default("draft")
   type          String
+  message       String?
+  mediaUrl      String?
+  mediaType     String?
+  mediaCaption  String?
   scheduledDate DateTime?
   scheduledStatus  String?    @default("pending")
   startedAt       DateTime?
@@ -241,19 +246,32 @@ model Campaign {
   minDelay      Int                 @default(5)
   maxDelay      Int                 @default(30)
   userId        String
-  instanceName  String
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   MessageLog    MessageLog[]
   leads         CampaignLead[]
   messages      CampaignMessage[]
   statistics    CampaignStatistics?
-  instance      Instance            @relation(fields: [instanceName], references: [instanceName])
+  dispatches    CampaignDispatch[]
   user          User                @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
   @@map("whatlead_campaigns")
+  CampaignErrorLog CampaignErrorLog[]
+}
+
+model CampaignDispatch {
+  id            String    @id @default(uuid())
+  campaignId    String
+  instanceName  String
+  status        String    @default("pending")
+  startedAt     DateTime?
+  completedAt   DateTime?
+  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  instance      Instance  @relation(fields: [instanceName], references: [instanceName])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model CampaignMessage {
@@ -273,6 +291,8 @@ model CampaignMessage {
 
 model CampaignLead {
   id            String    @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
   campaignId    String
   name          String?
   phone         String
@@ -288,12 +308,12 @@ model CampaignLead {
   updatedAt     DateTime  @updatedAt
   campaign      Campaign  @relation(fields: [campaignId], references: [id])
 
+  @@unique([campaignId, phone], name: "unique_campaign_phone")
   @@index([campaignId])
   @@index([phone])
   @@index([status])
   @@map("whatlead_campaign_leads")
 }
-
 model CampaignStatistics {
   id             String    @id @default(uuid())
   campaignId     String    @unique
@@ -337,5 +357,13 @@ model MessageLog {
   @@index([campaignId, messageDate])
   @@index([leadId, messageDate])
   @@index([status])
+}
 
+model CampaignErrorLog {
+    id            String   @id @default(uuid())
+    campaignId    String
+    errorMessage  String
+    errorDetails  Json?
+    createdAt     DateTime @default(now())
+    campaign      Campaign @relation(fields: [campaignId], references: [id])
 }

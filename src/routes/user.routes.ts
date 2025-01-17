@@ -1,38 +1,33 @@
 // src/routes/user.routes.ts
 import { Router } from "express";
-import {
-	checkCompanyStatus,
-	checkPlanStatus,
-	createUsersController,
-	deleteUserController,
-	findOneUsersController,
-	listUsersController,
-	updateCompanyController,
-	updateUserController,
-} from "../controllers/user.controller";
+import { routes } from "../controllers/user.controller";
 import { authMiddleware } from "../middlewares/authenticate";
 import { requireCompanySetup } from "../middlewares/companySetup.middleware";
 
 const router = Router();
 
-// ** Rotas públicas **
-router.post("/register", createUsersController); // Rota de registro público
+// Rotas públicas
+router.post("/register", routes.createUsersController);
 
-// ** Rotas protegidas pelo middleware de autenticação **
+// Rotas protegidas pelo middleware de autenticação
 router.use(authMiddleware);
 
-// ** Rotas relacionadas à empresa (antes do `requireCompanySetup`) **
-router.get("/company/status", checkCompanyStatus); // Verificar status da empresa
-router.put("/company/update", updateCompanyController); // Atualizar informações da empresa (PUT)
-router.patch("/company/update", updateCompanyController); // Atualizar informações da empresa (PATCH)
+// Rotas relacionadas à empresa
+router.get("/company/status", routes.checkCompanyStatus);
+router.put("/company/update", routes.updateCompanyController);
+router.patch("/company/update", routes.updateCompanyController);
 
-// ** Rotas protegidas que precisam de autenticação e empresa configurada **
+// Rotas relacionadas ao plano
+router.get("/plan", routes.getUserPlanController);
+router.post("/plan/check-limits", routes.checkPlanLimitsController);
+router.get("/plan-status", routes.checkPlanStatus);
+
+// Rotas protegidas que precisam de autenticação e empresa configurada
 router.use(requireCompanySetup);
 
-router.get("/", listUsersController); // Lista de usuários
-router.get("/plan-status", checkPlanStatus); // Status do plano
-router.get("/:id", findOneUsersController); // Obter usuário por ID
-router.put("/:id", updateUserController); // Atualizar usuário por ID
-router.delete("/:id", deleteUserController); // Deletar usuário por ID
+router.get("/", routes.listUsersController);
+router.get("/:id", routes.findOneUsersController);
+router.put("/:id", routes.updateUserController);
+router.delete("/:id", routes.deleteUserController);
 
 export default router;

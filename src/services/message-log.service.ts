@@ -1,5 +1,4 @@
 // src/services/message-log.service.ts
-
 import { PrismaClient } from "@prisma/client";
 import { endOfDay, startOfDay } from "date-fns";
 import Redis from "ioredis";
@@ -13,6 +12,17 @@ const redis = new Redis({
 });
 
 export class MessageLogService {
+	private formatStatusUpdate(statusUpdate: StatusUpdate): any {
+		return {
+			status: statusUpdate.status,
+			timestamp:
+				statusUpdate.timestamp instanceof Date
+					? statusUpdate.timestamp.toISOString()
+					: statusUpdate.timestamp,
+			...(statusUpdate.reason && { reason: statusUpdate.reason }),
+		};
+	}
+
 	async updateMessageStatus(
 		messageId: string,
 		newStatus: string,
@@ -42,12 +52,14 @@ export class MessageLogService {
 		};
 
 		if (messageLog) {
-			// Atualizar registro existente
+			const formattedUpdate = this.formatStatusUpdate(statusUpdate);
 			const updatedLog = await prisma.messageLog.update({
 				where: { id: messageLog.id },
 				data: {
 					status: newStatus,
-					statusHistory: [...messageLog.statusHistory, statusUpdate],
+					statusHistory: {
+						push: formattedUpdate,
+					},
 					...(newStatus === "sent" && { sentAt: new Date() }),
 					...(newStatus === "delivered" && { deliveredAt: new Date() }),
 					...(newStatus === "read" && { readAt: new Date() }),
@@ -57,16 +69,24 @@ export class MessageLogService {
 					}),
 				},
 			});
-
 			await this.setMessageLogCache(cacheKey, updatedLog);
 		} else {
 			// Criar novo registro
-			const newLog = await prisma.messageLog.create({
+			const formattedUpdate = this.formatStatusUpdate(statusUpdate);
+			const newMessageLog = await prisma.messageLog.create({
 				data: {
 					messageId,
 					messageDate: startOfDay(today),
+					messageType: "text", // valor padrão
+					content: "", // valor padrão
 					status: newStatus,
-					statusHistory: [statusUpdate],
+					statusHistory: [formattedUpdate],
+					campaign: {
+						connect: { id: "default-campaign-id" }, // Você precisa fornecer um ID válido
+					},
+					lead: {
+						connect: { id: "default-lead-id" }, // Você precisa fornecer um ID válido
+					},
 					...(newStatus === "sent" && { sentAt: new Date() }),
 					...(newStatus === "delivered" && { deliveredAt: new Date() }),
 					...(newStatus === "read" && { readAt: new Date() }),
@@ -74,11 +94,9 @@ export class MessageLogService {
 						failedAt: new Date(),
 						failureReason: reason,
 					}),
-					// Adicione os campos campaignId, leadId, messageType e content conforme necessário
 				},
 			});
-
-			await this.setMessageLogCache(cacheKey, newLog);
+			await this.setMessageLogCache(cacheKey, newMessageLog);
 		}
 	}
 
@@ -161,3 +179,5 @@ export class MessageLogService {
 		await redis.set(key, JSON.stringify(log), "EX", 3600); // Cache por 1 hora
 	}
 }
+
+export const messageLogService = new MessageLogService();
