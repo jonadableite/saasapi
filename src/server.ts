@@ -73,7 +73,7 @@ app.use("/api/campaigns", campaignLeadRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/webhook", webhookRoutes);
 app.use("/api/campaigns", campaignDispatcherRoutes);
-app.use("/api/campaigns", campaignSchedulerRoutes);
+app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/companies", companyRoutes);
 

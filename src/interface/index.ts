@@ -1,5 +1,12 @@
 // src/interface/index.ts
-import type { CampaignLead, Instance, User, WarmupStats } from "@prisma/client";
+import type {
+	Campaign,
+	CampaignLead,
+	CampaignSchedule,
+	Instance,
+	User,
+	WarmupStats,
+} from "@prisma/client";
 import type { Request, Response } from "express";
 import type { ParamsDictionary } from "express-serve-static-core";
 import type { MessageType } from "../enum";
@@ -115,25 +122,57 @@ export interface SegmentationRule {
 	value: string;
 }
 
+export interface Dispatch {
+	id: string;
+	campaignId: string;
+	campaignName: string;
+	campaignDescription: string | null;
+	instanceName: string;
+	instanceStatus: string;
+	status: string;
+	startedAt: string;
+	completedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface IMessageDispatcherService {
 	startDispatch(params: {
 		campaignId: string;
 		instanceName: string;
 		message: string;
 		media?: {
-			type: "image" | "video" | "audio" | "sticker";
-			base64?: string;
+			type: "image" | "video" | "audio";
+			base64: string;
 			url?: string;
-			content?: string;
 			caption?: string;
 			fileName?: string;
 			mimetype?: string;
+			preview?: string;
 		};
 		minDelay: number;
 		maxDelay: number;
 	}): Promise<void>;
 
-	stopDispatch(): void;
+	resumeDispatch(params: {
+		campaignId: string;
+		instanceName: string;
+		dispatch: string;
+	}): Promise<void>;
+
+	sendMessage(params: {
+		instanceName: string;
+		phone: string;
+		message: string;
+		media?: {
+			type: "image" | "video" | "audio";
+			url?: string;
+			base64?: string;
+			caption?: string;
+		};
+		campaignId: string;
+		leadId: string;
+	}): Promise<{ messageId: string }>;
 
 	updateMessageStatus(
 		messageId: string,
@@ -145,11 +184,11 @@ export interface IMessageDispatcherService {
 		reason?: string,
 	): Promise<void>;
 
+	stopDispatch(): void;
 	getDailyStats(
 		campaignId: string,
 		date: Date,
 	): Promise<Record<string, number>>;
-
 	getDetailedReport(
 		campaignId: string,
 		startDate: Date,
@@ -169,13 +208,13 @@ export interface CampaignParams {
 	media?: {
 		type: "image" | "video" | "audio";
 		content: string;
+		base64?: string;
 		caption?: string;
 		fileName?: string;
 		mimetype?: string;
 		preview?: string;
-		base64?: string;
 		url?: string;
-	};
+	} | null;
 	minDelay: number;
 	maxDelay: number;
 }
@@ -199,11 +238,16 @@ export interface MessageContent {
 	preview?: string;
 }
 
+export interface UpdateCampaignStatusRequest extends CampaignRequestWithId {
+	body: {
+		status: CampaignStatus;
+	};
+}
+
 export interface MediaContent {
-	type: "image" | "video" | "audio" | "sticker";
+	type: "image" | "video" | "audio";
 	base64: string;
 	url?: string;
-	content?: string;
 	fileName?: string;
 	mimetype?: string;
 	caption?: string;
@@ -215,6 +259,54 @@ export interface ICampaignDispatcherController {
 	pauseCampaign(req: Request, res: Response): Promise<void>;
 	resumeCampaign(req: Request, res: Response): Promise<void>;
 	getCampaignProgress(req: Request, res: Response): Promise<void>;
+}
+
+export interface ICampaignSchedulerService {
+	createSchedule(data: CreateScheduleParams): Promise<any>;
+	getSchedules(campaignId: string): Promise<any>;
+	cancelSchedule(scheduleId: string): Promise<void>;
+	pauseCampaign(campaignId: string): Promise<void>;
+	resumeCampaign(campaignId: string, instanceName: string): Promise<void>;
+}
+
+export interface ScheduleWithRelations extends CampaignSchedule {
+	campaign: Campaign & {
+		mediaUrl?: string | null;
+		mediaType?: string | null;
+		mediaCaption?: string | null;
+	};
+	instance: Instance;
+}
+
+export interface CampaignMedia {
+	type: "image" | "video" | "audio";
+	content: string;
+	caption?: string;
+}
+
+export interface StartCampaignParams {
+	campaignId: string;
+	instanceName: string;
+	message: string;
+	media?: CampaignMedia;
+	minDelay?: number;
+	maxDelay?: number;
+}
+
+export interface CreateScheduleParams {
+	campaignId: string;
+	instanceName: string;
+	scheduledDate: Date;
+	message?: string;
+	mediaPayload?: {
+		type: "image" | "video" | "audio";
+		base64: string;
+		caption?: string;
+		fileName?: string;
+		mimetype?: string;
+	};
+	minDelay?: number;
+	maxDelay?: number;
 }
 
 export interface RequestWithUser extends Request {

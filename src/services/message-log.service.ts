@@ -100,6 +100,40 @@ export class MessageLogService {
 		}
 	}
 
+	async logMessage(params: {
+		messageId: string;
+		campaignId: string;
+		leadId: string;
+		status: string;
+		messageType: string;
+		content: string;
+		reason?: string;
+	}): Promise<void> {
+		try {
+			await prisma.messageLog.create({
+				data: {
+					messageId: params.messageId,
+					campaignId: params.campaignId,
+					leadId: params.leadId,
+					status: params.status,
+					messageType: params.messageType,
+					content: params.content,
+					messageDate: new Date(),
+					statusHistory: [
+						{
+							status: params.status,
+							timestamp: new Date(),
+							reason: params.reason,
+						},
+					],
+				},
+			});
+		} catch (error) {
+			console.error("Erro ao criar log de mensagem:", error);
+			throw error;
+		}
+	}
+
 	async getMessageStatusHistory(messageId: string, date?: Date): Promise<any> {
 		const queryDate = date || new Date();
 		const cacheKey = `message:${messageId}:${queryDate.toISOString().split("T")[0]}`;

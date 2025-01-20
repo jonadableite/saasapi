@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import express from "express";
 import multer from "multer";
 import CampaignController from "../controllers/campaign.controller";
-// src/routes/campaign.routes.ts
 import type {
 	CampaignRequestWithId,
 	RequestWithUser,
@@ -24,6 +23,11 @@ const upload = multer({
 
 // Middleware de autenticação para todas as rotas
 router.use(authMiddleware);
+
+// Rota para campanhas agendadas
+router.get("/scheduled", (req: Request, res: Response) =>
+	controller.getScheduledCampaigns(req as RequestWithUser, res),
+);
 
 // Rotas básicas de campanha
 router
@@ -69,6 +73,9 @@ router.post("/:id/resume", validateCampaignId, (req: Request, res: Response) =>
 );
 router.post("/:id/stop", validateCampaignId, (req: Request, res: Response) =>
 	controller.stopCampaign(req as CampaignRequestWithId, res),
+);
+router.patch("/:id", validateCampaignId, (req: Request, res: Response) =>
+	controller.updateCampaignStatus(req as CampaignRequestWithId, res),
 );
 
 // Rotas de importação de leads

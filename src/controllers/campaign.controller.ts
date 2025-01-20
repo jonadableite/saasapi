@@ -7,6 +7,7 @@ import type {
 	CampaignRequestWithId,
 	RequestWithUser,
 	StartCampaignRequest,
+	UpdateCampaignStatusRequest,
 } from "../interface";
 import { prisma } from "../lib/prisma";
 import redisClient from "../lib/redis";
@@ -533,6 +534,161 @@ export default class CampaignController {
 		}
 	}
 
+	public async getScheduledCampaigns(
+		req: RequestWithUser,
+		res: Response,
+	): Promise<void> {
+		try {
+			const userId = req.user?.id;
+
+			if (!userId) {
+				throw new BadRequestError("Usuário não autenticado");
+			}
+
+			const scheduledCampaigns = await prisma.campaign.findMany({
+				where: {
+					userId,
+					OR: [
+						{ status: "scheduled" },
+						{ status: "running" },
+						{ status: "paused" },
+					],
+					scheduledDate: {
+						not: null,
+					},
+				},
+				include: {
+					leads: {
+						select: {
+							id: true,
+						},
+					},
+					dispatches: {
+						include: {
+							instance: {
+								select: {
+									instanceName: true,
+								},
+							},
+						},
+						orderBy: {
+							createdAt: "desc",
+						},
+						take: 1,
+					},
+					statistics: true,
+				},
+				orderBy: {
+					scheduledDate: "asc",
+				},
+			});
+
+			const formattedCampaigns = scheduledCampaigns.map((campaign) => ({
+				id: campaign.id,
+				name: campaign.name,
+				scheduledDate: campaign.scheduledDate,
+				status: campaign.status,
+				totalLeads: campaign.statistics?.totalLeads || campaign.leads.length,
+				instance: campaign.dispatches[0]?.instance?.instanceName || null,
+				message: campaign.message,
+				mediaType: campaign.mediaType,
+				mediaUrl: campaign.mediaUrl,
+				mediaCaption: campaign.mediaCaption,
+				progress: campaign.progress,
+				statistics: campaign.statistics || {
+					totalLeads: 0,
+					sentCount: 0,
+					deliveredCount: 0,
+					readCount: 0,
+					failedCount: 0,
+				},
+			}));
+
+			res.json({
+				success: true,
+				data: formattedCampaigns,
+			});
+		} catch (error) {
+			console.error("Erro ao buscar campanhas agendadas:", error);
+
+			if (error instanceof BadRequestError) {
+				res.status(400).json({
+					success: false,
+					message: error.message,
+				});
+				return;
+			}
+
+			res.status(500).json({
+				success: false,
+				message: "Erro ao buscar campanhas agendadas",
+				error: error instanceof Error ? error.message : "Erro desconhecido",
+			});
+		}
+	}
+
+	public async updateCampaignStatus(
+		req: UpdateCampaignStatusRequest,
+		res: Response,
+	): Promise<void> {
+		try {
+			const { id } = req.params;
+			const { status } = req.body;
+			const userId = req.user?.id;
+
+			if (!userId) {
+				throw new BadRequestError("Usuário não autenticado");
+			}
+
+			// Verificar se a campanha existe e pertence ao usuário
+			const existingCampaign = await prisma.campaign.findFirst({
+				where: {
+					id,
+					userId,
+				},
+			});
+
+			if (!existingCampaign) {
+				throw new BadRequestError("Campanha não encontrada");
+			}
+
+			const campaign = await prisma.campaign.update({
+				where: { id },
+				data: {
+					status,
+					updatedAt: new Date(),
+				},
+			});
+
+			// Limpar caches relacionados
+			await redisClient.del(`campaigns:${userId}`);
+			await redisClient.del(`campaign:${id}`);
+			await redisClient.del(`campaign:stats:${id}`);
+
+			res.json({
+				success: true,
+				message: "Status da campanha atualizado com sucesso",
+				data: campaign,
+			});
+		} catch (error) {
+			console.error("Erro ao atualizar status da campanha:", error);
+
+			if (error instanceof BadRequestError) {
+				res.status(400).json({
+					success: false,
+					message: error.message,
+				});
+				return;
+			}
+
+			res.status(500).json({
+				success: false,
+				message: "Erro ao atualizar status da campanha",
+				error: error instanceof Error ? error.message : "Erro desconhecido",
+			});
+		}
+	}
+
 	public async startCampaign(
 		req: StartCampaignRequest,
 		res: Response,
@@ -667,14 +823,18 @@ export default class CampaignController {
 		try {
 			const { id } = req.params;
 
-			const campaign = await prisma.campaign.findUnique({
-				where: { id },
-				select: {
-					status: true,
-					progress: true,
-					statistics: true,
-				},
-			});
+			const [campaign, statistics] = await Promise.all([
+				prisma.campaign.findUnique({
+					where: { id },
+					select: {
+						status: true,
+						progress: true,
+					},
+				}),
+				prisma.campaignStatistics.findUnique({
+					where: { campaignId: id },
+				}),
+			]);
 
 			if (!campaign) {
 				res.status(404).json({
@@ -684,23 +844,29 @@ export default class CampaignController {
 				return;
 			}
 
+			// Não retornar como completed se ainda estiver preparando
+			const status =
+				campaign.status === "preparing" ? "preparing" : campaign.status;
+
 			res.json({
 				success: true,
 				data: {
-					status: campaign.status,
-					progress: campaign.progress,
-					statistics: campaign.statistics,
+					status,
+					progress: campaign.status === "preparing" ? 0 : campaign.progress,
+					statistics: {
+						totalLeads: statistics?.totalLeads || 0,
+						sentCount: statistics?.sentCount || 0,
+						deliveredCount: statistics?.deliveredCount || 0,
+						readCount: statistics?.readCount || 0,
+						failedCount: statistics?.failedCount || 0,
+					},
 				},
 			});
 		} catch (error) {
 			console.error("Erro ao buscar progresso da campanha:", error);
-			const errorMessage =
-				error instanceof Error ? error.message : "Erro desconhecido";
-
 			res.status(500).json({
 				success: false,
 				message: "Erro ao buscar progresso da campanha",
-				error: errorMessage,
 			});
 		}
 	}
@@ -732,20 +898,93 @@ export default class CampaignController {
 		res: Response,
 	): Promise<void> {
 		try {
-			const { id } = req.params;
+			const { id: campaignId } = req.params;
+			const { instanceName } = req.body;
 
-			const campaign = await prisma.campaign.update({
-				where: { id },
-				data: { status: "running" as CampaignStatus },
+			if (!instanceName) {
+				throw new BadRequestError("Nome da instância é obrigatório");
+			}
+
+			// Verificar se a campanha existe e estava pausada
+			const campaign = await prisma.campaign.findFirst({
+				where: {
+					id: campaignId,
+					status: "paused",
+				},
+				include: {
+					leads: {
+						where: {
+							OR: [
+								{ status: "pending" },
+								{ status: "processing" },
+								{ status: "failed" },
+							],
+						},
+					},
+				},
+			});
+
+			if (!campaign) {
+				throw new BadRequestError(
+					"Campanha não encontrada ou não está pausada",
+				);
+			}
+
+			if (campaign.leads.length === 0) {
+				throw new BadRequestError(
+					"Não há leads pendentes para continuar o envio",
+				);
+			}
+
+			// Verificar se a instância está conectada
+			const instance = await prisma.instance.findUnique({
+				where: { instanceName },
+			});
+
+			if (!instance || instance.connectionStatus !== "open") {
+				throw new BadRequestError(
+					"Instância não encontrada ou não está conectada",
+				);
+			}
+
+			// Criar novo dispatch
+			const dispatch = await prisma.campaignDispatch.create({
+				data: {
+					campaignId,
+					instanceName,
+					status: "running",
+					startedAt: new Date(),
+				},
+			});
+
+			// Atualizar status da campanha
+			await prisma.campaign.update({
+				where: { id: campaignId },
+				data: {
+					status: "running",
+					pausedAt: null,
+				},
+			});
+
+			// Retomar envios
+			await messageDispatcherService.resumeDispatch({
+				campaignId,
+				instanceName,
+				dispatch: dispatch.id,
 			});
 
 			res.json({
+				success: true,
 				message: "Campanha retomada com sucesso",
-				campaign,
+				dispatch,
 			});
 		} catch (error) {
 			console.error("Erro ao retomar campanha:", error);
-			res.status(500).json({ error: "Erro ao retomar campanha" });
+			res.status(error instanceof BadRequestError ? 400 : 500).json({
+				success: false,
+				error:
+					error instanceof Error ? error.message : "Erro ao retomar campanha",
+			});
 		}
 	}
 

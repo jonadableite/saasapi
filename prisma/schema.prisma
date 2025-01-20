@@ -118,17 +118,6 @@ model Lead {
   @@map("whatleadleads")
 }
 
-model Bot_Descritivo {
-  id         String   @id @default(uuid())
-  name       String
-  descritivo String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([name, descritivo, createdAt(sort: Desc)])
-  @@map("bot_descritivo")
-}
-
 model Payment {
   id              String   @id @default(uuid())
   stripePaymentId String   @unique
@@ -175,6 +164,7 @@ model Instance {
   Campaign                CampaignDispatch[]
 
   @@index([userId])
+  CampaignSchedule CampaignSchedule[]
 }
 
 model MediaStats {
@@ -259,6 +249,7 @@ model Campaign {
   @@index([status])
   @@map("whatlead_campaigns")
   CampaignErrorLog CampaignErrorLog[]
+  CampaignSchedule CampaignSchedule[]
 }
 
 model CampaignDispatch {
@@ -313,6 +304,31 @@ model CampaignLead {
   @@index([phone])
   @@index([status])
   @@map("whatlead_campaign_leads")
+}
+
+model CampaignSchedule {
+  id            String    @id @default(uuid())
+  campaignId    String
+  instanceName  String
+  scheduledDate DateTime
+  status        String    @default("pending")
+  message       String?
+  mediaType     String?
+  mediaUrl      String?
+  mediaCaption  String?
+  minDelay      Int      @default(5)
+  maxDelay      Int      @default(30)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  startedAt     DateTime?
+  completedAt   DateTime?
+  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  instance      Instance  @relation(fields: [instanceName], references: [instanceName])
+
+  @@index([campaignId])
+  @@index([instanceName])
+  @@index([scheduledDate])
+  @@map("campaign_schedules")
 }
 model CampaignStatistics {
   id             String    @id @default(uuid())

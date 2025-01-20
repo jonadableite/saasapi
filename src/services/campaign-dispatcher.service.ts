@@ -33,18 +33,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		this.stop = false;
 		this.messageLogService = new MessageLogService();
 	}
-	updateMessageStatus(
-		messageId: string,
-		status: string,
-		instanceId: string,
-		phone: string,
-		messageType: string,
-		content: string,
-		reason?: string,
-	): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-
 	async startDispatch(params: {
 		campaignId: string;
 		instanceName: string;
@@ -53,10 +41,9 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		minDelay: number;
 		maxDelay: number;
 	}): Promise<void> {
-		console.log("Iniciando dispatch com parâmetros:", params);
-
 		try {
-			// Buscar leads pendentes
+			console.log("Iniciando dispatch com parâmetros:", params);
+
 			const leads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId: params.campaignId,
@@ -69,12 +56,246 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
 			console.log(`Encontrados ${leads.length} leads pendentes`);
 
+			for (const lead of leads) {
+				if (this.stop) {
+					console.log("Processo de dispatch interrompido");
+					break;
+				}
+
+				try {
+					console.log(`Processando lead ${lead.id} (${lead.phone})`);
+
+					// Primeiro enviar mídia, se houver
+					let messageId: string | undefined;
+
+					if (params.media) {
+						console.log("Enviando mídia...");
+						const mediaResponse = await this.sendMedia(
+							params.instanceName,
+							lead.phone,
+							{
+								type: params.media.type,
+								base64: params.media.base64,
+								caption: params.media.caption,
+								fileName: params.media.fileName,
+								mimetype: params.media.mimetype,
+							},
+						);
+
+						if (mediaResponse?.key?.id) {
+							messageId = mediaResponse.key.id;
+						}
+					}
+
+					// Depois enviar mensagem de texto, se houver
+					if (params.message) {
+						console.log("Enviando mensagem de texto...");
+						const textResponse = await this.sendText(
+							params.instanceName,
+							lead.phone,
+							params.message,
+						);
+
+						if (textResponse?.key?.id) {
+							messageId = textResponse.key.id;
+						}
+					}
+
+					// Atualizar status do lead
+					await prisma.campaignLead.update({
+						where: { id: lead.id },
+						data: {
+							status: "sent",
+							sentAt: new Date(),
+							messageId: messageId || Date.now().toString(),
+						},
+					});
+
+					// Aguardar delay antes do próximo envio
+					const delayTime =
+						Math.floor(
+							Math.random() * (params.maxDelay - params.minDelay + 1),
+						) + params.minDelay;
+					console.log(
+						`Aguardando ${delayTime} segundos antes do próximo envio...`,
+					);
+					await new Promise((resolve) => setTimeout(resolve, delayTime * 1000));
+				} catch (error) {
+					console.error(`Erro ao processar lead ${lead.id}:`, error);
+					await prisma.campaignLead.update({
+						where: { id: lead.id },
+						data: {
+							status: "failed",
+							failedAt: new Date(),
+							failureReason:
+								error instanceof Error ? error.message : "Erro desconhecido",
+						},
+					});
+				}
+			}
+		} catch (error) {
+			console.error("Erro no processo de dispatch:", error);
+			throw error;
+		}
+	}
+
+	async updateMessageStatus(
+		messageId: string,
+		status: string,
+		instanceId: string,
+		phone: string,
+		messageType: string,
+		content: string,
+		reason?: string,
+	): Promise<void> {
+		try {
+			const today = new Date();
+			const lead = await prisma.campaignLead.findFirst({
+				where: { messageId },
+				include: { campaign: true },
+			});
+
+			if (!lead) {
+				console.warn(`Lead não encontrado para messageId: ${messageId}`);
+				return;
+			}
+
+			// Atualizar status do lead
+			await prisma.campaignLead.update({
+				where: { id: lead.id },
+				data: {
+					status,
+					...(status === "delivered" && { deliveredAt: new Date() }),
+					...(status === "read" && { readAt: new Date() }),
+					...(status === "failed" && {
+						failedAt: new Date(),
+						failureReason: reason,
+					}),
+				},
+			});
+
+			// Criar ou atualizar log da mensagem
+			await this.messageLogService.logMessage({
+				messageId,
+				campaignId: lead.campaignId,
+				leadId: lead.id,
+				status,
+				messageType,
+				content,
+				reason,
+			});
+		} catch (error) {
+			console.error("Erro ao atualizar status da mensagem:", error);
+			throw error;
+		}
+	}
+
+	public async sendMessage(params: {
+		instanceName: string;
+		phone: string;
+		message: string;
+		media?: {
+			type: "image" | "video" | "audio";
+			base64: string;
+			url?: string;
+			caption?: string;
+		};
+		campaignId: string;
+		leadId: string;
+	}): Promise<{ messageId: string }> {
+		try {
+			const formattedNumber = params.phone.startsWith("55")
+				? params.phone
+				: `55${params.phone}`;
+
+			let messageId: string | undefined;
+
+			// Enviar mídia primeiro, se houver
+			if (params.media?.base64) {
+				console.log("Enviando mídia...");
+				const mediaResponse = await this.sendMedia(
+					params.instanceName,
+					formattedNumber,
+					params.media,
+				);
+
+				if (mediaResponse?.key?.id) {
+					messageId = mediaResponse.key.id;
+				}
+			}
+
+			// Enviar mensagem de texto
+			if (params.message) {
+				console.log("Enviando mensagem de texto...");
+				const textResponse = await this.sendText(
+					params.instanceName,
+					formattedNumber,
+					params.message,
+				);
+
+				if (textResponse?.key?.id) {
+					messageId = textResponse.key.id;
+				}
+			}
+
+			// Se nenhum ID foi gerado, usar timestamp
+			if (!messageId) {
+				messageId = Date.now().toString();
+			}
+
+			return { messageId };
+		} catch (error) {
+			console.error("Erro ao enviar mensagem:", error);
+			throw error;
+		}
+	}
+
+	public async resumeDispatch(params: {
+		campaignId: string;
+		instanceName: string;
+		dispatch: string;
+	}): Promise<void> {
+		try {
+			// Buscar leads pendentes e falhos
+			const leads = await prisma.campaignLead.findMany({
+				where: {
+					campaignId: params.campaignId,
+					OR: [
+						{ status: "pending" },
+						{ status: "processing" },
+						{ status: "failed" },
+					],
+				},
+				orderBy: {
+					createdAt: "asc",
+				},
+			});
+
+			console.log(`Retomando envio para ${leads.length} leads`);
+
+			// Buscar configurações da campanha
+			const campaign = await prisma.campaign.findUnique({
+				where: { id: params.campaignId },
+				select: {
+					message: true,
+					mediaUrl: true,
+					mediaType: true,
+					mediaCaption: true,
+					minDelay: true,
+					maxDelay: true,
+				},
+			});
+
+			if (!campaign) {
+				throw new Error("Campanha não encontrada");
+			}
+
 			let processedCount = 0;
 			const totalLeads = leads.length;
 
 			for (const lead of leads) {
 				if (this.stop) {
-					console.log("Processo de dispatch interrompido");
+					console.log("Processo de retomada interrompido");
 					break;
 				}
 
@@ -87,43 +308,23 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						data: { status: "processing" },
 					});
 
-					let messageId = Date.now().toString(); // ID padrão
-
-					// Enviar mídia primeiro, se houver
-					if (params.media?.base64) {
-						console.log("Enviando mídia...", {
-							type: params.media.type,
-							hasBase64: !!params.media.base64,
-						});
-
-						const mediaResponse = await this.sendMedia(
-							params.instanceName,
-							lead.phone,
-							params.media,
-						);
-						console.log("Resposta do envio de mídia:", mediaResponse);
-						if (mediaResponse?.key?.id) {
-							messageId = mediaResponse.key.id;
-						}
-					}
-
-					// Enviar mensagem de texto
-					if (params.message) {
-						console.log("Enviando mensagem de texto...");
-						const processedMessage = this.processMessageVariables(
-							params.message,
-							lead,
-						);
-						const textResponse = await this.sendText(
-							params.instanceName,
-							lead.phone,
-							processedMessage,
-						);
-						console.log("Resposta do envio de texto:", textResponse);
-						if (textResponse?.key?.id) {
-							messageId = textResponse.key.id;
-						}
-					}
+					// Enviar mensagem
+					const messageResponse = await this.sendMessage({
+						instanceName: params.instanceName,
+						phone: lead.phone,
+						message: campaign.message || "",
+						media:
+							campaign.mediaUrl && campaign.mediaType
+								? {
+										type: campaign.mediaType as "image" | "video" | "audio",
+										base64: campaign.mediaUrl,
+										url: campaign.mediaUrl,
+										caption: campaign.mediaCaption || undefined,
+									}
+								: undefined,
+						campaignId: params.campaignId,
+						leadId: lead.id,
+					});
 
 					// Atualizar status do lead
 					await prisma.campaignLead.update({
@@ -131,21 +332,21 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						data: {
 							status: "sent",
 							sentAt: new Date(),
-							messageId,
+							messageId: messageResponse.messageId,
 						},
 					});
 
 					processedCount++;
 					const progress = Math.floor((processedCount / totalLeads) * 100);
 
-					// Atualizar progresso da campanha
+					// Atualizar progresso
 					await prisma.campaign.update({
 						where: { id: params.campaignId },
 						data: { progress },
 					});
 
 					// Aguardar delay
-					await this.delay(params.minDelay, params.maxDelay);
+					await this.delay(campaign.minDelay || 5, campaign.maxDelay || 30);
 				} catch (error) {
 					console.error(`Erro ao processar lead ${lead.id}:`, error);
 
@@ -173,82 +374,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				},
 			});
 		} catch (error) {
-			console.error("Erro no processo de dispatch:", error);
-			throw error;
-		}
-	}
-
-	private async updateCampaignStatistics(campaignId: string) {
-		try {
-			// Buscar contagem real dos leads
-			const stats = await prisma.$transaction(async (tx) => {
-				const totalLeads = await tx.campaignLead.count({
-					where: { campaignId },
-				});
-
-				const sentCount = await tx.campaignLead.count({
-					where: {
-						campaignId,
-						status: "sent",
-					},
-				});
-
-				const deliveredCount = await tx.campaignLead.count({
-					where: {
-						campaignId,
-						status: "delivered",
-					},
-				});
-
-				const readCount = await tx.campaignLead.count({
-					where: {
-						campaignId,
-						status: "read",
-					},
-				});
-
-				const failedCount = await tx.campaignLead.count({
-					where: {
-						campaignId,
-						status: "failed",
-					},
-				});
-
-				// Atualizar estatísticas com valores reais
-				await tx.campaignStatistics.upsert({
-					where: { campaignId },
-					create: {
-						campaignId,
-						totalLeads,
-						sentCount,
-						deliveredCount,
-						readCount,
-						failedCount,
-						updatedAt: new Date(),
-					},
-					update: {
-						totalLeads,
-						sentCount,
-						deliveredCount,
-						readCount,
-						failedCount,
-						updatedAt: new Date(),
-					},
-				});
-
-				return {
-					totalLeads,
-					sentCount,
-					deliveredCount,
-					readCount,
-					failedCount,
-				};
-			});
-
-			console.log("Estatísticas atualizadas:", stats);
-			return stats;
-		} catch (error) {
-			console.error("Erro ao atualizar estatísticas:", error);
+			console.error("Erro na retomada do dispatch:", error);
 			throw error;
 		}
 	}
@@ -310,45 +436,54 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 	private async sendMedia(
 		instanceName: string,
 		phone: string,
-		media: MediaContent,
+		media: {
+			type: "image" | "video" | "audio";
+			base64: string;
+			caption?: string;
+			fileName?: string;
+			mimetype?: string;
+		},
 	): Promise<EvolutionApiResponse> {
 		const formattedNumber = phone.startsWith("55") ? phone : `55${phone}`;
 
 		try {
 			let endpoint = "";
-			let payload = {};
+			let payload: any = {
+				number: formattedNumber,
+				delay: 1000,
+			};
 
 			switch (media.type) {
-				case "audio":
-					endpoint = `/message/sendWhatsAppAudio/${instanceName}`;
+				case "image":
+					endpoint = `/message/sendMedia/${instanceName}`;
 					payload = {
-						number: formattedNumber,
-						audio: media.base64,
-						encoding: true,
-						delay: 1000,
+						...payload,
+						mediatype: "image",
+						media: media.base64,
+						caption: media.caption,
+						fileName: media.fileName || "image.jpg",
+						mimetype: media.mimetype || "image/jpeg",
 					};
 					break;
 
-				case "image":
 				case "video":
 					endpoint = `/message/sendMedia/${instanceName}`;
 					payload = {
-						number: formattedNumber,
-						mediatype: media.type,
+						...payload,
+						mediatype: "video",
 						media: media.base64,
-						mimetype: media.mimetype,
-						fileName: media.fileName,
 						caption: media.caption,
-						delay: 1000,
+						fileName: media.fileName || "video.mp4",
+						mimetype: media.mimetype || "video/mp4",
 					};
 					break;
 
-				case "sticker":
-					endpoint = `/message/sendSticker/${instanceName}`;
+				case "audio":
+					endpoint = `/message/sendWhatsAppAudio/${instanceName}`;
 					payload = {
-						number: formattedNumber,
-						sticker: media.base64,
-						delay: 1000,
+						...payload,
+						audio: media.base64,
+						encoding: true,
 					};
 					break;
 			}
@@ -368,36 +503,12 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				},
 			);
 
-			if (response.status !== 200 && response.status !== 201) {
-				throw new Error(
-					`Erro no envio: ${response.status} - ${JSON.stringify(response.data)}`,
-				);
-			}
-
 			console.log(`Resposta do envio de ${media.type}:`, response.data);
 			return response.data;
 		} catch (error) {
-			const axiosError = error as AxiosErrorResponse;
-			console.error(`Erro ao enviar ${media.type}:`, {
-				error: axiosError.response?.data || axiosError.message,
-				instanceName,
-				phone,
-			});
+			console.error(`Erro ao enviar ${media.type}:`, error);
 			throw error;
 		}
-	}
-
-	private processMessageVariables(message: string, lead: any): string {
-		return message.replace(/\{(\w+)\}/g, (match, variable) => {
-			switch (variable.toLowerCase()) {
-				case "nome":
-					return lead.name || "";
-				case "telefone":
-					return lead.phone || "";
-				default:
-					return match;
-			}
-		});
 	}
 
 	private async delay(min: number, max: number): Promise<void> {
@@ -406,26 +517,16 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		return new Promise((resolve) => setTimeout(resolve, delayTime * 1000));
 	}
 
-	private async updateCampaignStats(
-		campaignId: string,
-		stats: Partial<{
-			sentCount: number;
-			failedCount: number;
-		}>,
-	): Promise<void> {
+	private async updateCampaignStats(campaignId: string, newLeadsCount: number) {
 		await prisma.campaignStatistics.upsert({
 			where: { campaignId },
+			update: {
+				totalLeads: { increment: newLeadsCount },
+				updatedAt: new Date(),
+			},
 			create: {
 				campaignId,
-				...stats,
-			},
-			update: {
-				sentCount: {
-					increment: stats.sentCount || 0,
-				},
-				failedCount: {
-					increment: stats.failedCount || 0,
-				},
+				totalLeads: newLeadsCount,
 			},
 		});
 	}
@@ -459,27 +560,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 			}),
 			{} as Record<string, number>,
 		);
-	}
-
-	async resetCampaignStatistics(campaignId: string): Promise<void> {
-		await prisma.campaignStatistics.upsert({
-			where: { campaignId },
-			create: {
-				campaignId,
-				totalLeads: 0,
-				sentCount: 0,
-				deliveredCount: 0,
-				readCount: 0,
-				failedCount: 0,
-			},
-			update: {
-				totalLeads: 0,
-				sentCount: 0,
-				deliveredCount: 0,
-				readCount: 0,
-				failedCount: 0,
-			},
-		});
 	}
 
 	async getDetailedReport(campaignId: string, startDate: Date, endDate: Date) {

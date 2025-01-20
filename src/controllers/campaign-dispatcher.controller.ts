@@ -1,282 +1,281 @@
 // src/controllers/campaign-dispatcher.controller.ts
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import { AppError, BadRequestError, NotFoundError } from "../errors/AppError";
+import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 import { campaignService } from "../services/campaign.service";
 
 export class CampaignDispatcherController {
-	private handleError(error: unknown, res: Response): void {
-		console.error(error);
+  // Tratamento de erros centralizado
+  private handleError(error: unknown, res: Response): void {
+    console.error(error);
 
-		if (error instanceof AppError) {
-			res.status(error.statusCode).json({
-				success: false,
-				message: error.message,
-			});
-			return;
-		}
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
 
-		res.status(500).json({
-			success: false,
-			message: "Erro interno do servidor",
-			error: error instanceof Error ? error.message : "Erro desconhecido",
-		});
-	}
+    res.status(500).json({
+      success: false,
+      message: "Erro interno do servidor",
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
 
-	public startCampaign = async (req: Request, res: Response): Promise<void> => {
-		try {
-			const { id: campaignId } = req.params;
-			const { instanceName, minDelay, maxDelay } = req.body;
+  // Início da campanha
+  public startCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+    try {
+      const { id: campaignId } = req.params;
+      const { instanceName, minDelay, maxDelay } = req.body;
 
-			if (!instanceName) {
-				res.status(400).json({
-					success: false,
-					message: "Nome da instância não fornecido",
-				});
-				return;
-			}
+      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
+      if (!instanceName) throw new BadRequestError("Nome da instância não fornecido");
+      if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
-			// Verificar campanha e leads
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-				include: {
-					leads: {
-						where: { status: "pending" },
-					},
-				},
-			});
+      const userId = req.user.id;
 
-			if (!campaign) {
-				res.status(404).json({
-					success: false,
-					message: "Campanha não encontrada",
-				});
-				return;
-			}
+      // Verificar campanha e leads
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: campaignId, userId },
+        include: {
+          leads: { where: { status: "pending" } },
+        },
+      });
 
-			// Criar dispatch
-			const dispatch = await prisma.campaignDispatch.create({
-				data: {
-					campaignId,
-					instanceName, // Usar o instanceName diretamente
-					status: "running",
-					startedAt: new Date(),
-				},
-			});
+      if (!campaign) throw new NotFoundError("Campanha não encontrada ou sem permissão");
+      if (!campaign.leads || campaign.leads.length === 0)
+        throw new BadRequestError("Não há leads pendentes para envio");
 
-			// Atualizar status da campanha
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					status: "running",
-					startedAt: new Date(),
-					progress: 0,
-				},
-			});
+      // Criar dispatch no banco
+      const dispatch = await prisma.campaignDispatch.create({
+        data: {
+          campaignId,
+          instanceName,
+          status: "running",
+          startedAt: new Date(),
+        },
+      });
 
-			console.log("Iniciando campanha:", {
-				campaignId,
-				instanceName,
-				minDelay,
-				maxDelay,
-				hasMessage: !!campaign.message,
-				hasMedia: !!campaign.mediaUrl,
-			});
+      // Atualizar status da campanha
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: "running", startedAt: new Date(), progress: 0 },
+      });
 
-			// Iniciar o processo de envio
-			await campaignService.startCampaign({
-				campaignId,
-				instanceName,
-				message: campaign.message || "",
-				media: campaign.mediaUrl
-					? {
-							type: campaign.mediaType as "image" | "video" | "audio",
-							content: campaign.mediaUrl,
-							caption: campaign.mediaCaption ?? undefined,
-						}
-					: undefined,
-				minDelay: minDelay || campaign.minDelay || 5,
-				maxDelay: maxDelay || campaign.maxDelay || 30,
-			});
+      // Iniciar envio
+      await campaignService.startCampaign({
+        campaignId,
+        instanceName,
+        message: campaign.message || "",
+        media: campaign.mediaUrl
+          ? {
+              type: campaign.mediaType as "image" | "video" | "audio",
+              content: campaign.mediaUrl,
+              caption: campaign.mediaCaption ?? undefined,
+            }
+          : undefined,
+        minDelay: minDelay || campaign.minDelay || 5,
+        maxDelay: maxDelay || campaign.maxDelay || 30,
+      });
 
-			res.status(200).json({
-				success: true,
-				message: "Campanha iniciada com sucesso",
-				dispatch,
-			});
-		} catch (error: unknown) {
-			console.error("Erro ao iniciar campanha:", error);
-			res.status(500).json({
-				success: false,
-				message: "Erro ao iniciar campanha",
-				error: error instanceof Error ? error.message : "Erro desconhecido",
-			});
-		}
-	};
+      res.status(200).json({
+        success: true,
+        message: "Campanha iniciada com sucesso",
+        dispatch,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  };
 
-	public pauseCampaign = async (req: Request, res: Response): Promise<void> => {
-		try {
-			const { id: campaignId } = req.params;
+  // Pausa a campanha
+  public pauseCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+    try {
+      const { id: campaignId } = req.params;
 
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-			});
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+      });
 
-			if (!campaign) {
-				throw new NotFoundError("Campanha não encontrada");
-			}
+      if (!campaign) throw new NotFoundError("Campanha não encontrada");
+      if (campaign.status !== "running")
+        throw new BadRequestError("Campanha não está em execução");
 
-			if (campaign.status !== "running") {
-				throw new BadRequestError("Campanha não está em execução");
-			}
+      // Atualizar status de dispatches e campanha
+      await prisma.campaignDispatch.updateMany({
+        where: { campaignId, status: "running" },
+        data: { status: "paused", completedAt: new Date() },
+      });
 
-			// Atualizar status do dispatch atual
-			await prisma.campaignDispatch.updateMany({
-				where: {
-					campaignId,
-					status: "running",
-				},
-				data: {
-					status: "paused",
-					completedAt: new Date(),
-				},
-			});
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: "paused", pausedAt: new Date() },
+      });
 
-			await campaignService.stopDispatch();
+      await campaignService.stopDispatch();
 
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					status: "paused",
-					pausedAt: new Date(),
-				},
-			});
+      res.status(200).json({
+        success: true,
+        message: "Campanha pausada com sucesso",
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  };
 
-			res.status(200).json({
-				success: true,
-				message: "Campanha pausada com sucesso",
-			});
-		} catch (error: unknown) {
-			this.handleError(error, res);
-		}
-	};
+  // Retoma a campanha
+  public resumeCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+    try {
+      const { id: campaignId } = req.params;
+      const { instanceName } = req.body;
 
-	public resumeCampaign = async (
-		req: Request,
-		res: Response,
-	): Promise<void> => {
-		try {
-			const { id: campaignId } = req.params;
-			const { instanceName } = req.body;
+      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
+      if (!instanceName) throw new BadRequestError("Nome da instância não fornecido");
+      if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
-			if (!instanceName) {
-				throw new BadRequestError("Nome da instância não fornecido");
-			}
+      const userId = req.user.id;
 
-			// Verificar se a instância existe e está conectada
-			const instance = await prisma.instance.findUnique({
-				where: { instanceName },
-			});
+      // Verificar campanha
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: campaignId, userId },
+      });
 
-			if (!instance) {
-				throw new BadRequestError("Instância não encontrada");
-			}
+      if (!campaign) throw new NotFoundError("Campanha não encontrada ou sem permissão");
+      if (campaign.status !== "paused") throw new BadRequestError("Campanha não está pausada");
 
-			if (instance.connectionStatus !== "open") {
-				throw new BadRequestError("Instância não está conectada");
-			}
+      const instance = await prisma.instance.findUnique({
+        where: { instanceName },
+      });
 
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-			});
+      if (!instance) throw new BadRequestError("Instância não encontrada");
+      if (instance.connectionStatus !== "open")
+        throw new BadRequestError("Instância não está conectada");
 
-			if (!campaign) {
-				throw new NotFoundError("Campanha não encontrada");
-			}
+      // Criar novo dispatch
+      const dispatch = await prisma.campaignDispatch.create({
+        data: {
+          campaignId,
+          instanceName: instance.instanceName,
+          status: "running",
+          startedAt: new Date(),
+        },
+      });
 
-			if (campaign.status !== "paused") {
-				throw new BadRequestError("Campanha não está pausada");
-			}
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: "running", pausedAt: null },
+      });
 
-			// Criar novo dispatch
-			const dispatch = await prisma.campaignDispatch.create({
-				data: {
-					campaignId,
-					instanceName: instance.instanceName,
-					status: "running",
-					startedAt: new Date(),
-				},
-			});
+      await campaignService.startCampaign({
+        campaignId,
+        instanceName: instance.instanceName,
+        message: campaign.message || "",
+        media: campaign.mediaUrl
+          ? {
+              type: campaign.mediaType as "image" | "video" | "audio",
+              content: campaign.mediaUrl,
+              caption: campaign.mediaCaption ?? undefined,
+            }
+          : undefined,
+        minDelay: campaign.minDelay || 5,
+        maxDelay: campaign.maxDelay || 30,
+      });
 
-			await prisma.campaign.update({
-				where: { id: campaignId },
-				data: {
-					status: "running",
-					pausedAt: null,
-				},
-			});
+      res.status(200).json({
+        success: true,
+        message: "Campanha retomada com sucesso",
+        dispatch,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  };
 
-			await campaignService.startCampaign({
-				campaignId,
-				instanceName: instance.instanceName,
-				message: campaign.message || "",
-				media: campaign.mediaUrl
-					? {
-							type: campaign.mediaType as "image" | "video" | "audio",
-							content: campaign.mediaUrl,
-							caption: campaign.mediaCaption ?? undefined,
-						}
-					: undefined,
-				minDelay: campaign.minDelay || 5,
-				maxDelay: campaign.maxDelay || 30,
-			});
+  // Retorna os históricos de disparos
+  public getDispatches = async (req: RequestWithUser, res: Response): Promise<void> => {
+    try {
+      const campaignId = req.params.id;
+      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
+      if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
-			res.status(200).json({
-				success: true,
-				message: "Campanha retomada com sucesso",
-				dispatch,
-			});
-		} catch (error: unknown) {
-			this.handleError(error, res);
-		}
-	};
+      const userId = req.user.id;
 
-	public getCampaignProgress = async (
-		req: Request,
-		res: Response,
-	): Promise<void> => {
-		try {
-			const { id: campaignId } = req.params;
+      const dispatches = await prisma.campaignDispatch.findMany({
+        where: {
+          campaignId,
+          instanceName: { in: await this.getUserInstances(userId) },
+        },
+        include: {
+          campaign: { select: { name: true, description: true } },
+          instance: { select: { connectionStatus: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
 
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-				include: {
-					statistics: true,
-					dispatches: {
-						orderBy: { createdAt: "desc" },
-						take: 1,
-					},
-				},
-			});
+      const formattedDispatches = dispatches.map((dispatch) => ({
+        id: dispatch.id,
+        campaignId: dispatch.campaignId,
+        campaignName: dispatch.campaign.name,
+        campaignDescription: dispatch.campaign.description,
+        instanceName: dispatch.instanceName,
+        instanceStatus: dispatch.instance.connectionStatus,
+        status: dispatch.status,
+        startedAt: dispatch.startedAt,
+        completedAt: dispatch.completedAt,
+        createdAt: dispatch.createdAt,
+        updatedAt: dispatch.updatedAt,
+      }));
 
-			if (!campaign) {
-				throw new NotFoundError("Campanha não encontrada");
-			}
+      res.status(200).json({
+        success: true,
+        data: formattedDispatches,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  };
 
-			res.status(200).json({
-				success: true,
-				data: {
-					status: campaign.status,
-					progress: campaign.progress,
-					startedAt: campaign.startedAt,
-					completedAt: campaign.completedAt,
-					pausedAt: campaign.pausedAt,
-					statistics: campaign.statistics,
-					currentDispatch: campaign.dispatches[0],
-				},
-			});
-		} catch (error: unknown) {
-			this.handleError(error, res);
-		}
-	};
+  // Obtém as instâncias do usuário
+  private async getUserInstances(userId: string) {
+    const instances = await prisma.instance.findMany({
+      where: { userId },
+      select: { instanceName: true },
+    });
+    return instances.map((instance) => instance.instanceName);
+  }
+
+  // Retorna o progresso da campanha
+  public getCampaignProgress = async (req: RequestWithUser, res: Response): Promise<void> => {
+    try {
+      const { id: campaignId } = req.params;
+
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        include: {
+          statistics: true,
+          dispatches: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      });
+
+      if (!campaign) throw new NotFoundError("Campanha não encontrada");
+
+      res.status(200).json({
+        success: true,
+        data: {
+          status: campaign.status,
+          progress: campaign.progress,
+          startedAt: campaign.startedAt,
+          completedAt: campaign.completedAt,
+          pausedAt: campaign.pausedAt,
+          statistics: campaign.statistics,
+          currentDispatch: campaign.dispatches[0],
+        },
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  };
 }
