@@ -11,8 +11,14 @@ import type {
 import type { Request, Response } from "express";
 import type { ParamsDictionary } from "express-serve-static-core";
 import type { MessageType } from "../enum";
-import type { MessageStatus } from "../types/webhook";
 import type { CampaignStatus } from "./types";
+export type MessageStatus =
+	| "PENDING"
+	| "SENT"
+	| "RECEIVED"
+	| "DELIVERED"
+	| "READ"
+	| "FAILED";
 
 export interface StatusHistoryEntry {
 	status: MessageStatus;
@@ -27,6 +33,7 @@ export interface MessageLogStatusHistory {
 	status: MessageStatus;
 	timestamp: string;
 }
+
 declare global {
 	namespace PrismaJson {
 		type MessageLogStatusHistory = {
@@ -514,7 +521,7 @@ export interface MessageUpdateData {
 }
 
 export interface Lead {
-	name?: string | null;
+	name: string | null;
 	phone: string;
 	email?: string | null;
 }
@@ -577,7 +584,7 @@ export interface MessageLogWithLead extends MessageLog {
 
 export interface LeadStats {
 	lead: {
-		name: string;
+		name: string | null;
 		phone: string;
 	};
 	messagesReceived: number;
@@ -586,14 +593,6 @@ export interface LeadStats {
 	averageResponseTime: number | null;
 	engagementRate: number;
 }
-
-export type MessageStatus =
-	| "PENDING"
-	| "SENT"
-	| "RECEIVED"
-	| "DELIVERED"
-	| "READ"
-	| "FAILED";
 
 export interface WebhookEvent {
 	event: string;
