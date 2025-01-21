@@ -18,13 +18,6 @@ export class WebhookController {
 
 	public handleWebhook = async (req: Request, res: Response): Promise<void> => {
 		try {
-			console.log("Webhook recebido:", {
-				path: req.path,
-				method: req.method,
-				headers: req.headers,
-				body: req.body,
-			});
-
 			const webhookData = req.body;
 
 			if (webhookData.event === "messages.upsert") {
@@ -42,8 +35,6 @@ export class WebhookController {
 
 	private async handleMessageUpsert(data: any) {
 		try {
-			console.log("Processando nova mensagem:", data);
-
 			const {
 				key: { remoteJid, id: messageId },
 				status,
@@ -56,21 +47,16 @@ export class WebhookController {
 			const phone = remoteJid.split("@")[0].split(":")[0]; // Remove sufixos do WhatsApp
 			const timestamp = new Date(messageTimestamp * 1000);
 
-			// Buscar mensagem com todas as possíveis combinações de IDs
 			const messageLog = await prisma.messageLog.findFirst({
 				where: {
 					OR: [{ messageId: messageId }, { messageId: data.key?.id }],
 				},
 			});
 
-			// Se não encontrar o messageLog, criar um novo
 			if (!messageLog) {
-				console.log("Criando novo registro de mensagem para:", messageId);
-
-				// Buscar o lead e a campanha relacionados
 				const campaignLead = await prisma.campaignLead.findFirst({
 					where: {
-						phone: phone,
+						phone,
 						status: {
 							in: ["PENDING", "SENT"],
 						},
@@ -83,15 +69,9 @@ export class WebhookController {
 					},
 				});
 
-				if (!campaignLead) {
-					console.log(
-						`Nenhuma campanha ativa encontrada para o número: ${phone}`,
-					);
-					return;
-				}
+				if (!campaignLead) return;
 
-				// Criar novo registro de mensagem
-				const newMessageLog = await prisma.messageLog.create({
+				await prisma.messageLog.create({
 					data: {
 						messageId: messageId,
 						messageDate: timestamp,
@@ -110,7 +90,6 @@ export class WebhookController {
 					},
 				});
 
-				// Atualizar o lead da campanha
 				await prisma.campaignLead.update({
 					where: { id: campaignLead.id },
 					data: {
@@ -121,48 +100,23 @@ export class WebhookController {
 					},
 				});
 
-				// Atualizar estatísticas da campanha
 				await this.updateCampaignStats(campaignLead.campaignId);
-
-				console.log(`Novo registro de mensagem criado: ${newMessageLog.id}`);
-				return;
+			} else {
+				await prisma.messageLog.update({
+					where: { id: messageLog.id },
+					data: {
+						status: "SENT",
+						sentAt: timestamp,
+						statusHistory: {
+							push: {
+								status: "SENT",
+								timestamp: timestamp.toISOString(),
+							},
+						},
+						updatedAt: new Date(),
+					},
+				});
 			}
-
-			// Se encontrou o messageLog, atualizar o status
-			const newStatusEntry = {
-				status: "SENT" as MessageStatus,
-				timestamp: timestamp.toISOString(),
-			};
-
-			const currentHistory = messageLog.statusHistory as Array<{
-				status: string;
-				timestamp: string;
-			}>;
-
-			const updatedStatusHistory = [...currentHistory, newStatusEntry];
-
-			await prisma.messageLog.update({
-				where: { id: messageLog.id },
-				data: {
-					status: "SENT" as MessageStatus,
-					sentAt: timestamp,
-					statusHistory: updatedStatusHistory as any,
-					updatedAt: new Date(),
-				},
-			});
-
-			// Atualizar CampaignLead
-			await prisma.campaignLead.updateMany({
-				where: { messageId },
-				data: {
-					status: "SENT",
-					sentAt: timestamp,
-					updatedAt: new Date(),
-				},
-			});
-
-			await this.updateCampaignStats(messageLog.campaignId);
-			console.log(`Mensagem atualizada com sucesso: ${messageId}`);
 		} catch (error) {
 			console.error("Erro ao processar nova mensagem:", error);
 		}
@@ -170,43 +124,20 @@ export class WebhookController {
 
 	private async handleMessageUpdate(data: any) {
 		try {
-			console.log("Processando atualização de mensagem:", data);
-
 			const { messageId, keyId, status, instanceId } = data;
 
-			// Buscar mensagem com todas as possíveis combinações de IDs
 			const messageLog = await prisma.messageLog.findFirst({
 				where: {
 					OR: [
 						{ messageId: messageId },
 						{ messageId: keyId },
-						{ messageId: messageId?.split("@")[0] }, // Tenta sem o sufixo do WhatsApp
+						{ messageId: messageId?.split("@")[0] },
 						{ messageId: keyId?.split("@")[0] },
 					],
 				},
 			});
 
-			// Adicionar log detalhado da busca
-			console.log("Tentativa de busca de mensagem:", {
-				possibleIds: {
-					messageId,
-					keyId,
-					messageIdWithoutSuffix: messageId?.split("@")[0],
-					keyIdWithoutSuffix: keyId?.split("@")[0],
-				},
-				found: !!messageLog,
-				messageLogDetails: messageLog
-					? {
-							id: messageLog.id,
-							messageId: messageLog.messageId,
-							status: messageLog.status,
-							campaignId: messageLog.campaignId,
-						}
-					: null,
-			});
-
 			if (!messageLog) {
-				// Se não encontrou, vamos buscar na tabela CampaignLead também
 				const campaignLead = await prisma.campaignLead.findFirst({
 					where: {
 						OR: [
@@ -218,27 +149,9 @@ export class WebhookController {
 					},
 				});
 
-				console.log("Busca alternativa em CampaignLead:", {
-					found: !!campaignLead,
-					leadDetails: campaignLead
-						? {
-								id: campaignLead.id,
-								messageId: campaignLead.messageId,
-								status: campaignLead.status,
-								campaignId: campaignLead.campaignId,
-							}
-						: null,
-				});
+				if (!campaignLead) return;
 
-				if (!campaignLead) {
-					console.log(
-						`Nenhum registro encontrado para a mensagem. MessageId: ${messageId}, KeyId: ${keyId}`,
-					);
-					return;
-				}
-
-				// Se encontrou o lead mas não o log, criar o log
-				const newMessageLog = await prisma.messageLog.create({
+				await prisma.messageLog.create({
 					data: {
 						messageId: messageId || keyId,
 						messageDate: new Date(),
@@ -255,51 +168,42 @@ export class WebhookController {
 						],
 					},
 				});
+			} else {
+				const mappedStatus = this.mapWhatsAppStatus(status);
+				const timestamp = new Date();
 
-				console.log("Novo MessageLog criado:", newMessageLog);
-				return;
-			}
-
-			const mappedStatus = this.mapWhatsAppStatus(status);
-			const timestamp = new Date();
-
-			// Atualizar MessageLog
-			await prisma.messageLog.update({
-				where: { id: messageLog.id },
-				data: {
-					status: mappedStatus,
-					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
-					...(mappedStatus === "READ" && { readAt: timestamp }),
-					statusHistory: {
-						push: {
-							status: mappedStatus,
-							timestamp: timestamp.toISOString(),
+				await prisma.messageLog.update({
+					where: { id: messageLog.id },
+					data: {
+						status: mappedStatus,
+						...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
+						...(mappedStatus === "READ" && { readAt: timestamp }),
+						statusHistory: {
+							push: {
+								status: mappedStatus,
+								timestamp: timestamp.toISOString(),
+							},
 						},
+						updatedAt: timestamp,
 					},
-					updatedAt: timestamp,
-				},
-			});
+				});
 
-			// Atualizar CampaignLead
-			await prisma.campaignLead.updateMany({
-				where: {
-					OR: [{ messageId: messageId }, { messageId: keyId }],
-				},
-				data: {
-					status: mappedStatus,
-					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
-					...(mappedStatus === "READ" && { readAt: timestamp }),
-					updatedAt: timestamp,
-				},
-			});
+				await prisma.campaignLead.updateMany({
+					where: {
+						OR: [{ messageId: messageId }, { messageId: keyId }],
+					},
+					data: {
+						status: mappedStatus,
+						...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
+						...(mappedStatus === "READ" && { readAt: timestamp }),
+						updatedAt: timestamp,
+					},
+				});
 
-			if (messageLog.campaignId) {
-				await this.updateCampaignStats(messageLog.campaignId);
+				if (messageLog.campaignId) {
+					await this.updateCampaignStats(messageLog.campaignId);
+				}
 			}
-
-			console.log(
-				`Status atualizado com sucesso: ${messageId || keyId} -> ${mappedStatus}`,
-			);
 		} catch (error) {
 			console.error("Erro ao processar atualização de mensagem:", error);
 		}
