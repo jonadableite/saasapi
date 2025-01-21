@@ -4,7 +4,6 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import type { RequestWithUser } from "../types";
 
-// Interface para o payload do token JWT
 interface JwtPayload {
 	userId?: string;
 	id?: string;
@@ -25,9 +24,7 @@ export const authMiddleware = async (
 	next: NextFunction,
 ) => {
 	try {
-		// Verificar se é uma rota de webhook
 		if (isWebhookRoute(req.path)) {
-			console.log("Rota de webhook detectada, pulando autenticação:", req.path);
 			return next();
 		}
 
@@ -44,7 +41,6 @@ export const authMiddleware = async (
 
 		const secret = process.env.JWT_SECRET;
 		if (!secret) {
-			console.error("JWT_SECRET não configurado");
 			return res
 				.status(500)
 				.json({ error: "Erro de configuração no servidor" });
@@ -52,8 +48,6 @@ export const authMiddleware = async (
 
 		try {
 			const decoded = jwt.verify(token, secret) as JwtPayload;
-			console.log("Token decodificado:", decoded);
-
 			const userIdFromToken = decoded.userId || decoded.id;
 
 			if (!userIdFromToken) {
@@ -84,7 +78,6 @@ export const authMiddleware = async (
 			req.user = user;
 			return next();
 		} catch (error) {
-			console.error("Erro na verificação do token:", error);
 			if (error instanceof jwt.TokenExpiredError) {
 				return res.status(401).json({ error: "Token expirado" });
 			}
@@ -94,12 +87,10 @@ export const authMiddleware = async (
 			throw error;
 		}
 	} catch (error) {
-		console.error("Erro na autenticação:", error);
 		return res.status(500).json({ error: "Erro interno no servidor" });
 	}
 };
 
-// Middleware específico para rotas que requerem empresa configurada
 export const requireCompanySetup = async (
 	req: RequestWithUser,
 	res: Response,
@@ -129,7 +120,6 @@ export const requireCompanySetup = async (
 
 		return next();
 	} catch (error) {
-		console.error("Erro ao verificar configuração da empresa:", error);
 		return res.status(500).json({ error: "Erro interno do servidor" });
 	}
 };
