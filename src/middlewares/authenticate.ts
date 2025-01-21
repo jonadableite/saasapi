@@ -82,13 +82,6 @@ export const authMiddleware = async (
 				return res.status(401).json({ error: "Usuário não encontrado" });
 			}
 
-			console.log("Usuário encontrado:", {
-				id: user.id,
-				email: user.email,
-				companyId: user.company?.id,
-				companyName: user.company?.name,
-			});
-
 			req.user = user;
 			return next();
 		} catch (error) {
