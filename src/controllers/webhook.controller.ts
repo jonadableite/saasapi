@@ -59,13 +59,11 @@ export class WebhookController {
 			});
 
 			if (messageLog) {
-				// Criar o novo objeto de histórico de status
 				const newStatusEntry = {
 					status: "SENT" as MessageStatus,
 					timestamp: timestamp.toISOString(),
 				};
 
-				// Converter o histórico existente e adicionar a nova entrada
 				const currentHistory = messageLog.statusHistory as Array<{
 					status: string;
 					timestamp: string;
@@ -73,18 +71,16 @@ export class WebhookController {
 
 				const updatedStatusHistory = [...currentHistory, newStatusEntry];
 
-				// Atualizar o log da mensagem
 				await prisma.messageLog.update({
 					where: { id: messageLog.id },
 					data: {
 						status: "SENT" as MessageStatus,
 						sentAt: timestamp,
-						statusHistory: updatedStatusHistory as any, // Necessário devido à tipagem do Prisma
+						statusHistory: updatedStatusHistory as any,
 						updatedAt: new Date(),
 					},
 				});
 
-				// Atualizar o lead da campanha
 				await prisma.campaignLead.updateMany({
 					where: { messageId },
 					data: {
@@ -103,26 +99,73 @@ export class WebhookController {
 
 	private async handleMessageUpdate(data: any) {
 		try {
-			const updates = Array.isArray(data) ? data : [data];
+			console.log("Processando atualização de mensagem:", data);
 
-			for (const update of updates) {
-				const {
-					key: { id: messageId },
-					update: { status: statusCode },
-				} = update;
+			const { messageId, keyId, status, instanceId } = data;
 
-				const mappedStatus = this.mapStatus(statusCode);
-				const timestamp = new Date();
+			const mappedStatus = this.mapWhatsAppStatus(status);
 
-				await this.analyticsService.updateMessageStats({
-					messageId,
-					messageDate: timestamp,
-					status: mappedStatus,
-					timestamp,
-				});
+			const messageLog = await prisma.messageLog.findFirst({
+				where: { messageId: messageId || keyId },
+			});
+
+			if (!messageLog) {
+				console.log(`Log não encontrado para mensagem: ${messageId || keyId}`);
+				return;
 			}
+
+			const timestamp = new Date();
+
+			await prisma.messageLog.update({
+				where: { id: messageLog.id },
+				data: {
+					status: mappedStatus,
+					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
+					...(mappedStatus === "READ" && { readAt: timestamp }),
+					statusHistory: {
+						push: {
+							status: mappedStatus,
+							timestamp: timestamp.toISOString(),
+						},
+					},
+				},
+			});
+
+			await prisma.campaignLead.updateMany({
+				where: { messageId: messageId || keyId },
+				data: {
+					status: mappedStatus,
+					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
+					...(mappedStatus === "READ" && { readAt: timestamp }),
+					updatedAt: timestamp,
+				},
+			});
+
+			if (messageLog.campaignId) {
+				await this.updateCampaignStats(messageLog.campaignId);
+			}
+
+			console.log(
+				`Status atualizado com sucesso: ${messageId || keyId} -> ${mappedStatus}`,
+			);
 		} catch (error) {
 			console.error("Erro ao processar atualização de mensagem:", error);
+			throw error;
+		}
+	}
+
+	private mapWhatsAppStatus(status: string): MessageStatus {
+		switch (status) {
+			case "DELIVERY_ACK":
+				return "DELIVERED";
+			case "READ":
+				return "READ";
+			case "PLAYED":
+				return "READ";
+			case "SERVER_ACK":
+				return "SENT";
+			default:
+				return "PENDING";
 		}
 	}
 
@@ -155,21 +198,6 @@ export class WebhookController {
 			});
 		} catch (error) {
 			console.error("Erro ao atualizar estatísticas da campanha:", error);
-		}
-	}
-
-	private mapStatus(status: number): MessageStatus {
-		switch (status) {
-			case 1:
-				return "SENT";
-			case 2:
-				return "RECEIVED";
-			case 3:
-				return "DELIVERED";
-			case 4:
-				return "READ";
-			default:
-				return "PENDING";
 		}
 	}
 }
