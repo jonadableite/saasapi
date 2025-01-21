@@ -11,12 +11,26 @@ interface JwtPayload {
 	plan?: string;
 }
 
+const isWebhookRoute = (path: string): boolean => {
+	const webhookPaths = [
+		"/webhook/evolution-global",
+		"/webhook/evolution-webhook",
+	];
+	return webhookPaths.some((webhookPath) => path.includes(webhookPath));
+};
+
 export const authMiddleware = async (
 	req: RequestWithUser,
 	res: Response,
 	next: NextFunction,
 ) => {
 	try {
+		// Verificar se é uma rota de webhook
+		if (isWebhookRoute(req.path)) {
+			console.log("Rota de webhook detectada, pulando autenticação:", req.path);
+			return next();
+		}
+
 		const authHeader = req.headers.authorization;
 		console.log("Auth Header:", authHeader);
 

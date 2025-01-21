@@ -1,13 +1,12 @@
 // src/routes/webhook.routes.ts
 import express from "express";
 import { WebhookController } from "../controllers/webhook.controller";
-import { authMiddleware } from "../middlewares/authenticate";
 
 const router = express.Router();
 const webhookController = new WebhookController();
 
-router.all("*", authMiddleware);
-
+// Rotas de webhook (sem autenticação)
 router.post("/evolution-global", webhookController.handleWebhook);
+router.post("/evolution-webhook", webhookController.handleWebhook);
 
 export { router as webhookRoutes };

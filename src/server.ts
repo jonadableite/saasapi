@@ -6,6 +6,7 @@ import setupMinioBucket from "./config/setupMinio";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
 import { prisma } from "./lib/prisma";
+import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
 import { analyticsRoutes } from "./routes/analytics.routes";
 import { campaignDispatcherRoutes } from "./routes/campaign-dispatcher.routes";
@@ -30,8 +31,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 9000;
 
-// Declarar servidor no escopo global
 let server: ReturnType<typeof app.listen>;
+
+// Middleware de erro deve ser o último
 app.use(errorHandler);
 
 // Configurações de CORS
@@ -44,7 +46,7 @@ app.use(
 	}),
 );
 
-// webhook do Stripe ANTES dos parsers
+// Rotas que precisam do body raw (antes dos parsers)
 app.post(
 	"/api/stripe/webhook",
 	express.raw({ type: "application/json" }),
@@ -55,12 +57,16 @@ app.post(
 app.use(express.json({ limit: "300mb" }));
 app.use(express.urlencoded({ limit: "300mb", extended: true }));
 
-// Rotas públicas
+// Rotas públicas (sem autenticação)
+app.use("/webhook", webhookRoutes); // Rotas de webhook da Evolution
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
 
-// Rotas protegidas
+// Middleware de autenticação para todas as rotas protegidas
+app.use("/api", authMiddleware);
+
+// Rotas protegidas (com autenticação)
 app.use("/api/leads", leadRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/instances", instanceRoutes);
@@ -71,7 +77,6 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/campaigns", campaignRoutes);
 app.use("/api/campaigns", campaignLeadRoutes);
 app.use("/api/reports", reportsRoutes);
-app.use("/webhook", webhookRoutes);
 app.use("/api/campaigns", campaignDispatcherRoutes);
 app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);

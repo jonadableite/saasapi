@@ -18,8 +18,14 @@ export class WebhookController {
 
 	public handleWebhook = async (req: Request, res: Response): Promise<void> => {
 		try {
+			console.log("Webhook recebido:", {
+				path: req.path,
+				method: req.method,
+				headers: req.headers,
+				body: req.body,
+			});
+
 			const webhookData = req.body;
-			console.log("Webhook recebido:", JSON.stringify(webhookData, null, 2));
 
 			if (webhookData.event === "messages.upsert") {
 				await this.handleMessageUpsert(webhookData.data);
