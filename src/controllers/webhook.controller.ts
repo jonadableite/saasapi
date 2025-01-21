@@ -53,53 +53,116 @@ export class WebhookController {
 				messageTimestamp,
 			} = data;
 
-			const phone = remoteJid.split("@")[0];
+			const phone = remoteJid.split("@")[0].split(":")[0]; // Remove sufixos do WhatsApp
 			const timestamp = new Date(messageTimestamp * 1000);
 
-			// Buscar mensagem por messageId ou keyId
+			// Buscar mensagem com todas as possíveis combinações de IDs
 			const messageLog = await prisma.messageLog.findFirst({
 				where: {
-					OR: [{ messageId }, { messageId: data.key?.id }],
+					OR: [{ messageId: messageId }, { messageId: data.key?.id }],
 				},
 			});
 
-			if (messageLog) {
-				const newStatusEntry = {
-					status: "SENT" as MessageStatus,
-					timestamp: timestamp.toISOString(),
-				};
+			// Se não encontrar o messageLog, criar um novo
+			if (!messageLog) {
+				console.log("Criando novo registro de mensagem para:", messageId);
 
-				const currentHistory = messageLog.statusHistory as Array<{
-					status: string;
-					timestamp: string;
-				}>;
-
-				const updatedStatusHistory = [...currentHistory, newStatusEntry];
-
-				await prisma.messageLog.update({
-					where: { id: messageLog.id },
-					data: {
-						status: "SENT" as MessageStatus,
-						sentAt: timestamp,
-						statusHistory: updatedStatusHistory as any,
-						updatedAt: new Date(),
+				// Buscar o lead e a campanha relacionados
+				const campaignLead = await prisma.campaignLead.findFirst({
+					where: {
+						phone: phone,
+						status: {
+							in: ["PENDING", "SENT"],
+						},
+					},
+					orderBy: {
+						createdAt: "desc",
+					},
+					include: {
+						campaign: true,
 					},
 				});
 
-				await prisma.campaignLead.updateMany({
-					where: { messageId },
+				if (!campaignLead) {
+					console.log(
+						`Nenhuma campanha ativa encontrada para o número: ${phone}`,
+					);
+					return;
+				}
+
+				// Criar novo registro de mensagem
+				const newMessageLog = await prisma.messageLog.create({
 					data: {
+						messageId: messageId,
+						messageDate: timestamp,
+						messageType: messageType || "text",
+						content: message?.conversation || "",
+						status: "SENT",
+						campaignId: campaignLead.campaignId,
+						leadId: campaignLead.id,
+						sentAt: timestamp,
+						statusHistory: [
+							{
+								status: "SENT",
+								timestamp: timestamp.toISOString(),
+							},
+						],
+					},
+				});
+
+				// Atualizar o lead da campanha
+				await prisma.campaignLead.update({
+					where: { id: campaignLead.id },
+					data: {
+						messageId: messageId,
 						status: "SENT",
 						sentAt: timestamp,
-						updatedAt: new Date(),
+						updatedAt: timestamp,
 					},
 				});
 
-				await this.updateCampaignStats(messageLog.campaignId);
-				console.log(`Mensagem atualizada com sucesso: ${messageId}`);
-			} else {
-				console.log(`Mensagem não encontrada para atualização: ${messageId}`);
+				// Atualizar estatísticas da campanha
+				await this.updateCampaignStats(campaignLead.campaignId);
+
+				console.log(`Novo registro de mensagem criado: ${newMessageLog.id}`);
+				return;
 			}
+
+			// Se encontrou o messageLog, atualizar o status
+			const newStatusEntry = {
+				status: "SENT" as MessageStatus,
+				timestamp: timestamp.toISOString(),
+			};
+
+			const currentHistory = messageLog.statusHistory as Array<{
+				status: string;
+				timestamp: string;
+			}>;
+
+			const updatedStatusHistory = [...currentHistory, newStatusEntry];
+
+			await prisma.messageLog.update({
+				where: { id: messageLog.id },
+				data: {
+					status: "SENT" as MessageStatus,
+					sentAt: timestamp,
+					statusHistory: updatedStatusHistory as any,
+					updatedAt: new Date(),
+				},
+			});
+
+			// Atualizar CampaignLead
+			await prisma.campaignLead.updateMany({
+				where: { messageId },
+				data: {
+					status: "SENT",
+					sentAt: timestamp,
+					updatedAt: new Date(),
+				},
+			});
+
+			await this.updateCampaignStats(messageLog.campaignId);
+			console.log(`Mensagem atualizada com sucesso: ${messageId}`);
 		} catch (error) {
 			console.error("Erro ao processar nova mensagem:", error);
 		}
