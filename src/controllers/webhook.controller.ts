@@ -42,6 +42,8 @@ export class WebhookController {
 
 	private async handleMessageUpsert(data: any) {
 		try {
+			console.log("Processando nova mensagem:", data);
+
 			const {
 				key: { remoteJid, id: messageId },
 				status,
@@ -54,8 +56,11 @@ export class WebhookController {
 			const phone = remoteJid.split("@")[0];
 			const timestamp = new Date(messageTimestamp * 1000);
 
+			// Buscar mensagem por messageId ou keyId
 			const messageLog = await prisma.messageLog.findFirst({
-				where: { messageId },
+				where: {
+					OR: [{ messageId }, { messageId: data.key?.id }],
+				},
 			});
 
 			if (messageLog) {
@@ -91,6 +96,9 @@ export class WebhookController {
 				});
 
 				await this.updateCampaignStats(messageLog.campaignId);
+				console.log(`Mensagem atualizada com sucesso: ${messageId}`);
+			} else {
+				console.log(`Mensagem não encontrada para atualização: ${messageId}`);
 			}
 		} catch (error) {
 			console.error("Erro ao processar nova mensagem:", error);
@@ -103,18 +111,34 @@ export class WebhookController {
 
 			const { messageId, keyId, status, instanceId } = data;
 
-			const mappedStatus = this.mapWhatsAppStatus(status);
-
+			// Buscar mensagem por messageId ou keyId
 			const messageLog = await prisma.messageLog.findFirst({
-				where: { messageId: messageId || keyId },
+				where: {
+					OR: [{ messageId: messageId }, { messageId: keyId }],
+				},
 			});
 
 			if (!messageLog) {
-				console.log(`Log não encontrado para mensagem: ${messageId || keyId}`);
+				console.log(
+					`Log não encontrado para mensagem. MessageId: ${messageId}, KeyId: ${keyId}`,
+				);
 				return;
 			}
 
+			const mappedStatus = this.mapWhatsAppStatus(status);
 			const timestamp = new Date();
+
+			const newStatusEntry = {
+				status: mappedStatus,
+				timestamp: timestamp.toISOString(),
+			};
+
+			const currentHistory = messageLog.statusHistory as Array<{
+				status: string;
+				timestamp: string;
+			}>;
+
+			const updatedStatusHistory = [...currentHistory, newStatusEntry];
 
 			await prisma.messageLog.update({
 				where: { id: messageLog.id },
@@ -122,17 +146,15 @@ export class WebhookController {
 					status: mappedStatus,
 					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
 					...(mappedStatus === "READ" && { readAt: timestamp }),
-					statusHistory: {
-						push: {
-							status: mappedStatus,
-							timestamp: timestamp.toISOString(),
-						},
-					},
+					statusHistory: updatedStatusHistory as any,
+					updatedAt: timestamp,
 				},
 			});
 
 			await prisma.campaignLead.updateMany({
-				where: { messageId: messageId || keyId },
+				where: {
+					OR: [{ messageId: messageId }, { messageId: keyId }],
+				},
 				data: {
 					status: mappedStatus,
 					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
@@ -150,7 +172,6 @@ export class WebhookController {
 			);
 		} catch (error) {
 			console.error("Erro ao processar atualização de mensagem:", error);
-			throw error;
 		}
 	}
 
