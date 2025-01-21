@@ -1,14 +1,21 @@
-// src/controllers/webhook.controller.ts
 import { PrismaClient } from "@prisma/client";
 import type { Request, Response } from "express";
 import type { MessageStatus } from "../interface";
 import { AnalyticsService } from "../services/analytics.service";
 import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 
-interface CacheEntry {
-	timestamp: number;
-	retries: number;
-	data: any;
+interface MessageKey {
+	remoteJid: string;
+	fromMe: boolean;
+	id: string;
+	participant?: string;
+}
+
+interface MessageResponse {
+	key: MessageKey;
+	message: any;
+	messageTimestamp: string;
+	status: string;
 }
 
 const prisma = new PrismaClient();
@@ -16,69 +23,25 @@ const prisma = new PrismaClient();
 export class WebhookController {
 	private messageDispatcherService: MessageDispatcherService;
 	private analyticsService: AnalyticsService;
-	private messageCache: Map<string, CacheEntry>;
-	private readonly MAX_RETRIES = 3;
-	private readonly CACHE_EXPIRY = 30000; // 30 segundos
-	private readonly RETRY_DELAY = 2000; // 2 segundos
+	private messageCache: Map<string, { timestamp: number; data: any }>;
 
 	constructor() {
 		this.messageDispatcherService = new MessageDispatcherService();
 		this.analyticsService = new AnalyticsService();
 		this.messageCache = new Map();
 
-		// Iniciar limpeza periódica do cache
-		setInterval(() => this.cleanCache(), 60000); // Limpa o cache a cada minuto
+		// Limpar cache periodicamente
+		setInterval(() => this.cleanCache(), 5 * 60 * 1000);
 	}
 
 	private cleanCache() {
 		const now = Date.now();
-		for (const [key, entry] of this.messageCache.entries()) {
-			if (now - entry.timestamp > this.CACHE_EXPIRY) {
+		for (const [key, value] of this.messageCache.entries()) {
+			if (now - value.timestamp > 5 * 60 * 1000) {
+				// 5 minutos
 				this.messageCache.delete(key);
 			}
 		}
-	}
-
-	private cacheMessage(key: string, data: any) {
-		this.messageCache.set(key, {
-			timestamp: Date.now(),
-			retries: 0,
-			data,
-		});
-	}
-
-	private async retryOperation<T>(
-		operation: () => Promise<T>,
-		key: string,
-		maxRetries: number = this.MAX_RETRIES,
-	): Promise<T | null> {
-		let retries = 0;
-		let lastError: any = null;
-
-		while (retries < maxRetries) {
-			try {
-				const result = await operation();
-				if (result) {
-					this.messageCache.delete(key);
-					return result;
-				}
-			} catch (error) {
-				lastError = error;
-			}
-
-			retries++;
-			if (retries < maxRetries) {
-				await new Promise((resolve) =>
-					setTimeout(resolve, this.RETRY_DELAY * retries),
-				);
-			}
-		}
-
-		console.error(
-			`Operação falhou após ${maxRetries} tentativas para key: ${key}`,
-			lastError,
-		);
-		return null;
 	}
 
 	public handleWebhook = async (req: Request, res: Response): Promise<void> => {
@@ -93,79 +56,53 @@ export class WebhookController {
 
 			res.status(200).json({ success: true });
 		} catch (error) {
-			console.error("Erro ao processar webhook:", error);
 			res.status(500).json({ error: "Erro interno ao processar webhook" });
 		}
 	};
 
-	private async handleMessageUpsert(data: any) {
+	private async handleMessageUpsert(data: MessageResponse) {
 		try {
 			const {
 				key: { remoteJid, id: messageId },
-				status,
 				message,
-				messageType,
 				messageTimestamp,
+				status,
 			} = data;
 
 			const phone = remoteJid.split("@")[0].split(":")[0];
-			const timestamp = new Date(messageTimestamp * 1000);
+			const timestamp = new Date(Number.parseInt(messageTimestamp) * 1000);
 
-			// Adicionar mensagem ao cache
-			this.cacheMessage(messageId, { data, timestamp });
+			// Determinar tipo de mensagem
+			let messageType = "text";
+			let content = "";
 
-			const findOrCreateMessage = async () => {
-				const messageLog = await prisma.messageLog.findFirst({
-					where: {
-						OR: [{ messageId: messageId }, { messageId: data.key?.id }],
-					},
-				});
+			if (message.imageMessage) {
+				messageType = "image";
+				content = message.imageMessage.caption || "";
+			} else if (message.audioMessage) {
+				messageType = "audio";
+				content = "";
+			} else if (message.extendedTextMessage) {
+				messageType = "text";
+				content = message.extendedTextMessage.text || "";
+			} else if (message.conversation) {
+				messageType = "text";
+				content = message.conversation;
+			}
 
-				if (!messageLog) {
-					const campaignLead = await prisma.campaignLead.findFirst({
-						where: {
-							phone,
-							status: {
-								in: ["PENDING", "SENT"],
-							},
-						},
-						orderBy: {
-							createdAt: "desc",
-						},
-						include: {
-							campaign: true,
-						},
-					});
+			// Armazenar no cache
+			this.messageCache.set(messageId, {
+				timestamp: Date.now(),
+				data: { ...data, phone, messageType, content },
+			});
 
-					if (!campaignLead) return null;
-
-					return prisma.messageLog.create({
-						data: {
-							messageId: messageId,
-							messageDate: timestamp,
-							messageType: messageType || "text",
-							content: message?.conversation || "",
-							status: "SENT",
-							campaignId: campaignLead.campaignId,
-							leadId: campaignLead.id,
-							sentAt: timestamp,
-							statusHistory: [
-								{
-									status: "SENT",
-									timestamp: timestamp.toISOString(),
-								},
-							],
-						},
-					});
-				}
-
-				return messageLog;
-			};
-
-			const messageLog = await this.retryOperation(
-				findOrCreateMessage,
-				messageId,
-			);
+			// Buscar ou criar registro
+			const messageLog = await this.findOrCreateMessageLog(messageId, phone, {
+				messageType,
+				content,
+				timestamp,
+				status: this.mapWhatsAppStatus(status),
+			});
 
 			if (messageLog) {
 				await this.updateMessageStatus(messageLog, "SENT", timestamp);
@@ -175,48 +112,18 @@ export class WebhookController {
 		}
 	}
 
-	private async handleMessageUpdate(data: any) {
-		try {
-			const { messageId, keyId, status } = data;
-			const cacheKey = messageId || keyId;
+	private async findOrCreateMessageLog(
+		messageId: string,
+		phone: string,
+		data: any,
+	) {
+		const messageLog = await prisma.messageLog.findFirst({
+			where: {
+				OR: [{ messageId }, { messageId: data.key?.id }],
+			},
+		});
 
-			const findMessage = async () => {
-				const messageLog = await prisma.messageLog.findFirst({
-					where: {
-						OR: [
-							{ messageId: messageId },
-							{ messageId: keyId },
-							{ messageId: messageId?.split("@")[0] },
-							{ messageId: keyId?.split("@")[0] },
-						],
-					},
-				});
-
-				if (!messageLog) {
-					const cachedData = this.messageCache.get(cacheKey);
-					if (cachedData) {
-						// Criar messageLog a partir dos dados em cache
-						return this.createMessageLogFromCache(cachedData.data, status);
-					}
-				}
-
-				return messageLog;
-			};
-
-			const messageLog = await this.retryOperation(findMessage, cacheKey);
-
-			if (messageLog) {
-				const mappedStatus = this.mapWhatsAppStatus(status);
-				await this.updateMessageStatus(messageLog, mappedStatus);
-			}
-		} catch (error) {
-			console.error("Erro ao processar atualização de mensagem:", error);
-		}
-	}
-
-	private async createMessageLogFromCache(cachedData: any, status: string) {
-		const { remoteJid, messageId } = cachedData.key;
-		const phone = remoteJid.split("@")[0].split(":")[0];
+		if (messageLog) return messageLog;
 
 		const campaignLead = await prisma.campaignLead.findFirst({
 			where: {
@@ -228,6 +135,9 @@ export class WebhookController {
 			orderBy: {
 				createdAt: "desc",
 			},
+			include: {
+				campaign: true,
+			},
 		});
 
 		if (!campaignLead) return null;
@@ -235,20 +145,57 @@ export class WebhookController {
 		return prisma.messageLog.create({
 			data: {
 				messageId,
-				messageDate: new Date(cachedData.timestamp),
-				status: this.mapWhatsAppStatus(status),
+				messageDate: data.timestamp,
+				messageType: data.messageType,
+				content: data.content,
+				status: data.status,
 				campaignId: campaignLead.campaignId,
 				leadId: campaignLead.id,
-				content: "",
-				messageType: "text",
+				sentAt: data.timestamp,
 				statusHistory: [
 					{
-						status: this.mapWhatsAppStatus(status),
-						timestamp: new Date().toISOString(),
+						status: data.status,
+						timestamp: data.timestamp.toISOString(),
 					},
 				],
 			},
 		});
+	}
+
+	private async handleMessageUpdate(data: any) {
+		try {
+			const { messageId, keyId, status } = data;
+			const cacheKey = messageId || keyId;
+
+			// Tentar recuperar do cache
+			const cachedMessage = this.messageCache.get(cacheKey);
+
+			const messageLog = await prisma.messageLog.findFirst({
+				where: {
+					OR: [
+						{ messageId: messageId },
+						{ messageId: keyId },
+						{ messageId: messageId?.split("@")[0] },
+						{ messageId: keyId?.split("@")[0] },
+					],
+				},
+			});
+
+			if (!messageLog && cachedMessage) {
+				// Criar novo log a partir do cache
+				return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
+					...cachedMessage.data,
+					status: this.mapWhatsAppStatus(status),
+				});
+			}
+
+			if (messageLog) {
+				const mappedStatus = this.mapWhatsAppStatus(status);
+				await this.updateMessageStatus(messageLog, mappedStatus);
+			}
+		} catch (error) {
+			console.error("Erro ao processar atualização de mensagem:", error);
+		}
 	}
 
 	private async updateMessageStatus(
@@ -273,8 +220,8 @@ export class WebhookController {
 				},
 			});
 
-			await prisma.campaignLead.updateMany({
-				where: { messageId: messageLog.messageId },
+			await prisma.campaignLead.update({
+				where: { id: messageLog.leadId },
 				data: {
 					status,
 					...(status === "DELIVERED" && { deliveredAt: timestamp }),
@@ -287,7 +234,7 @@ export class WebhookController {
 				await this.updateCampaignStats(messageLog.campaignId);
 			}
 		} catch (error) {
-			console.error("Erro ao atualizar status da mensagem:", error);
+			console.error("Erro ao atualizar status:", error);
 			throw error;
 		}
 	}
