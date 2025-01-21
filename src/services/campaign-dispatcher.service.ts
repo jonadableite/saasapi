@@ -33,7 +33,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		this.stop = false;
 		this.messageLogService = new MessageLogService();
 	}
-	async startDispatch(params: {
+	public async startDispatch(params: {
 		campaignId: string;
 		instanceName: string;
 		message: string;
@@ -42,63 +42,58 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		maxDelay: number;
 	}): Promise<void> {
 		try {
-			console.log("Iniciando dispatch com parâmetros:", params);
+			console.log("Iniciando processo de dispatch...");
 
+			// Buscar leads pendentes
 			const leads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId: params.campaignId,
-					status: "pending",
+					OR: [
+						{ status: "pending" },
+						{ status: "failed" },
+						{ status: { equals: undefined } }, // Em vez de null
+					],
 				},
-				orderBy: {
-					createdAt: "asc",
-				},
+				orderBy: { createdAt: "asc" },
 			});
 
-			console.log(`Encontrados ${leads.length} leads pendentes`);
+			console.log(`Encontrados ${leads.length} leads para processamento`);
+
+			let processedCount = 0;
+			const totalLeads = leads.length;
 
 			for (const lead of leads) {
 				if (this.stop) {
-					console.log("Processo de dispatch interrompido");
+					console.log("Processo interrompido manualmente");
 					break;
 				}
 
 				try {
 					console.log(`Processando lead ${lead.id} (${lead.phone})`);
 
-					// Primeiro enviar mídia, se houver
-					let messageId: string | undefined;
+					// Atualizar status para processing
+					await prisma.campaignLead.update({
+						where: { id: lead.id },
+						data: {
+							status: "processing",
+							updatedAt: new Date(),
+						},
+					});
 
+					// Enviar mídia se houver
 					if (params.media) {
 						console.log("Enviando mídia...");
-						const mediaResponse = await this.sendMedia(
-							params.instanceName,
-							lead.phone,
-							{
-								type: params.media.type,
-								base64: params.media.base64,
-								caption: params.media.caption,
-								fileName: params.media.fileName,
-								mimetype: params.media.mimetype,
-							},
-						);
-
-						if (mediaResponse?.key?.id) {
-							messageId = mediaResponse.key.id;
-						}
+						await this.sendMedia(params.instanceName, lead.phone, params.media);
 					}
 
-					// Depois enviar mensagem de texto, se houver
+					// Enviar mensagem
 					if (params.message) {
-						console.log("Enviando mensagem de texto...");
-						const textResponse = await this.sendText(
+						console.log("Enviando mensagem...");
+						await this.sendText(
 							params.instanceName,
 							lead.phone,
 							params.message,
 						);
-
-						if (textResponse?.key?.id) {
-							messageId = textResponse.key.id;
-						}
 					}
 
 					// Atualizar status do lead
@@ -107,21 +102,41 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						data: {
 							status: "sent",
 							sentAt: new Date(),
-							messageId: messageId || Date.now().toString(),
 						},
 					});
 
-					// Aguardar delay antes do próximo envio
-					const delayTime =
+					processedCount++;
+
+					// Atualizar progresso da campanha
+					const progress = Math.floor((processedCount / totalLeads) * 100);
+					await prisma.campaign.update({
+						where: { id: params.campaignId },
+						data: { progress },
+					});
+
+					// Atualizar estatísticas
+					await prisma.campaignStatistics.upsert({
+						where: { campaignId: params.campaignId },
+						create: {
+							campaignId: params.campaignId,
+							totalLeads,
+							sentCount: processedCount,
+						},
+						update: {
+							sentCount: processedCount,
+						},
+					});
+
+					// Aguardar delay entre envios
+					const delay =
 						Math.floor(
 							Math.random() * (params.maxDelay - params.minDelay + 1),
 						) + params.minDelay;
-					console.log(
-						`Aguardando ${delayTime} segundos antes do próximo envio...`,
-					);
-					await new Promise((resolve) => setTimeout(resolve, delayTime * 1000));
+					console.log(`Aguardando ${delay} segundos antes do próximo envio...`);
+					await new Promise((resolve) => setTimeout(resolve, delay * 1000));
 				} catch (error) {
 					console.error(`Erro ao processar lead ${lead.id}:`, error);
+
 					await prisma.campaignLead.update({
 						where: { id: lead.id },
 						data: {
@@ -133,6 +148,18 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 					});
 				}
 			}
+
+			// Atualizar status final da campanha
+			await prisma.campaign.update({
+				where: { id: params.campaignId },
+				data: {
+					status: this.stop ? "paused" : "completed",
+					completedAt: this.stop ? null : new Date(),
+					progress: this.stop
+						? Math.floor((processedCount / totalLeads) * 100)
+						: 100,
+				},
+			});
 		} catch (error) {
 			console.error("Erro no processo de dispatch:", error);
 			throw error;

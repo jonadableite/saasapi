@@ -124,6 +124,7 @@ export default {
 			".ppt",
 			".pptx",
 			".txt",
+			".csv",
 
 			// Arquivos compactados
 			".zip",
@@ -174,22 +175,27 @@ export const uploadConfig = multer({
 			mimetype: file.mimetype,
 		});
 
-		// Aceitar qualquer arquivo com extensão .csv ou .xlsx
-		const allowedExtensions = ["csv", "xlsx"];
+		// Adicionar .txt aos formatos permitidos
+		const allowedExtensions = ["csv", "xlsx", "txt"];
 		const fileExtension =
 			file.originalname.split(".").pop()?.toLowerCase() || "";
 
 		if (allowedExtensions.includes(fileExtension)) {
-			// Força o mimetype para csv se a extensão for csv
-			if (fileExtension === "csv") {
-				file.mimetype = "text/csv";
+			// Força o mimetype apropriado baseado na extensão
+			switch (fileExtension) {
+				case "csv":
+					file.mimetype = "text/csv";
+					break;
+				case "txt":
+					file.mimetype = "text/plain";
+					break;
 			}
 			cb(null, true);
 		} else {
 			cb(
 				new BadRequestError(
-					`Formato não suportado. Use arquivos .csv ou .xlsx`,
-				) as any, // Type assertion para compatibilidade com multer
+					`Formato não suportado. Use arquivos .csv, .xlsx ou .txt`,
+				) as any,
 			);
 		}
 	},

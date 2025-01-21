@@ -504,7 +504,6 @@ export interface StatusUpdate {
 export interface ImportLeadsResult {
 	success: boolean;
 	count: number;
-	leads: CampaignLead[];
 	summary: {
 		total: number;
 		totalInFile: number;
@@ -512,6 +511,24 @@ export interface ImportLeadsResult {
 		existingInCampaign: number;
 		newLeadsImported: number;
 	};
+	leads?: CampaignLead[];
+}
+
+export interface ExcelRow {
+	[key: string]: any;
+	phone?: string;
+	telefone?: string;
+	Phone?: string;
+	Telefone?: string;
+	name?: string;
+	nome?: string;
+	Name?: string;
+	Nome?: string;
+}
+
+export interface Lead {
+	name: string | null;
+	phone: string;
 }
 
 export interface PlanLimits {

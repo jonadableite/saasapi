@@ -5,7 +5,12 @@ import csv from "csv-parser";
 import xlsx from "xlsx";
 import { CampaignPlan, MessageType } from "../enum";
 import { BadRequestError, NotFoundError } from "../errors/AppError";
-import type { ImportLeadsResult, Lead, PlanLimits } from "../interface";
+import type {
+	ExcelRow,
+	ImportLeadsResult,
+	Lead,
+	PlanLimits,
+} from "../interface";
 
 const prisma = new PrismaClient();
 
@@ -46,7 +51,12 @@ export class CampaignLeadService {
 		console.log("Iniciando importação de arquivo:", file.originalname);
 
 		try {
-			// Primeiro, buscar o userId da campanha
+			// Validar o arquivo
+			if (!file || !file.buffer) {
+				throw new BadRequestError("Arquivo inválido");
+			}
+
+			// Buscar a campanha
 			const campaign = await prisma.campaign.findUnique({
 				where: { id: campaignId },
 				select: { userId: true },
@@ -56,105 +66,71 @@ export class CampaignLeadService {
 				throw new NotFoundError("Campanha não encontrada");
 			}
 
-			// Processar o arquivo para obter os leads
-			const leads = await this.processFile(file);
+			// Determinar o tipo de arquivo pela extensão e processar
+			const fileExtension = file.originalname.toLowerCase().split(".").pop();
+			let processedLeads: Lead[] = [];
 
-			// Remover duplicatas do arquivo
-			const uniqueLeads = this.removeDuplicateLeads(leads);
+			switch (fileExtension) {
+				case "csv":
+					processedLeads = await this.processCSV(file.buffer);
+					break;
+				case "xlsx":
+				case "xls":
+					processedLeads = await this.processExcel(file.buffer);
+					break;
+				case "txt":
+					processedLeads = await this.processTXT(file.buffer);
+					break;
+				default:
+					throw new BadRequestError(
+						"Formato de arquivo não suportado. Use CSV, Excel ou TXT",
+					);
+			}
+
+			console.log("Leads extraídos:", processedLeads);
+
+			if (processedLeads.length === 0) {
+				throw new BadRequestError("Nenhum lead válido encontrado no arquivo");
+			}
+
+			// Remover duplicatas
+			const uniqueLeads = this.removeDuplicateLeads(processedLeads);
+			console.log("Leads únicos:", uniqueLeads);
 
 			// Verificar leads existentes
 			const existingLeads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId,
 					phone: {
-						in: uniqueLeads.map((lead) => this.formatPhone(lead.phone)),
+						in: uniqueLeads.map((lead) => lead.phone),
 					},
 				},
 			});
 
 			const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
+			const newLeads = uniqueLeads.filter(
+				(lead) => !existingPhones.has(lead.phone),
+			);
 
-			// Filtrar apenas leads novos
-			const newLeads = uniqueLeads.filter((lead) => {
-				const formattedPhone = this.formatPhone(lead.phone);
-				return !existingPhones.has(formattedPhone);
-			});
+			// Criar novos leads
+			const result = await this.createLeads(
+				campaignId,
+				campaign.userId,
+				newLeads,
+			);
 
-			// Se todos os leads já existem, ainda assim permitir o envio
-			if (newLeads.length === 0 && existingLeads.length > 0) {
-				// Resetar o status dos leads existentes para "pending"
-				await prisma.campaignLead.updateMany({
-					where: {
-						campaignId,
-						phone: { in: uniqueLeads.map((lead) => lead.phone) },
-					},
-					data: {
-						status: "pending",
-						sentAt: null,
-						deliveredAt: null,
-						readAt: null,
-						failedAt: null,
-						failureReason: null,
-						messageId: null,
-					},
-				});
-
-				// Buscar total de leads na campanha
-				const totalLeadsInCampaign = await prisma.campaignLead.count({
-					where: { campaignId },
-				});
-
-				return {
-					success: true,
-					count: existingLeads.length,
-					leads: existingLeads,
-					summary: {
-						total: totalLeadsInCampaign,
-						totalInFile: leads.length,
-						duplicatesInFile: leads.length - uniqueLeads.length,
-						existingInCampaign: existingLeads.length,
-						newLeadsImported: 0,
-					},
-				};
-			}
-
-			// Criar novos leads com userId
-			const createdLeads = await prisma.campaignLead.createMany({
-				data: newLeads.map((lead) => ({
-					campaignId,
-					userId: campaign.userId, // Adicionar userId da campanha
-					name: lead.name,
-					phone: this.formatPhone(lead.phone),
-					status: "pending",
-				})),
-			});
-
-			// Buscar total de leads na campanha após a criação
-			const totalLeadsInCampaign = await prisma.campaignLead.count({
-				where: { campaignId },
-			});
-
-			// Buscar todos os leads atualizados
-			const allLeads = await prisma.campaignLead.findMany({
-				where: {
-					campaignId,
-					phone: { in: uniqueLeads.map((lead) => lead.phone) },
-				},
-			});
-
-			// Atualizar estatísticas da campanha
-			await this.updateCampaignStats(campaignId, createdLeads.count);
+			// Atualizar estatísticas
+			await this.updateCampaignStats(campaignId, result.count);
 
 			return {
 				success: true,
-				count: allLeads.length,
-				leads: allLeads,
+				count: result.count,
 				summary: {
-					total: totalLeadsInCampaign,
-					totalInFile: leads.length,
-					duplicatesInFile: leads.length - uniqueLeads.length,
+					total: uniqueLeads.length,
+					totalInFile: processedLeads.length,
+					duplicatesInFile: processedLeads.length - uniqueLeads.length,
 					existingInCampaign: existingLeads.length,
-					newLeadsImported: createdLeads.count,
+					newLeadsImported: result.count,
 				},
 			};
 		} catch (error) {
@@ -163,79 +139,243 @@ export class CampaignLeadService {
 		}
 	}
 
-	private removeDuplicateLeads(leads: Lead[]): Lead[] {
-		const uniquePhones = new Set<string>();
-		const uniqueLeads: Lead[] = [];
-
-		leads.forEach((lead) => {
-			if (!uniquePhones.has(lead.phone)) {
-				uniquePhones.add(lead.phone);
-				uniqueLeads.push(lead);
-			}
-		});
-
-		return uniqueLeads;
-	}
-
-	private async processFile(file: Express.Multer.File): Promise<Lead[]> {
-		const extension = file.originalname.split(".").pop()?.toLowerCase();
-
-		if (extension === "csv") {
-			return this.processCSV(file.buffer);
-		} else if (extension === "xlsx") {
-			return this.processExcel(file.buffer);
-		}
-
-		throw new BadRequestError(
-			"Formato de arquivo não suportado (apenas CSV ou Excel)",
-		);
-	}
-
 	private async processCSV(buffer: Buffer): Promise<Lead[]> {
 		return new Promise((resolve, reject) => {
 			const leads: Lead[] = [];
 			const readable = Readable.from(buffer.toString());
 
 			readable
-				.pipe(csv())
-				.on("data", (row) => {
-					if (this.isValidLead(row)) {
-						leads.push({
-							name: row.name || row.nome || null,
-							phone: this.formatPhone(row.phone || row.telefone),
-						});
+				.pipe(
+					csv({
+						mapHeaders: ({ header }) => header?.toLowerCase().trim(), // Normaliza cabeçalhos
+						mapValues: ({ value }) =>
+							value
+								?.toString()
+								.trim()
+								.replace(/^["']|["']$/g, "") || null, // Remove aspas duplas ou simples
+					}),
+				)
+				.on("data", (row: Record<string, any>) => {
+					try {
+						// Verifica pela presença de colunas de cabeçalho
+						if (
+							row.phone?.toLowerCase() === "phone" ||
+							row.name?.toLowerCase() === "name"
+						) {
+							return; // Ignora o cabeçalho
+						}
+
+						// Obtém valores das colunas
+						const phoneValue = row.phone || row.telefone || ""; // Ajusta mapeamento para diferentes nomes
+						const nameValue = row.name || row.nome || null;
+
+						// Formata o número de telefone
+						const phone = this.formatPhone(phoneValue);
+
+						if (phone) {
+							leads.push({
+								name: nameValue?.trim() || null,
+								phone,
+							});
+						}
+					} catch (error) {
+						console.error("Erro ao processar linha no CSV:", row, error);
 					}
 				})
-				.on("end", () => resolve(leads))
-				.on("error", reject);
+				.on("end", () => {
+					console.log(`${leads.length} leads foram processados do CSV:`, leads);
+					resolve(leads);
+				})
+				.on("error", (error) => {
+					console.error("Erro ao processar CSV:", error);
+					reject(new BadRequestError("Erro ao processar arquivo CSV"));
+				});
 		});
 	}
 
+	private async processTXT(buffer: Buffer): Promise<Lead[]> {
+		try {
+			const content = buffer.toString("utf-8");
+			const lines = content.split(/\r?\n/); // Divide o conteúdo em linhas
+			const leads: Lead[] = [];
+
+			// Detecta e ignora cabeçalho
+			const firstLine = lines[0]?.toLowerCase().trim();
+			const isHeader =
+				firstLine.includes("phone") || firstLine.includes("name");
+			const startLine = isHeader ? 1 : 0; // Começa a ler a partir da linha 1 se houver cabeçalho
+
+			for (let i = startLine; i < lines.length; i++) {
+				const line = lines[i].trim();
+				if (!line) continue;
+
+				// Divide a linha em partes (assume delimitadores comuns)
+				const parts = line.split(/[,;\t]/);
+
+				const phoneValue = parts[parts.length - 1].replace(/^["']|["']$/g, ""); // Remove aspas
+				const phone = this.formatPhone(phoneValue);
+
+				const name =
+					parts.length > 1
+						? parts[0]?.trim().replace(/^["']|["']$/g, "")
+						: null; // Remove aspas
+
+				if (phone) {
+					leads.push({
+						name: name || null,
+						phone,
+					});
+				} else {
+					console.warn("Telefone inválido ignorado:", phoneValue);
+				}
+			}
+
+			console.log(
+				`${leads.length} leads foram processados do arquivo TXT:`,
+				leads,
+			);
+			return leads;
+		} catch (error) {
+			console.error("Erro ao processar arquivo TXT:", error);
+			throw new BadRequestError("Erro ao processar arquivo TXT");
+		}
+	}
+
+	private findPhoneColumn(row: Record<string, any>): string | null {
+		const possibleColumns = ["phone", "telefone", "celular", "whatsapp", "tel"];
+
+		for (const key of Object.keys(row)) {
+			const normalizedKey = key.toLowerCase().trim();
+			if (possibleColumns.includes(normalizedKey)) {
+				return key;
+			}
+		}
+
+		return null;
+	}
+
+	private findNameColumn(row: Record<string, any>): string | null {
+		const possibleColumns = ["name", "nome", "cliente", "contato"];
+
+		for (const key of Object.keys(row)) {
+			const normalizedKey = key.toLowerCase().trim();
+			if (possibleColumns.includes(normalizedKey)) {
+				return key;
+			}
+		}
+
+		return null;
+	}
 	private async processExcel(buffer: Buffer): Promise<Lead[]> {
-		console.log("Processando arquivo Excel...");
+		try {
+			const workbook = xlsx.read(buffer);
+			const sheet = workbook.Sheets[workbook.SheetNames[0]];
+			const rows = xlsx.utils.sheet_to_json(sheet) as Record<string, any>[];
 
-		const workbook = xlsx.read(buffer);
-		const sheet = workbook.Sheets[workbook.SheetNames[0]];
-		const rows = xlsx.utils.sheet_to_json(sheet);
+			const leads: Lead[] = [];
 
-		console.log("Linhas do arquivo Excel:", rows);
+			for (const row of rows) {
+				// Verifica se o objeto row tem as propriedades necessárias
+				const phoneValue = (
+					row.phone ||
+					row.telefone ||
+					row.Phone ||
+					row.Telefone ||
+					""
+				).toString();
+				const nameValue = (
+					row.name ||
+					row.nome ||
+					row.Name ||
+					row.Nome ||
+					""
+				).toString();
 
-		return rows
-			.map((row: any) => ({
-				name: row.name || row.nome || null,
-				phone: this.formatPhone(row.phone || row.telefone),
-			}))
-			.filter(this.isValidLead);
+				const phone = this.formatPhone(phoneValue);
+				if (phone) {
+					leads.push({
+						name: nameValue || null,
+						phone,
+					});
+				}
+			}
+
+			return leads;
+		} catch (error) {
+			console.error("Erro ao processar arquivo Excel:", error);
+			throw new BadRequestError("Erro ao processar arquivo Excel");
+		}
 	}
 
-	private isValidLead(lead: any): boolean {
-		const phone = lead.phone || lead.telefone;
-		return phone && phone.toString().length >= 10;
+	private formatPhone(phone: unknown): string | null {
+		if (!phone) return null;
+
+		try {
+			// Remove todos os caracteres não numéricos
+			const cleaned = String(phone).replace(/\D/g, "");
+
+			// Verifica se o número possui comprimento válido (Brasil: 10 ou 11 dígitos para números locais)
+			if (cleaned.length < 10) return null;
+
+			// Adiciona o código do país (55 para Brasil) se necessário
+			if (!cleaned.startsWith("55")) {
+				return `55${cleaned}`;
+			}
+
+			return cleaned;
+		} catch (error) {
+			console.error("Erro ao formatar telefone:", phone, error);
+			return null;
+		}
 	}
 
-	private formatPhone(phone: string): string {
-		const cleaned = phone.toString().replace(/\D/g, "");
-		return cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
+	private isValidRow(row: unknown): row is ExcelRow {
+		if (!row || typeof row !== "object") return false;
+		const r = row as Record<string, unknown>;
+		return "phone" in r || "telefone" in r || "Phone" in r || "Telefone" in r;
+	}
+
+	private removeDuplicateLeads(leads: Lead[]): Lead[] {
+		const uniquePhones = new Map<string, Lead>();
+
+		leads.forEach((lead) => {
+			if (lead && lead.phone) {
+				const phone = this.formatPhone(lead.phone);
+				if (phone && !uniquePhones.has(phone)) {
+					uniquePhones.set(phone, {
+						name: lead.name || null,
+						phone: phone,
+					});
+				}
+			}
+		});
+
+		return Array.from(uniquePhones.values());
+	}
+
+	private async createLeads(
+		campaignId: string,
+		userId: string,
+		leads: Lead[],
+	): Promise<{ count: number }> {
+		const leadsToCreate = leads.map((lead) => ({
+			campaignId,
+			userId,
+			name: lead.name?.trim() || null,
+			phone: lead.phone,
+			status: "pending",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}));
+
+		console.log("Leads a serem criados:", leadsToCreate);
+
+		const result = await prisma.campaignLead.createMany({
+			data: leadsToCreate,
+			skipDuplicates: true,
+		});
+
+		return { count: result.count };
 	}
 
 	private async updateCampaignStats(campaignId: string, newLeadsCount: number) {
@@ -252,14 +392,13 @@ export class CampaignLeadService {
 		});
 	}
 
-	async getLeads(
+	public async getLeads(
 		campaignId: string,
 		userId: string,
 		page = 1,
 		limit = 10,
 		status?: string,
 	) {
-		// Validar acesso à campanha
 		const campaign = await prisma.campaign.findFirst({
 			where: {
 				id: campaignId,
@@ -295,5 +434,37 @@ export class CampaignLeadService {
 				pages: Math.ceil(total / limit),
 			},
 		};
+	}
+
+	public async validateLeadLimit(
+		userId: string,
+		campaignId: string,
+		newLeadsCount: number,
+	) {
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: { plan: true },
+		});
+
+		if (!user) {
+			throw new NotFoundError("Usuário não encontrado");
+		}
+
+		const planLimits = PLAN_LIMITS[user.plan as CampaignPlan];
+		if (!planLimits) {
+			throw new BadRequestError("Plano inválido");
+		}
+
+		const currentLeadsCount = await prisma.campaignLead.count({
+			where: { campaignId },
+		});
+
+		if (currentLeadsCount + newLeadsCount > planLimits.maxLeads) {
+			throw new BadRequestError(
+				`Limite de leads excedido. Seu plano permite até ${planLimits.maxLeads} leads`,
+			);
+		}
+
+		return true;
 	}
 }

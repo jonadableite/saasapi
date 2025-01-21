@@ -872,53 +872,80 @@ export default class CampaignController {
 	}
 
 	public async pauseCampaign(
-		req: CampaignRequestWithId,
-		res: Response,
-	): Promise<void> {
-		try {
-			const { id } = req.params;
-
-			const campaign = await prisma.campaign.update({
-				where: { id },
-				data: { status: "paused" as CampaignStatus },
-			});
-
-			res.json({
-				message: "Campanha pausada com sucesso",
-				campaign,
-			});
-		} catch (error) {
-			console.error("Erro ao pausar campanha:", error);
-			res.status(500).json({ error: "Erro ao pausar campanha" });
-		}
-	}
-
-	public async resumeCampaign(
-		req: CampaignRequestWithId,
+		req: RequestWithUser,
 		res: Response,
 	): Promise<void> {
 		try {
 			const { id: campaignId } = req.params;
+
+			// Parar os dispatches em andamento
+			await messageDispatcherService.stopDispatch();
+
+			// Atualizar status da campanha
+			await prisma.campaign.update({
+				where: { id: campaignId },
+				data: {
+					status: "paused",
+					pausedAt: new Date(),
+				},
+			});
+
+			// Atualizar status dos dispatches em andamento
+			await prisma.campaignDispatch.updateMany({
+				where: {
+					campaignId,
+					status: "running",
+				},
+				data: {
+					status: "paused",
+				},
+			});
+
+			res.json({ success: true, message: "Campanha pausada com sucesso" });
+		} catch (error) {
+			console.error("Erro ao pausar campanha:", error);
+			res
+				.status(500)
+				.json({ success: false, message: "Erro ao pausar campanha" });
+		}
+	}
+
+	public async resumeCampaign(
+		req: RequestWithUser,
+		res: Response,
+	): Promise<void> {
+		try {
+			const { id: campaignIdFromParams } = req.params;
 			const { instanceName } = req.body;
 
 			if (!instanceName) {
 				throw new BadRequestError("Nome da instância é obrigatório");
 			}
 
-			// Verificar se a campanha existe e estava pausada
+			// Verificar se a instância existe e está conectada
+			const instance = await prisma.instance.findFirst({
+				where: {
+					instanceName,
+					connectionStatus: "open",
+				},
+			});
+
+			if (!instance) {
+				throw new BadRequestError(
+					"Instância não encontrada ou não está conectada",
+				);
+			}
+
+			// Buscar a campanha pausada
 			const campaign = await prisma.campaign.findFirst({
 				where: {
-					id: campaignId,
+					id: campaignIdFromParams,
 					status: "paused",
 				},
 				include: {
 					leads: {
 						where: {
-							OR: [
-								{ status: "pending" },
-								{ status: "processing" },
-								{ status: "failed" },
-							],
+							status: "pending",
 						},
 					},
 				},
@@ -930,61 +957,44 @@ export default class CampaignController {
 				);
 			}
 
-			if (campaign.leads.length === 0) {
-				throw new BadRequestError(
-					"Não há leads pendentes para continuar o envio",
-				);
-			}
-
-			// Verificar se a instância está conectada
-			const instance = await prisma.instance.findUnique({
-				where: { instanceName },
-			});
-
-			if (!instance || instance.connectionStatus !== "open") {
-				throw new BadRequestError(
-					"Instância não encontrada ou não está conectada",
-				);
-			}
-
-			// Criar novo dispatch
-			const dispatch = await prisma.campaignDispatch.create({
-				data: {
-					campaignId,
-					instanceName,
-					status: "running",
-					startedAt: new Date(),
-				},
-			});
-
 			// Atualizar status da campanha
 			await prisma.campaign.update({
-				where: { id: campaignId },
+				where: { id: campaignIdFromParams },
 				data: {
 					status: "running",
 					pausedAt: null,
 				},
 			});
 
-			// Retomar envios
-			await messageDispatcherService.resumeDispatch({
-				campaignId,
-				instanceName,
-				dispatch: dispatch.id,
+			// Criar novo dispatch
+			const campaignIdFromBody = req.body.campaignId;
+
+			if (!campaignIdFromBody) {
+				throw new BadRequestError("O ID da campanha é obrigatório");
+			}
+
+			await prisma.campaignDispatch.create({
+				data: {
+					campaignId: campaignIdFromBody,
+					instanceName: req.body.instanceName,
+					status: "running",
+					startedAt: new Date(),
+				},
 			});
 
-			res.json({
-				success: true,
-				message: "Campanha retomada com sucesso",
-				dispatch,
+			// Retomar envios
+			await messageDispatcherService.resumeDispatch({
+				campaignId: campaignIdFromBody,
+				instanceName,
+				dispatch: campaign.id,
 			});
+
+			res.json({ success: true, message: "Campanha retomada com sucesso" });
 		} catch (error) {
 			console.error("Erro ao retomar campanha:", error);
-			res.status(error instanceof BadRequestError ? 400 : 500).json({
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Erro ao retomar campanha",
-			});
+			res
+				.status(500)
+				.json({ success: false, message: "Erro ao retomar campanha" });
 		}
 	}
 

@@ -50,6 +50,27 @@ export class CampaignLeadController {
 				});
 			}
 
+			// Validação do tipo de arquivo
+			const fileExtension = req.file.originalname
+				.toLowerCase()
+				.split(".")
+				.pop();
+			const allowedExtensions = ["csv", "xlsx", "txt"];
+
+			if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+				throw new BadRequestError(
+					"Formato de arquivo não suportado. Use CSV, Excel ou TXT",
+				);
+			}
+
+			// Validação do tamanho do arquivo para TXT
+			if (fileExtension === "txt" && req.file.size > 1024 * 1024) {
+				// 1MB para arquivos TXT
+				throw new BadRequestError(
+					"Arquivo TXT muito grande. O tamanho máximo permitido é 1MB",
+				);
+			}
+
 			// Remove o prefixo ":" se existir
 			const cleanCampaignId = campaignId.replace(/^:/, "");
 

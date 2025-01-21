@@ -109,6 +109,10 @@ router.delete(
 	},
 );
 
+router.get("/campaigns/:id/dispatches", (req: Request, res: Response) =>
+	controller.getCampaignStats(req as CampaignRequestWithId, res),
+);
+
 // Middlewares de erro
 router.use((err: any, req: Request, res: Response, next: Function) => {
 	if (err instanceof multer.MulterError) {
