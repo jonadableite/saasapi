@@ -1,26 +1,7 @@
 // src/services/analytics.service.ts
-import { type MessageLog, PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
-interface MessageLogWithLead extends MessageLog {
-	lead: {
-		name: string;
-		phone: string;
-	};
-}
-
-interface LeadStats {
-	lead: {
-		name: string;
-		phone: string;
-	};
-	messagesReceived: number;
-	messagesRead: number;
-	responseTime: number[];
-	averageResponseTime: number | null;
-	engagementRate: number;
-}
+import type { MessageLog } from "@prisma/client";
+import type { LeadStats, MessageLogWithLead, MessageStats } from "../interface";
+import { prisma } from "../lib/prisma";
 
 export class AnalyticsService {
 	async getCampaignStats(campaignId: string) {
@@ -62,6 +43,86 @@ export class AnalyticsService {
 			console.error("Erro ao obter estatísticas da campanha:", error);
 			throw error;
 		}
+	}
+
+	async updateMessageStats(stats: MessageStats) {
+		try {
+			const messageLog = await prisma.messageLog.findFirst({
+				where: {
+					messageId: stats.messageId,
+					messageDate: stats.messageDate,
+				},
+			});
+
+			if (!messageLog) {
+				console.warn(`Log não encontrado para mensagem: ${stats.messageId}`);
+				return;
+			}
+
+			// Atualizar o log da mensagem
+			await prisma.messageLog.update({
+				where: {
+					id: messageLog.id, // Usar o ID único do registro
+				},
+				data: {
+					status: stats.status,
+					...(stats.status === "DELIVERED" && {
+						deliveredAt: stats.timestamp,
+					}),
+					...(stats.status === "READ" && {
+						readAt: stats.timestamp,
+					}),
+					statusHistory: {
+						push: {
+							status: stats.status,
+							timestamp: stats.timestamp.toISOString(),
+						},
+					},
+				},
+			});
+
+			// Atualizar estatísticas da campanha
+			await this.updateCampaignStats(messageLog.campaignId);
+		} catch (error) {
+			console.error("Erro ao atualizar estatísticas:", error);
+			throw error;
+		}
+	}
+
+	private async updateCampaignStats(campaignId: string) {
+		const logs = await prisma.messageLog.findMany({
+			where: { campaignId },
+		});
+
+		const stats = {
+			sentCount: logs.filter((log) => log.sentAt).length,
+			deliveredCount: logs.filter((log) => log.deliveredAt).length,
+			readCount: logs.filter((log) => log.readAt).length,
+			failedCount: logs.filter((log) => log.failedAt).length,
+			totalLeads: logs.length,
+		};
+
+		await prisma.campaignStatistics.upsert({
+			where: { campaignId },
+			update: {
+				sentCount: stats.sentCount,
+				deliveredCount: stats.deliveredCount,
+				readCount: stats.readCount,
+				failedCount: stats.failedCount,
+				totalLeads: stats.totalLeads,
+				updatedAt: new Date(),
+			},
+			create: {
+				campaignId,
+				sentCount: stats.sentCount,
+				deliveredCount: stats.deliveredCount,
+				readCount: stats.readCount,
+				failedCount: stats.failedCount,
+				totalLeads: stats.totalLeads,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		});
 	}
 
 	async getDailyStats(campaignId: string, date: Date) {

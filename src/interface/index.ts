@@ -4,13 +4,37 @@ import type {
 	CampaignLead,
 	CampaignSchedule,
 	Instance,
+	MessageLog,
 	User,
 	WarmupStats,
 } from "@prisma/client";
 import type { Request, Response } from "express";
 import type { ParamsDictionary } from "express-serve-static-core";
 import type { MessageType } from "../enum";
+import type { MessageStatus } from "../types/webhook";
 import type { CampaignStatus } from "./types";
+
+export interface StatusHistoryEntry {
+	status: MessageStatus;
+	timestamp: string;
+}
+
+export interface InputJsonValue {
+	[key: string]: any;
+}
+
+export interface MessageLogStatusHistory {
+	status: MessageStatus;
+	timestamp: string;
+}
+declare global {
+	namespace PrismaJson {
+		type MessageLogStatusHistory = {
+			status: MessageStatus;
+			timestamp: string;
+		};
+	}
+}
 
 export interface CampaignError extends Error {
 	code?: string;
@@ -535,6 +559,46 @@ export interface PlanLimits {
 	maxLeads: number;
 	maxCampaigns: number;
 	features: MessageType[];
+}
+
+export interface MessageStats {
+	messageId: string;
+	messageDate: Date;
+	status: MessageStatus;
+	timestamp: Date;
+}
+
+export interface MessageLogWithLead extends MessageLog {
+	lead: {
+		name: string;
+		phone: string;
+	};
+}
+
+export interface LeadStats {
+	lead: {
+		name: string;
+		phone: string;
+	};
+	messagesReceived: number;
+	messagesRead: number;
+	responseTime: number[];
+	averageResponseTime: number | null;
+	engagementRate: number;
+}
+
+export type MessageStatus =
+	| "PENDING"
+	| "SENT"
+	| "RECEIVED"
+	| "DELIVERED"
+	| "READ"
+	| "FAILED";
+
+export interface WebhookEvent {
+	event: string;
+	instance: string;
+	data: any;
 }
 
 export interface PaginationResult<T> {
