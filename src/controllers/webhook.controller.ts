@@ -111,46 +111,113 @@ export class WebhookController {
 
 			const { messageId, keyId, status, instanceId } = data;
 
-			// Buscar mensagem por messageId ou keyId
+			// Buscar mensagem com todas as possíveis combinações de IDs
 			const messageLog = await prisma.messageLog.findFirst({
 				where: {
-					OR: [{ messageId: messageId }, { messageId: keyId }],
+					OR: [
+						{ messageId: messageId },
+						{ messageId: keyId },
+						{ messageId: messageId?.split("@")[0] }, // Tenta sem o sufixo do WhatsApp
+						{ messageId: keyId?.split("@")[0] },
+					],
 				},
 			});
 
+			// Adicionar log detalhado da busca
+			console.log("Tentativa de busca de mensagem:", {
+				possibleIds: {
+					messageId,
+					keyId,
+					messageIdWithoutSuffix: messageId?.split("@")[0],
+					keyIdWithoutSuffix: keyId?.split("@")[0],
+				},
+				found: !!messageLog,
+				messageLogDetails: messageLog
+					? {
+							id: messageLog.id,
+							messageId: messageLog.messageId,
+							status: messageLog.status,
+							campaignId: messageLog.campaignId,
+						}
+					: null,
+			});
+
 			if (!messageLog) {
-				console.log(
-					`Log não encontrado para mensagem. MessageId: ${messageId}, KeyId: ${keyId}`,
-				);
+				// Se não encontrou, vamos buscar na tabela CampaignLead também
+				const campaignLead = await prisma.campaignLead.findFirst({
+					where: {
+						OR: [
+							{ messageId: messageId },
+							{ messageId: keyId },
+							{ messageId: messageId?.split("@")[0] },
+							{ messageId: keyId?.split("@")[0] },
+						],
+					},
+				});
+
+				console.log("Busca alternativa em CampaignLead:", {
+					found: !!campaignLead,
+					leadDetails: campaignLead
+						? {
+								id: campaignLead.id,
+								messageId: campaignLead.messageId,
+								status: campaignLead.status,
+								campaignId: campaignLead.campaignId,
+							}
+						: null,
+				});
+
+				if (!campaignLead) {
+					console.log(
+						`Nenhum registro encontrado para a mensagem. MessageId: ${messageId}, KeyId: ${keyId}`,
+					);
+					return;
+				}
+
+				// Se encontrou o lead mas não o log, criar o log
+				const newMessageLog = await prisma.messageLog.create({
+					data: {
+						messageId: messageId || keyId,
+						messageDate: new Date(),
+						status: this.mapWhatsAppStatus(status),
+						campaignId: campaignLead.campaignId,
+						leadId: campaignLead.id,
+						content: "",
+						messageType: "text",
+						statusHistory: [
+							{
+								status: this.mapWhatsAppStatus(status),
+								timestamp: new Date().toISOString(),
+							},
+						],
+					},
+				});
+
+				console.log("Novo MessageLog criado:", newMessageLog);
 				return;
 			}
 
 			const mappedStatus = this.mapWhatsAppStatus(status);
 			const timestamp = new Date();
 
-			const newStatusEntry = {
-				status: mappedStatus,
-				timestamp: timestamp.toISOString(),
-			};
-
-			const currentHistory = messageLog.statusHistory as Array<{
-				status: string;
-				timestamp: string;
-			}>;
-
-			const updatedStatusHistory = [...currentHistory, newStatusEntry];
-
+			// Atualizar MessageLog
 			await prisma.messageLog.update({
 				where: { id: messageLog.id },
 				data: {
 					status: mappedStatus,
 					...(mappedStatus === "DELIVERED" && { deliveredAt: timestamp }),
 					...(mappedStatus === "READ" && { readAt: timestamp }),
-					statusHistory: updatedStatusHistory as any,
+					statusHistory: {
+						push: {
+							status: mappedStatus,
+							timestamp: timestamp.toISOString(),
+						},
+					},
 					updatedAt: timestamp,
 				},
 			});
 
+			// Atualizar CampaignLead
 			await prisma.campaignLead.updateMany({
 				where: {
 					OR: [{ messageId: messageId }, { messageId: keyId }],
