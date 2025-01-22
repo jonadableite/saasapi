@@ -25,9 +25,9 @@ const calculateStats = (messageLogs: MessageLog[]) => {
 
 	return {
 		total,
-		delivered,
+		delivered: delivered + read, // Adiciona as mensagens lidas às entregues
 		read,
-		deliveryRate: total > 0 ? (delivered / total) * 100 : 0,
+		deliveryRate: total > 0 ? ((delivered + read) / total) * 100 : 0,
 		readRate: total > 0 ? (read / total) * 100 : 0,
 	};
 };
