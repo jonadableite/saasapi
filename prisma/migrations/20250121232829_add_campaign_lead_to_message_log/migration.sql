@@ -267,6 +267,7 @@ CREATE TABLE "campaign_schedules" (
     "status" TEXT NOT NULL DEFAULT 'pending',
     "message" TEXT,
     "mediaType" TEXT,
+    "mediaUrl" TEXT,
     "mediaCaption" TEXT,
     "minDelay" INTEGER NOT NULL DEFAULT 5,
     "maxDelay" INTEGER NOT NULL DEFAULT 30,
@@ -299,7 +300,8 @@ CREATE TABLE "whatlead_campaign_statistics" (
 CREATE TABLE "MessageLog" (
     "id" TEXT NOT NULL,
     "campaignId" TEXT NOT NULL,
-    "leadId" TEXT NOT NULL,
+    "campaignLeadId" TEXT NOT NULL,
+    "leadId" TEXT,
     "messageId" TEXT NOT NULL,
     "messageDate" TIMESTAMP(3) NOT NULL,
     "messageType" TEXT NOT NULL,
@@ -318,6 +320,20 @@ CREATE TABLE "MessageLog" (
 );
 
 -- CreateTable
+CREATE TABLE "MessageAnalytics" (
+    "id" TEXT NOT NULL,
+    "campaignId" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "sentCount" INTEGER NOT NULL DEFAULT 0,
+    "deliveredCount" INTEGER NOT NULL DEFAULT 0,
+    "readCount" INTEGER NOT NULL DEFAULT 0,
+    "respondedCount" INTEGER NOT NULL DEFAULT 0,
+    "failedCount" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "MessageAnalytics_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "CampaignErrorLog" (
     "id" TEXT NOT NULL,
     "campaignId" TEXT NOT NULL,
@@ -326,14 +342,6 @@ CREATE TABLE "CampaignErrorLog" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "CampaignErrorLog_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "_CampaignLeadToMessageLog" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_CampaignLeadToMessageLog_AB_pkey" PRIMARY KEY ("A","B")
 );
 
 -- CreateIndex
@@ -424,7 +432,7 @@ CREATE INDEX "whatlead_campaign_statistics_campaignId_idx" ON "whatlead_campaign
 CREATE INDEX "MessageLog_campaignId_messageDate_idx" ON "MessageLog"("campaignId", "messageDate");
 
 -- CreateIndex
-CREATE INDEX "MessageLog_leadId_messageDate_idx" ON "MessageLog"("leadId", "messageDate");
+CREATE INDEX "MessageLog_campaignLeadId_messageDate_idx" ON "MessageLog"("campaignLeadId", "messageDate");
 
 -- CreateIndex
 CREATE INDEX "MessageLog_status_idx" ON "MessageLog"("status");
@@ -433,7 +441,7 @@ CREATE INDEX "MessageLog_status_idx" ON "MessageLog"("status");
 CREATE UNIQUE INDEX "MessageLog_messageId_messageDate_key" ON "MessageLog"("messageId", "messageDate");
 
 -- CreateIndex
-CREATE INDEX "_CampaignLeadToMessageLog_B_index" ON "_CampaignLeadToMessageLog"("B");
+CREATE UNIQUE INDEX "MessageAnalytics_campaignId_date_key" ON "MessageAnalytics"("campaignId", "date");
 
 -- AddForeignKey
 ALTER TABLE "whatlead_users" ADD CONSTRAINT "whatlead_users_whatleadCompanyId_fkey" FOREIGN KEY ("whatleadCompanyId") REFERENCES "whatlead_companies"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -496,13 +504,13 @@ ALTER TABLE "whatlead_campaign_statistics" ADD CONSTRAINT "whatlead_campaign_sta
 ALTER TABLE "MessageLog" ADD CONSTRAINT "MessageLog_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "whatlead_campaigns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "MessageLog" ADD CONSTRAINT "MessageLog_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "whatleadleads"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MessageLog" ADD CONSTRAINT "MessageLog_campaignLeadId_fkey" FOREIGN KEY ("campaignLeadId") REFERENCES "whatlead_campaign_leads"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MessageLog" ADD CONSTRAINT "MessageLog_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "whatleadleads"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MessageAnalytics" ADD CONSTRAINT "MessageAnalytics_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "whatlead_campaigns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CampaignErrorLog" ADD CONSTRAINT "CampaignErrorLog_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "whatlead_campaigns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_CampaignLeadToMessageLog" ADD CONSTRAINT "_CampaignLeadToMessageLog_A_fkey" FOREIGN KEY ("A") REFERENCES "whatlead_campaign_leads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_CampaignLeadToMessageLog" ADD CONSTRAINT "_CampaignLeadToMessageLog_B_fkey" FOREIGN KEY ("B") REFERENCES "MessageLog"("id") ON DELETE CASCADE ON UPDATE CASCADE;

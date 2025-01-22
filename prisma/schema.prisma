@@ -21,8 +21,8 @@ model Company {
 }
 
 model User {
-  id                       String        @id @default(uuid())
-  email                    String        @unique
+  id                       String         @id @default(uuid())
+  email                    String         @unique
   name                     String
   password                 String
   profile                  String
@@ -30,26 +30,26 @@ model User {
   stripeCustomerId         String?
   stripeSubscriptionId     String?
   stripeSubscriptionStatus String?
-  active                   Boolean?      @default(true)
-  createdAt                DateTime      @default(now())
-  updatedAt                DateTime      @updatedAt
+  active                   Boolean?       @default(true)
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
   whatleadCompanyId        String
-  plan                     String        @default("free")
-  status                   Boolean       @default(true)
-  maxInstances             Int           @default(2)
-  messagesPerDay           Int           @default(20)
-  features                 String[]      @default([])
-  support                  String        @default("basic")
+  plan                     String         @default("free")
+  status                   Boolean        @default(true)
+  maxInstances             Int            @default(2)
+  messagesPerDay           Int            @default(20)
+  features                 String[]       @default([])
+  support                  String         @default("basic")
   trialEndDate             DateTime?
   instances                Instance[]
   payments                 Payment[]
   warmupStats              WarmupStats[]
   Campaign                 Campaign[]
-  company                  Company       @relation(fields: [whatleadCompanyId], references: [id])
+  company                  Company        @relation(fields: [whatleadCompanyId], references: [id])
+  CampaignLead             CampaignLead[]
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
-  CampaignLead CampaignLead[]
 }
 
 model CompaniesUnites {
@@ -140,31 +140,31 @@ model Payment {
 }
 
 model Instance {
-  id                      String       @id @default(uuid())
-  instanceName            String       @unique
-  connectionStatus        String       @default("pending")
+  id                      String             @id @default(uuid())
+  instanceName            String             @unique
+  connectionStatus        String             @default("pending")
   number                  String?
   ownerJid                String?
   profilePicUrl           String?
-  integration             String       @default("WHATSAPP-BAILEYS")
+  integration             String             @default("WHATSAPP-BAILEYS")
   token                   String?
   clientName              String?
   profileName             String?
   userId                  String
-  createdAt               DateTime     @default(now())
-  updatedAt               DateTime     @updatedAt
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
   disconnectedAt          DateTime?
   disconnectionObject     Json?
   disconnectionReasonCode String?
   proxyConfig             Json?
   typebot                 Json?
-  user                    User         @relation(fields: [userId], references: [id])
+  user                    User               @relation(fields: [userId], references: [id])
   mediaStats              MediaStats[]
   warmupStats             WarmupStats?
   Campaign                CampaignDispatch[]
+  CampaignSchedule        CampaignSchedule[]
 
   @@index([userId])
-  CampaignSchedule CampaignSchedule[]
 }
 
 model MediaStats {
@@ -218,51 +218,52 @@ model WarmupStats {
 }
 
 model Campaign {
-  id            String              @id @default(uuid())
-  name          String
-  description   String?
-  status        String              @default("draft")
-  type          String
-  message       String?
-  mediaUrl      String?
-  mediaType     String?
-  mediaCaption  String?
-  scheduledDate DateTime?
-  scheduledStatus  String?    @default("pending")
-  startedAt       DateTime?
-  completedAt     DateTime?
-  pausedAt        DateTime?
-  progress        Int         @default(0)
-  minDelay      Int                 @default(5)
-  maxDelay      Int                 @default(30)
-  userId        String
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  MessageLog    MessageLog[]
-  leads         CampaignLead[]
-  messages      CampaignMessage[]
-  statistics    CampaignStatistics?
-  dispatches    CampaignDispatch[]
-  user          User                @relation(fields: [userId], references: [id])
+  id               String              @id @default(uuid())
+  name             String
+  description      String?
+  status           String              @default("draft")
+  type             String
+  message          String?
+  mediaUrl         String?
+  mediaType        String?
+  mediaCaption     String?
+  scheduledDate    DateTime?
+  scheduledStatus  String?             @default("pending")
+  startedAt        DateTime?
+  completedAt      DateTime?
+  pausedAt         DateTime?
+  progress         Int                 @default(0)
+  minDelay         Int                 @default(5)
+  maxDelay         Int                 @default(30)
+  userId           String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  MessageLog       MessageLog[]
+  leads            CampaignLead[]
+  messages         CampaignMessage[]
+  statistics       CampaignStatistics?
+  dispatches       CampaignDispatch[]
+  user             User                @relation(fields: [userId], references: [id])
+  CampaignErrorLog CampaignErrorLog[]
+  CampaignSchedule CampaignSchedule[]
+  MessageAnalytics MessageAnalytics[]
 
   @@index([userId])
   @@index([status])
   @@map("whatlead_campaigns")
-  CampaignErrorLog CampaignErrorLog[]
-  CampaignSchedule CampaignSchedule[]
 }
 
 model CampaignDispatch {
-  id            String    @id @default(uuid())
-  campaignId    String
-  instanceName  String
-  status        String    @default("pending")
-  startedAt     DateTime?
-  completedAt   DateTime?
-  campaign      Campaign  @relation(fields: [campaignId], references: [id])
-  instance      Instance  @relation(fields: [instanceName], references: [instanceName])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  campaignId   String
+  instanceName String
+  status       String    @default("pending")
+  startedAt    DateTime?
+  completedAt  DateTime?
+  campaign     Campaign  @relation(fields: [campaignId], references: [id])
+  instance     Instance  @relation(fields: [instanceName], references: [instanceName])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model CampaignMessage {
@@ -281,13 +282,13 @@ model CampaignMessage {
 }
 
 model CampaignLead {
-  id            String    @id @default(uuid())
+  id            String       @id @default(uuid())
   userId        String
-  user          User     @relation(fields: [userId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
   campaignId    String
   name          String?
   phone         String
-  status        String    @default("pending")
+  status        String       @default("pending")
   sentAt        DateTime?
   deliveredAt   DateTime?
   readAt        DateTime?
@@ -295,9 +296,9 @@ model CampaignLead {
   failureReason String?
   messageId     String?
   messageLogs   MessageLog[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  campaign      Campaign     @relation(fields: [campaignId], references: [id])
 
   @@unique([campaignId, phone], name: "unique_campaign_phone")
   @@index([campaignId])
@@ -316,10 +317,10 @@ model CampaignSchedule {
   mediaType     String?
   mediaUrl      String?
   mediaCaption  String?
-  minDelay      Int      @default(5)
-  maxDelay      Int      @default(30)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  minDelay      Int       @default(5)
+  maxDelay      Int       @default(30)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   startedAt     DateTime?
   completedAt   DateTime?
   campaign      Campaign  @relation(fields: [campaignId], references: [id])
@@ -330,6 +331,7 @@ model CampaignSchedule {
   @@index([scheduledDate])
   @@map("campaign_schedules")
 }
+
 model CampaignStatistics {
   id             String    @id @default(uuid())
   campaignId     String    @unique
@@ -349,12 +351,13 @@ model CampaignStatistics {
 }
 
 model MessageLog {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   campaignId     String
-  campaign       Campaign @relation(fields: [campaignId], references: [id])
-  CampaignLead   CampaignLead[]
-  leadId         String
-  lead           Lead     @relation(fields: [leadId], references: [id])
+  campaign       Campaign     @relation(fields: [campaignId], references: [id])
+  campaignLeadId String
+  campaignLead   CampaignLead @relation(fields: [campaignLeadId], references: [id])
+  leadId         String?
+  lead           Lead?        @relation(fields: [leadId], references: [id])
   messageId      String
   messageDate    DateTime
   messageType    String
@@ -366,20 +369,35 @@ model MessageLog {
   readAt         DateTime?
   failedAt       DateTime?
   failureReason  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([messageId, messageDate])
   @@index([campaignId, messageDate])
-  @@index([leadId, messageDate])
+  @@index([campaignLeadId, messageDate])
   @@index([status])
 }
 
+model MessageAnalytics {
+  id             String   @id @default(uuid())
+  campaignId     String
+  date           DateTime
+  sentCount      Int      @default(0)
+  deliveredCount Int      @default(0)
+  readCount      Int      @default(0)
+  respondedCount Int      @default(0)
+  failedCount    Int      @default(0)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+}
+
 model CampaignErrorLog {
-    id            String   @id @default(uuid())
-    campaignId    String
-    errorMessage  String
-    errorDetails  Json?
-    createdAt     DateTime @default(now())
-    campaign      Campaign @relation(fields: [campaignId], references: [id])
+  id           String   @id @default(uuid())
+  campaignId   String
+  errorMessage String
+  errorDetails Json?
+  createdAt    DateTime @default(now())
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
 }

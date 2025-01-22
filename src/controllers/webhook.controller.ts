@@ -30,7 +30,6 @@ export class WebhookController {
 		this.analyticsService = new AnalyticsService();
 		this.messageCache = new Map();
 
-		// Limpar cache periodicamente
 		setInterval(() => this.cleanCache(), 5 * 60 * 1000);
 	}
 
@@ -38,7 +37,6 @@ export class WebhookController {
 		const now = Date.now();
 		for (const [key, value] of this.messageCache.entries()) {
 			if (now - value.timestamp > 5 * 60 * 1000) {
-				// 5 minutos
 				this.messageCache.delete(key);
 			}
 		}
@@ -56,6 +54,7 @@ export class WebhookController {
 
 			res.status(200).json({ success: true });
 		} catch (error) {
+			console.error("Erro ao processar webhook:", error);
 			res.status(500).json({ error: "Erro interno ao processar webhook" });
 		}
 	};
@@ -72,31 +71,13 @@ export class WebhookController {
 			const phone = remoteJid.split("@")[0].split(":")[0];
 			const timestamp = new Date(Number.parseInt(messageTimestamp) * 1000);
 
-			// Determinar tipo de mensagem
-			let messageType = "text";
-			let content = "";
+			const { messageType, content } = this.extractMessageContent(message);
 
-			if (message.imageMessage) {
-				messageType = "image";
-				content = message.imageMessage.caption || "";
-			} else if (message.audioMessage) {
-				messageType = "audio";
-				content = "";
-			} else if (message.extendedTextMessage) {
-				messageType = "text";
-				content = message.extendedTextMessage.text || "";
-			} else if (message.conversation) {
-				messageType = "text";
-				content = message.conversation;
-			}
-
-			// Armazenar no cache
 			this.messageCache.set(messageId, {
 				timestamp: Date.now(),
 				data: { ...data, phone, messageType, content },
 			});
 
-			// Buscar ou criar registro
 			const messageLog = await this.findOrCreateMessageLog(messageId, phone, {
 				messageType,
 				content,
@@ -106,10 +87,38 @@ export class WebhookController {
 
 			if (messageLog) {
 				await this.updateMessageStatus(messageLog, "SENT", timestamp);
+				// Remova a chamada para trackMessageEvent, pois não existe no AnalyticsService
 			}
 		} catch (error) {
 			console.error("Erro ao processar nova mensagem:", error);
 		}
+	}
+
+	private extractMessageContent(message: any) {
+		let messageType = "text";
+		let content = "";
+
+		if (message.imageMessage) {
+			messageType = "image";
+			content = message.imageMessage.caption || "";
+		} else if (message.audioMessage) {
+			messageType = "audio";
+			content = "";
+		} else if (message.videoMessage) {
+			messageType = "video";
+			content = message.videoMessage.caption || "";
+		} else if (message.documentMessage) {
+			messageType = "document";
+			content = message.documentMessage.fileName || "";
+		} else if (message.extendedTextMessage) {
+			messageType = "text";
+			content = message.extendedTextMessage.text || "";
+		} else if (message.conversation) {
+			messageType = "text";
+			content = message.conversation;
+		}
+
+		return { messageType, content };
 	}
 
 	private async findOrCreateMessageLog(
@@ -150,7 +159,7 @@ export class WebhookController {
 				content: data.content,
 				status: data.status,
 				campaignId: campaignLead.campaignId,
-				leadId: campaignLead.id,
+				campaignLeadId: campaignLead.id,
 				sentAt: data.timestamp,
 				statusHistory: [
 					{
@@ -167,9 +176,7 @@ export class WebhookController {
 			const { messageId, keyId, status } = data;
 			const cacheKey = messageId || keyId;
 
-			// Tentar recuperar do cache
 			const cachedMessage = this.messageCache.get(cacheKey);
-
 			const messageLog = await prisma.messageLog.findFirst({
 				where: {
 					OR: [
@@ -182,7 +189,6 @@ export class WebhookController {
 			});
 
 			if (!messageLog && cachedMessage) {
-				// Criar novo log a partir do cache
 				return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
 					...cachedMessage.data,
 					status: this.mapWhatsAppStatus(status),
@@ -192,6 +198,7 @@ export class WebhookController {
 			if (messageLog) {
 				const mappedStatus = this.mapWhatsAppStatus(status);
 				await this.updateMessageStatus(messageLog, mappedStatus);
+				// Remova a chamada para trackMessageEvent, pois não existe no AnalyticsService
 			}
 		} catch (error) {
 			console.error("Erro ao processar atualização de mensagem:", error);
@@ -210,6 +217,7 @@ export class WebhookController {
 					status,
 					...(status === "DELIVERED" && { deliveredAt: timestamp }),
 					...(status === "READ" && { readAt: timestamp }),
+					...(status === "FAILED" && { failedAt: timestamp }),
 					statusHistory: {
 						push: {
 							status,
@@ -221,11 +229,12 @@ export class WebhookController {
 			});
 
 			await prisma.campaignLead.update({
-				where: { id: messageLog.leadId },
+				where: { id: messageLog.campaignLeadId },
 				data: {
 					status,
 					...(status === "DELIVERED" && { deliveredAt: timestamp }),
 					...(status === "READ" && { readAt: timestamp }),
+					...(status === "FAILED" && { failedAt: timestamp }),
 					updatedAt: timestamp,
 				},
 			});
@@ -244,11 +253,13 @@ export class WebhookController {
 			case "DELIVERY_ACK":
 				return "DELIVERED";
 			case "READ":
-				return "READ";
 			case "PLAYED":
 				return "READ";
 			case "SERVER_ACK":
 				return "SENT";
+			case "ERROR":
+			case "FAILED":
+				return "FAILED";
 			default:
 				return "PENDING";
 		}

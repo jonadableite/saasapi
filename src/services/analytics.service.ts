@@ -4,6 +4,9 @@ import type { LeadStats, MessageLogWithLead, MessageStats } from "../interface";
 import { prisma } from "../lib/prisma";
 
 export class AnalyticsService {
+	updateAnalytics(id: string, startDate: Date, endDate: Date) {
+		throw new Error("Method not implemented.");
+	}
 	async getCampaignStats(campaignId: string) {
 		try {
 			const logs = await prisma.messageLog.findMany({
@@ -157,7 +160,7 @@ export class AnalyticsService {
 					campaignId,
 				},
 				include: {
-					lead: {
+					campaignLead: {
 						select: {
 							name: true,
 							phone: true,
@@ -169,12 +172,13 @@ export class AnalyticsService {
 			const leadStats = new Map<string, LeadStats>();
 
 			logs.forEach((log) => {
-				const leadId = log.leadId;
-				if (!leadStats.has(leadId)) {
-					leadStats.set(leadId, {
+				if (!log.campaignLeadId) return;
+
+				if (!leadStats.has(log.campaignLeadId)) {
+					leadStats.set(log.campaignLeadId, {
 						lead: {
-							name: log.lead.name,
-							phone: log.lead.phone,
+							name: log.campaignLead?.name || "",
+							phone: log.campaignLead?.phone || "",
 						},
 						messagesReceived: 0,
 						messagesRead: 0,
@@ -184,7 +188,9 @@ export class AnalyticsService {
 					});
 				}
 
-				const stats = leadStats.get(leadId)!;
+				const stats = leadStats.get(log.campaignLeadId);
+				if (!stats) return;
+
 				stats.messagesReceived++;
 				if (log.readAt) {
 					stats.messagesRead++;
@@ -200,7 +206,7 @@ export class AnalyticsService {
 				...stats,
 				averageResponseTime:
 					stats.responseTime.length > 0
-						? stats.responseTime.reduce((a: number, b: number) => a + b, 0) /
+						? stats.responseTime.reduce((a, b) => a + b, 0) /
 							stats.responseTime.length
 						: null,
 				engagementRate: (stats.messagesRead / stats.messagesReceived) * 100,

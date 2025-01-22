@@ -31,48 +31,15 @@ export class MessageLogService {
 		const today = new Date();
 		const cacheKey = `message:${messageId}:${today.toISOString().split("T")[0]}`;
 
-		let messageLog = await this.getMessageLogFromCache(cacheKey);
+		const messageLog = await this.getMessageLogFromCache(cacheKey);
 
 		if (!messageLog) {
-			messageLog = await prisma.messageLog.findFirst({
-				where: {
-					messageId,
-					messageDate: {
-						gte: startOfDay(today),
-						lte: endOfDay(today),
-					},
-				},
-			});
-		}
-
-		const statusUpdate: StatusUpdate = {
-			status: newStatus,
-			timestamp: new Date(),
-			...(reason && { reason }),
-		};
-
-		if (messageLog) {
-			const formattedUpdate = this.formatStatusUpdate(statusUpdate);
-			const updatedLog = await prisma.messageLog.update({
-				where: { id: messageLog.id },
-				data: {
-					status: newStatus,
-					statusHistory: {
-						push: formattedUpdate,
-					},
-					...(newStatus === "sent" && { sentAt: new Date() }),
-					...(newStatus === "delivered" && { deliveredAt: new Date() }),
-					...(newStatus === "read" && { readAt: new Date() }),
-					...(newStatus === "failed" && {
-						failedAt: new Date(),
-						failureReason: reason,
-					}),
-				},
-			});
-			await this.setMessageLogCache(cacheKey, updatedLog);
-		} else {
 			// Criar novo registro
-			const formattedUpdate = this.formatStatusUpdate(statusUpdate);
+			const formattedUpdate = this.formatStatusUpdate({
+				status: newStatus,
+				timestamp: new Date(),
+				reason,
+			});
 			const newMessageLog = await prisma.messageLog.create({
 				data: {
 					messageId,
@@ -84,8 +51,8 @@ export class MessageLogService {
 					campaign: {
 						connect: { id: "default-campaign-id" }, // Você precisa fornecer um ID válido
 					},
-					lead: {
-						connect: { id: "default-lead-id" }, // Você precisa fornecer um ID válido
+					campaignLead: {
+						connect: { id: "default-campaign-lead-id" }, // Você precisa fornecer um ID válido
 					},
 					...(newStatus === "sent" && { sentAt: new Date() }),
 					...(newStatus === "delivered" && { deliveredAt: new Date() }),
@@ -103,7 +70,7 @@ export class MessageLogService {
 	async logMessage(params: {
 		messageId: string;
 		campaignId: string;
-		leadId: string;
+		campaignLeadId: string;
 		status: string;
 		messageType: string;
 		content: string;
@@ -114,7 +81,7 @@ export class MessageLogService {
 				data: {
 					messageId: params.messageId,
 					campaignId: params.campaignId,
-					leadId: params.leadId,
+					campaignLeadId: params.campaignLeadId,
 					status: params.status,
 					messageType: params.messageType,
 					content: params.content,

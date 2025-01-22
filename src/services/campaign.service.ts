@@ -1,5 +1,5 @@
 // src/services/campaign.service.ts
-import { type Campaign, type Prisma, PrismaClient } from "@prisma/client";
+import { type Campaign, PrismaClient } from "@prisma/client";
 import { endOfDay, startOfDay } from "date-fns";
 import type { CampaignParams, ImportLeadsResult } from "../interface";
 import { prisma } from "../lib/prisma";
@@ -276,7 +276,7 @@ export class CampaignService {
 		return messageDispatcherService.stopDispatch();
 	}
 
-	public async updateMessageStatus(
+	async updateMessageStatus(
 		messageId: string,
 		newStatus: string,
 		instanceId: string,
@@ -285,82 +285,45 @@ export class CampaignService {
 		content: string,
 		reason?: string,
 	): Promise<void> {
-		const today = new Date();
-
 		try {
-			const existingLog = await this.prisma.messageLog.findFirst({
-				where: {
-					messageId,
-					messageDate: {
-						gte: startOfDay(today),
-						lte: endOfDay(today),
-					},
-				},
+			const lead = await prisma.campaignLead.findFirst({
+				where: { phone },
+				include: { campaign: true },
 			});
 
-			const statusUpdate = {
-				status: newStatus,
-				timestamp: new Date().toISOString(),
-				...(reason && { reason }),
-			};
-
-			if (existingLog) {
-				// Converter o histórico existente para array
-				const currentHistory = (existingLog.statusHistory ||
-					[]) as Prisma.JsonArray;
-				const newHistory = [...currentHistory, statusUpdate];
-
-				await this.prisma.messageLog.update({
-					where: { id: existingLog.id },
-					data: {
-						status: newStatus,
-						statusHistory: newHistory as Prisma.InputJsonValue[],
-						...(newStatus === "sent" && { sentAt: new Date() }),
-						...(newStatus === "delivered" && { deliveredAt: new Date() }),
-						...(newStatus === "read" && { readAt: new Date() }),
-						...(newStatus === "failed" && {
-							failedAt: new Date(),
-							failureReason: reason,
-						}),
-						updatedAt: new Date(),
-					},
-				});
-			} else {
-				const lead = await this.prisma.campaignLead.findFirst({
-					where: { phone },
-					include: { campaign: true },
-				});
-
-				if (!lead || !lead.campaign) {
-					console.warn(
-						`Lead ou campanha não encontrada para telefone: ${phone}`,
-					);
-					return;
-				}
-
-				await this.prisma.messageLog.create({
-					data: {
-						messageId,
-						messageDate: startOfDay(today),
-						campaignId: lead.campaignId,
-						leadId: lead.id,
-						messageType,
-						content,
-						status: newStatus,
-						statusHistory: [statusUpdate] as Prisma.InputJsonValue[],
-						...(newStatus === "sent" && { sentAt: new Date() }),
-						...(newStatus === "delivered" && { deliveredAt: new Date() }),
-						...(newStatus === "read" && { readAt: new Date() }),
-						...(newStatus === "failed" && {
-							failedAt: new Date(),
-							failureReason: reason,
-						}),
-					},
-				});
+			if (!lead) {
+				console.warn(`Lead não encontrado para telefone: ${phone}`);
+				return;
 			}
+
+			await prisma.messageLog.create({
+				data: {
+					messageId,
+					messageDate: new Date(),
+					campaignId: lead.campaignId,
+					campaignLeadId: lead.id,
+					messageType,
+					content,
+					status: newStatus,
+					statusHistory: [
+						{
+							status: newStatus,
+							timestamp: new Date().toISOString(),
+							reason,
+						},
+					],
+					...(newStatus === "sent" && { sentAt: new Date() }),
+					...(newStatus === "delivered" && { deliveredAt: new Date() }),
+					...(newStatus === "read" && { readAt: new Date() }),
+					...(newStatus === "failed" && {
+						failedAt: new Date(),
+						failureReason: reason,
+					}),
+				},
+			});
 		} catch (error) {
 			console.error("Erro ao atualizar ou criar mensagem log:", error);
-			throw new Error("Erro ao salvar logs da mensagem");
+			throw error;
 		}
 	}
 

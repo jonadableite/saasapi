@@ -33,6 +33,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		this.stop = false;
 		this.messageLogService = new MessageLogService();
 	}
+
 	public async startDispatch(params: {
 		campaignId: string;
 		instanceName: string;
@@ -44,14 +45,13 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		try {
 			console.log("Iniciando processo de dispatch...");
 
-			// Buscar leads pendentes
 			const leads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId: params.campaignId,
 					OR: [
 						{ status: "pending" },
 						{ status: "failed" },
-						{ status: { equals: undefined } }, // Em vez de null
+						{ status: { equals: undefined } },
 					],
 				},
 				orderBy: { createdAt: "asc" },
@@ -71,7 +71,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				try {
 					console.log(`Processando lead ${lead.id} (${lead.phone})`);
 
-					// Atualizar status para processing
 					await prisma.campaignLead.update({
 						where: { id: lead.id },
 						data: {
@@ -80,41 +79,42 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						},
 					});
 
-					// Enviar mídia se houver
+					let response: EvolutionApiResponse | undefined;
+
 					if (params.media) {
 						console.log("Enviando mídia...");
-						await this.sendMedia(params.instanceName, lead.phone, params.media);
+						response = await this.sendMedia(
+							params.instanceName,
+							lead.phone,
+							params.media,
+						);
 					}
 
-					// Enviar mensagem
 					if (params.message) {
 						console.log("Enviando mensagem...");
-						await this.sendText(
+						response = await this.sendText(
 							params.instanceName,
 							lead.phone,
 							params.message,
 						);
 					}
 
-					// Atualizar status do lead
-					await prisma.campaignLead.update({
-						where: { id: lead.id },
-						data: {
-							status: "sent",
-							sentAt: new Date(),
-						},
-					});
+					if (response) {
+						await this.saveEvolutionResponse(
+							response,
+							params.campaignId,
+							lead.id,
+						);
+					}
 
 					processedCount++;
 
-					// Atualizar progresso da campanha
 					const progress = Math.floor((processedCount / totalLeads) * 100);
 					await prisma.campaign.update({
 						where: { id: params.campaignId },
 						data: { progress },
 					});
 
-					// Atualizar estatísticas
 					await prisma.campaignStatistics.upsert({
 						where: { campaignId: params.campaignId },
 						create: {
@@ -127,7 +127,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						},
 					});
 
-					// Aguardar delay entre envios
 					const delay =
 						Math.floor(
 							Math.random() * (params.maxDelay - params.minDelay + 1),
@@ -149,7 +148,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				}
 			}
 
-			// Atualizar status final da campanha
 			await prisma.campaign.update({
 				where: { id: params.campaignId },
 				data: {
@@ -176,7 +174,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		reason?: string,
 	): Promise<void> {
 		try {
-			const today = new Date();
 			const lead = await prisma.campaignLead.findFirst({
 				where: { messageId },
 				include: { campaign: true },
@@ -187,7 +184,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				return;
 			}
 
-			// Atualizar status do lead
 			await prisma.campaignLead.update({
 				where: { id: lead.id },
 				data: {
@@ -201,11 +197,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				},
 			});
 
-			// Criar ou atualizar log da mensagem
 			await this.messageLogService.logMessage({
 				messageId,
 				campaignId: lead.campaignId,
-				leadId: lead.id,
+				campaignLeadId: lead.id,
 				status,
 				messageType,
 				content,
@@ -234,43 +229,36 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 			const formattedNumber = params.phone.startsWith("55")
 				? params.phone
 				: `55${params.phone}`;
+			let response: EvolutionApiResponse | undefined;
 
-			let messageId: string | undefined;
-
-			// Enviar mídia primeiro, se houver
 			if (params.media?.base64) {
 				console.log("Enviando mídia...");
-				const mediaResponse = await this.sendMedia(
+				response = await this.sendMedia(
 					params.instanceName,
 					formattedNumber,
 					params.media,
 				);
-
-				if (mediaResponse?.key?.id) {
-					messageId = mediaResponse.key.id;
-				}
 			}
 
-			// Enviar mensagem de texto
 			if (params.message) {
 				console.log("Enviando mensagem de texto...");
-				const textResponse = await this.sendText(
+				response = await this.sendText(
 					params.instanceName,
 					formattedNumber,
 					params.message,
 				);
-
-				if (textResponse?.key?.id) {
-					messageId = textResponse.key.id;
-				}
 			}
 
-			// Se nenhum ID foi gerado, usar timestamp
-			if (!messageId) {
-				messageId = Date.now().toString();
+			if (response && response.key && response.key.id) {
+				await this.saveEvolutionResponse(
+					response,
+					params.campaignId,
+					params.leadId,
+				);
+				return { messageId: response.key.id };
+			} else {
+				throw new Error("Falha ao obter messageId da resposta da Evolution");
 			}
-
-			return { messageId };
 		} catch (error) {
 			console.error("Erro ao enviar mensagem:", error);
 			throw error;
@@ -283,7 +271,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		dispatch: string;
 	}): Promise<void> {
 		try {
-			// Buscar leads pendentes e falhos
 			const leads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId: params.campaignId,
@@ -300,7 +287,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
 			console.log(`Retomando envio para ${leads.length} leads`);
 
-			// Buscar configurações da campanha
 			const campaign = await prisma.campaign.findUnique({
 				where: { id: params.campaignId },
 				select: {
@@ -329,13 +315,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				try {
 					console.log(`Processando lead ${lead.id} (${lead.phone})`);
 
-					// Atualizar status para processando
 					await prisma.campaignLead.update({
 						where: { id: lead.id },
 						data: { status: "processing" },
 					});
 
-					// Enviar mensagem
 					const messageResponse = await this.sendMessage({
 						instanceName: params.instanceName,
 						phone: lead.phone,
@@ -353,7 +337,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 						leadId: lead.id,
 					});
 
-					// Atualizar status do lead
 					await prisma.campaignLead.update({
 						where: { id: lead.id },
 						data: {
@@ -366,13 +349,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 					processedCount++;
 					const progress = Math.floor((processedCount / totalLeads) * 100);
 
-					// Atualizar progresso
 					await prisma.campaign.update({
 						where: { id: params.campaignId },
 						data: { progress },
 					});
 
-					// Aguardar delay
 					await this.delay(campaign.minDelay || 5, campaign.maxDelay || 30);
 				} catch (error) {
 					console.error(`Erro ao processar lead ${lead.id}:`, error);
@@ -389,7 +370,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				}
 			}
 
-			// Atualizar status final da campanha
 			await prisma.campaign.update({
 				where: { id: params.campaignId },
 				data: {
@@ -538,6 +518,63 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		}
 	}
 
+	private async saveEvolutionResponse(
+		response: EvolutionApiResponse,
+		campaignId: string,
+		leadId: string,
+	) {
+		try {
+			if (!response?.key?.id || !response?.messageTimestamp) {
+				throw new Error("Resposta da Evolution inválida");
+			}
+
+			const messageLog = await prisma.messageLog.create({
+				data: {
+					messageId: response.key.id,
+					campaignId,
+					campaignLeadId: leadId,
+					messageDate: new Date(response.messageTimestamp * 1000),
+					messageType: response.messageType || "text",
+					content: this.extractMessageContent(response),
+					status: response.status || "PENDING",
+					statusHistory: [
+						{
+							status: response.status || "PENDING",
+							timestamp: new Date().toISOString(),
+						},
+					],
+				},
+			});
+
+			await prisma.campaignLead.update({
+				where: { id: leadId },
+				data: {
+					messageId: response.key.id,
+					status: "SENT",
+					sentAt: new Date(),
+				},
+			});
+
+			return messageLog;
+		} catch (error) {
+			console.error("Erro ao salvar resposta da Evolution:", error);
+			throw error;
+		}
+	}
+
+	private extractMessageContent(response: EvolutionApiResponse): string {
+		if (response.message?.conversation) {
+			return response.message.conversation;
+		}
+		if (response.message?.imageMessage?.caption) {
+			return response.message.imageMessage.caption;
+		}
+		if (response.message?.videoMessage?.caption) {
+			return response.message.videoMessage.caption;
+		}
+		return "";
+	}
+
 	private async delay(min: number, max: number): Promise<void> {
 		const delayTime = Math.floor(Math.random() * (max - min + 1)) + min;
 		console.log(`Aguardando ${delayTime} segundos antes do próximo envio...`);
@@ -599,7 +636,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				},
 			},
 			include: {
-				lead: {
+				campaignLead: {
 					select: {
 						name: true,
 						phone: true,
