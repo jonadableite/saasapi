@@ -59,6 +59,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
 			console.log(`Encontrados ${leads.length} leads para processamento`);
 
+			if (leads.length === 0) {
+				throw new Error("Não há leads disponíveis para disparo nesta campanha");
+			}
+
 			let processedCount = 0;
 			const totalLeads = leads.length;
 

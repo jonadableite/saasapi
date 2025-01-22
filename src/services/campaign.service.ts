@@ -239,6 +239,22 @@ export class CampaignService {
 			throw new Error(`Instância ${params.instanceName} não está conectada`);
 		}
 
+		// Verificar se há leads disponíveis antes de iniciar o dispatch
+		const availableLeadsCount = await this.prisma.campaignLead.count({
+			where: {
+				campaignId: params.campaignId,
+				OR: [
+					{ status: "pending" },
+					{ status: "failed" },
+					{ status: { equals: undefined } },
+				],
+			},
+		});
+
+		if (availableLeadsCount === 0) {
+			throw new Error("Não há leads disponíveis para disparo nesta campanha");
+		}
+
 		// Usar o messageDispatcherService existente
 		return messageDispatcherService.startDispatch({
 			campaignId: params.campaignId,
@@ -248,9 +264,9 @@ export class CampaignService {
 				? {
 						type: params.media.type,
 						base64: params.media.content,
-						caption: params.media.caption || undefined, // Converter null para undefined
-						fileName: `file_${Date.now()}`, // Adicionar fileName padrão
-						mimetype: this.getMimeType(params.media.type), // Adicionar mimetype
+						caption: params.media.caption || undefined,
+						fileName: `file_${Date.now()}`,
+						mimetype: this.getMimeType(params.media.type),
 					}
 				: undefined,
 			minDelay: params.minDelay,
