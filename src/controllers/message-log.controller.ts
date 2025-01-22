@@ -3,6 +3,35 @@ import type { Response } from "express";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 
+interface MessageLog {
+	status: string;
+	messageDate: Date;
+	messageType: string;
+	content: string;
+	messageId: string;
+}
+
+const calculateStats = (messageLogs: MessageLog[]) => {
+	const total = messageLogs.length;
+	const delivered = messageLogs.filter(
+		(log: MessageLog) =>
+			log.status === "DELIVERED" ||
+			log.status === "DELIVERY_ACK" ||
+			log.status === "READ",
+	).length;
+	const read = messageLogs.filter(
+		(log: MessageLog) => log.status === "READ",
+	).length;
+
+	return {
+		total,
+		delivered,
+		read,
+		deliveryRate: total > 0 ? (delivered / total) * 100 : 0,
+		readRate: total > 0 ? (read / total) * 100 : 0,
+	};
+};
+
 export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
 	try {
 		const userId = req.user?.id;
@@ -58,45 +87,28 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
 			}),
 		]);
 
-		const stats = messageLogs.reduce(
-			(acc, log) => {
-				acc.total++;
-				if (log.status === "SERVER_ACK") acc.serverAck++;
-				if (log.status === "DELIVERY_ACK") acc.delivered++;
-				if (log.status === "READ") acc.read++;
-				return acc;
-			},
-			{ total: 0, serverAck: 0, delivered: 0, read: 0 },
-		);
-
-		const deliveryRate =
-			stats.total > 0 ? (stats.delivered / stats.total) * 100 : 0;
-		const readRate = stats.total > 0 ? (stats.read / stats.total) * 100 : 0;
+		const stats = calculateStats(messageLogs);
 
 		const messagesByDay = messageLogs.reduce(
-			(acc, log) => {
+			(acc: Record<string, number>, log: MessageLog) => {
 				const date = log.messageDate.toISOString().split("T")[0];
 				acc[date] = (acc[date] || 0) + 1;
 				return acc;
 			},
-			{} as Record<string, number>,
+			{},
 		);
 
 		const statusDistribution = messageLogs.reduce(
-			(acc, log) => {
+			(acc: Record<string, number>, log: MessageLog) => {
 				acc[log.status] = (acc[log.status] || 0) + 1;
 				return acc;
 			},
-			{} as Record<string, number>,
+			{},
 		);
 
 		res.json({
 			messageLogs,
-			stats: {
-				...stats,
-				deliveryRate: Number(deliveryRate.toFixed(2)),
-				readRate: Number(readRate.toFixed(2)),
-			},
+			stats,
 			messagesByDay,
 			statusDistribution,
 			pagination: {
