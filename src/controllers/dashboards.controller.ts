@@ -1,12 +1,15 @@
 // src/controllers/dashboards.controller.ts
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import { prisma } from "../lib/prisma";
-import { AnalyticsService } from "../services/analytics.service";
 import type { RequestWithUser } from "../types";
 
-export const getDashboardData = async (req: Request, res: Response) => {
+export const getDashboardData = async (req: RequestWithUser, res: Response) => {
 	try {
-		const userId = req.user.id; // Assumindo que você tem o ID do usuário na requisição
+		const userId = req.user?.id;
+
+		if (!userId) {
+			return res.status(401).json({ error: "Usuário não autenticado" });
+		}
 
 		// Obter estatísticas gerais
 		const totalDisparos = await prisma.messageLog.count({

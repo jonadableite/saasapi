@@ -16,6 +16,7 @@ import { campaignSchedulerRoutes } from "./routes/campaign-scheduler.routes";
 import { campaignRoutes } from "./routes/campaign.routes";
 import { companyRoutes } from "./routes/company.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import dashboardsRoutes from "./routes/dashboards.routes";
 import instanceRoutes from "./routes/instance.routes";
 import leadRoutes from "./routes/lead.routes";
 import passwordRoutes from "./routes/password.routes";
@@ -83,7 +84,7 @@ app.use("/api/campaigns", campaignDispatcherRoutes);
 app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/companies", companyRoutes);
-app.use("/api/dashboards", dashboardRoutes);
+app.use("/api/dashboards", dashboardsRoutes);
 
 // Executar processamento de mensagens não lidas a cada hora
 cron.schedule("0 * * * *", async () => {
