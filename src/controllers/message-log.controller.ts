@@ -1,5 +1,4 @@
 import { endOfDay, startOfDay, subDays } from "date-fns";
-// src/controllers/message-log.controller.ts
 import type { Response } from "express";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
@@ -62,11 +61,12 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
 		const stats = messageLogs.reduce(
 			(acc, log) => {
 				acc.total++;
-				if (log.deliveredAt) acc.delivered++;
-				if (log.readAt) acc.read++;
+				if (log.status === "SERVER_ACK") acc.serverAck++;
+				if (log.status === "DELIVERY_ACK") acc.delivered++;
+				if (log.status === "READ") acc.read++;
 				return acc;
 			},
-			{ total: 0, delivered: 0, read: 0 },
+			{ total: 0, serverAck: 0, delivered: 0, read: 0 },
 		);
 
 		const deliveryRate =

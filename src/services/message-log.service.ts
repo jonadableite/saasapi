@@ -31,40 +31,54 @@ export class MessageLogService {
 		const today = new Date();
 		const cacheKey = `message:${messageId}:${today.toISOString().split("T")[0]}`;
 
-		const messageLog = await this.getMessageLogFromCache(cacheKey);
+		const formattedUpdate = this.formatStatusUpdate({
+			status: newStatus,
+			timestamp: new Date(),
+			reason,
+		});
 
-		if (!messageLog) {
-			// Criar novo registro
-			const formattedUpdate = this.formatStatusUpdate({
-				status: newStatus,
-				timestamp: new Date(),
-				reason,
-			});
-			const newMessageLog = await prisma.messageLog.create({
-				data: {
-					messageId,
+		const upsertData = {
+			where: {
+				messageId_messageDate: {
+					messageId: messageId,
 					messageDate: startOfDay(today),
-					messageType: "text", // valor padrão
-					content: "", // valor padrão
-					status: newStatus,
-					statusHistory: [formattedUpdate],
-					campaign: {
-						connect: { id: "default-campaign-id" }, // Você precisa fornecer um ID válido
-					},
-					campaignLead: {
-						connect: { id: "default-campaign-lead-id" }, // Você precisa fornecer um ID válido
-					},
-					...(newStatus === "sent" && { sentAt: new Date() }),
-					...(newStatus === "delivered" && { deliveredAt: new Date() }),
-					...(newStatus === "read" && { readAt: new Date() }),
-					...(newStatus === "failed" && {
-						failedAt: new Date(),
-						failureReason: reason,
-					}),
 				},
-			});
-			await this.setMessageLogCache(cacheKey, newMessageLog);
-		}
+			},
+			update: {
+				status: newStatus,
+				statusHistory: {
+					push: formattedUpdate,
+				},
+				...(newStatus === "SERVER_ACK" && { sentAt: new Date() }),
+				...(newStatus === "DELIVERY_ACK" && { deliveredAt: new Date() }),
+				...(newStatus === "READ" && { readAt: new Date() }),
+				...(newStatus === "FAILED" && {
+					failedAt: new Date(),
+					failureReason: reason,
+				}),
+			},
+			create: {
+				messageId,
+				messageDate: startOfDay(today),
+				messageType: "text",
+				content: "",
+				status: newStatus,
+				statusHistory: [formattedUpdate],
+				campaignId: "default-campaign-id", // Você precisa fornecer um ID válido
+				campaignLeadId: "default-campaign-lead-id", // Você precisa fornecer um ID válido
+				...(newStatus === "SERVER_ACK" && { sentAt: new Date() }),
+				...(newStatus === "DELIVERY_ACK" && { deliveredAt: new Date() }),
+				...(newStatus === "READ" && { readAt: new Date() }),
+				...(newStatus === "FAILED" && {
+					failedAt: new Date(),
+					failureReason: reason,
+				}),
+			},
+		};
+
+		const updatedMessageLog = await prisma.messageLog.upsert(upsertData);
+
+		await this.setMessageLogCache(cacheKey, updatedMessageLog);
 	}
 
 	async logMessage(params: {
