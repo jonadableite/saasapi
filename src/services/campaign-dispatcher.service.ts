@@ -205,6 +205,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				messageId,
 				campaignId: lead.campaignId,
 				campaignLeadId: lead.id,
+				leadId: lead.id,
 				status,
 				messageType,
 				content,

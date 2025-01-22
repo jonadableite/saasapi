@@ -26,6 +26,7 @@ export class MessageLogService {
 	async updateMessageStatus(
 		messageId: string,
 		newStatus: string,
+		leadId: string,
 		reason?: string,
 	): Promise<void> {
 		const today = new Date();
@@ -46,6 +47,7 @@ export class MessageLogService {
 			},
 			update: {
 				status: newStatus,
+				leadId: leadId,
 				statusHistory: {
 					push: formattedUpdate,
 				},
@@ -59,6 +61,7 @@ export class MessageLogService {
 			},
 			create: {
 				messageId,
+				leadId,
 				messageDate: startOfDay(today),
 				messageType: "text",
 				content: "",
@@ -85,6 +88,7 @@ export class MessageLogService {
 		messageId: string;
 		campaignId: string;
 		campaignLeadId: string;
+		leadId: string;
 		status: string;
 		messageType: string;
 		content: string;
@@ -94,6 +98,7 @@ export class MessageLogService {
 			await prisma.messageLog.create({
 				data: {
 					messageId: params.messageId,
+					leadId: params.leadId,
 					campaignId: params.campaignId,
 					campaignLeadId: params.campaignLeadId,
 					status: params.status,

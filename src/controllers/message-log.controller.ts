@@ -1,33 +1,46 @@
+// src/controllers/message-log.controller.ts
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import type { Response } from "express";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 
 interface MessageLog {
+	id: string;
+	createdAt: Date;
+	updatedAt: Date;
 	status: string;
+	campaignId: string;
+	campaignLeadId: string;
+	leadId: string | null;
+	messageId: string;
 	messageDate: Date;
 	messageType: string;
 	content: string;
-	messageId: string;
+	statusHistory: any[];
+	sentAt: Date | null;
+	deliveredAt: Date | null;
+	readAt: Date | null;
+	failedAt: Date | null;
+	failureReason: string | null;
+	lead: { phone: string } | null;
+	campaign: { name: string };
 }
 
-const calculateStats = (messageLogs: MessageLog[]) => {
+const calculateStats = (messageLogs: Partial<MessageLog>[]) => {
 	const total = messageLogs.length;
 	const delivered = messageLogs.filter(
-		(log: MessageLog) =>
+		(log) =>
 			log.status === "DELIVERED" ||
 			log.status === "DELIVERY_ACK" ||
 			log.status === "READ",
 	).length;
-	const read = messageLogs.filter(
-		(log: MessageLog) => log.status === "READ",
-	).length;
+	const read = messageLogs.filter((log) => log.status === "READ").length;
 
 	return {
 		total,
-		delivered: delivered + read, // Adiciona as mensagens lidas às entregues
+		delivered,
 		read,
-		deliveryRate: total > 0 ? ((delivered + read) / total) * 100 : 0,
+		deliveryRate: total > 0 ? (delivered / total) * 100 : 0,
 		readRate: total > 0 ? (read / total) * 100 : 0,
 	};
 };
@@ -75,8 +88,13 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
 							name: true,
 						},
 					},
+					lead: {
+						select: {
+							phone: true,
+						},
+					},
 				},
-			}),
+			}) as Promise<MessageLog[]>,
 			prisma.messageLog.count({
 				where: {
 					campaign: {
@@ -90,17 +108,21 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
 		const stats = calculateStats(messageLogs);
 
 		const messagesByDay = messageLogs.reduce(
-			(acc: Record<string, number>, log: MessageLog) => {
-				const date = log.messageDate.toISOString().split("T")[0];
-				acc[date] = (acc[date] || 0) + 1;
+			(acc: Record<string, number>, log: Partial<MessageLog>) => {
+				if (log.messageDate) {
+					const date = log.messageDate.toISOString().split("T")[0];
+					acc[date] = (acc[date] || 0) + 1;
+				}
 				return acc;
 			},
 			{},
 		);
 
 		const statusDistribution = messageLogs.reduce(
-			(acc: Record<string, number>, log: MessageLog) => {
-				acc[log.status] = (acc[log.status] || 0) + 1;
+			(acc: Record<string, number>, log: Partial<MessageLog>) => {
+				if (log.status) {
+					acc[log.status] = (acc[log.status] || 0) + 1;
+				}
 				return acc;
 			},
 			{},
