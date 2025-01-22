@@ -83,7 +83,7 @@ app.use("/api/campaigns", campaignDispatcherRoutes);
 app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/companies", companyRoutes);
-app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/dashboards", dashboardRoutes);
 
 // Executar processamento de mensagens não lidas a cada hora
 cron.schedule("0 * * * *", async () => {
