@@ -19,6 +19,7 @@ import dashboardRoutes from "./routes/dashboard.routes";
 import dashboardsRoutes from "./routes/dashboards.routes";
 import instanceRoutes from "./routes/instance.routes";
 import leadRoutes from "./routes/lead.routes";
+import messageLogRoutes from "./routes/message-log.routes";
 import passwordRoutes from "./routes/password.routes";
 import reportsRoutes from "./routes/reports.routes";
 import sessionRoutes from "./routes/session.routes";
@@ -85,6 +86,7 @@ app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/dashboards", dashboardsRoutes);
+app.use("/api/message-logs", messageLogRoutes);
 
 // Executar processamento de mensagens não lidas a cada hora
 cron.schedule("0 * * * *", async () => {
