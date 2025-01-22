@@ -296,6 +296,8 @@ model CampaignLead {
   failureReason String?
   messageId     String?
   messageLogs   MessageLog[]
+  segment       String?
+  engagement    String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   campaign      Campaign     @relation(fields: [campaignId], references: [id])

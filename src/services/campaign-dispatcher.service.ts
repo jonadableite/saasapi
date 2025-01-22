@@ -229,44 +229,58 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		campaignId: string;
 		leadId: string;
 	}): Promise<{ messageId: string }> {
-		try {
-			const formattedNumber = params.phone.startsWith("55")
-				? params.phone
-				: `55${params.phone}`;
-			let response: EvolutionApiResponse | undefined;
+		const maxRetries = 3;
+		let attempts = 0;
 
-			if (params.media?.base64) {
-				console.log("Enviando mídia...");
-				response = await this.sendMedia(
-					params.instanceName,
-					formattedNumber,
-					params.media,
-				);
-			}
+		while (attempts < maxRetries) {
+			try {
+				const formattedNumber = params.phone.startsWith("55")
+					? params.phone
+					: `55${params.phone}`;
+				let response: EvolutionApiResponse | undefined;
 
-			if (params.message) {
-				console.log("Enviando mensagem de texto...");
-				response = await this.sendText(
-					params.instanceName,
-					formattedNumber,
-					params.message,
-				);
-			}
+				if (params.media?.base64) {
+					console.log("Enviando mídia...");
+					response = await this.sendMedia(
+						params.instanceName,
+						formattedNumber,
+						params.media,
+					);
+				}
 
-			if (response && response.key && response.key.id) {
-				await this.saveEvolutionResponse(
-					response,
-					params.campaignId,
-					params.leadId,
-				);
-				return { messageId: response.key.id };
-			} else {
-				throw new Error("Falha ao obter messageId da resposta da Evolution");
+				if (params.message) {
+					console.log("Enviando mensagem de texto...");
+					response = await this.sendText(
+						params.instanceName,
+						formattedNumber,
+						params.message,
+					);
+				}
+
+				if (response && response.key && response.key.id) {
+					await this.saveEvolutionResponse(
+						response,
+						params.campaignId,
+						params.leadId,
+					);
+					return { messageId: response.key.id };
+				} else {
+					throw new Error("Falha ao obter messageId da resposta da Evolution");
+				}
+			} catch (error) {
+				attempts++;
+				console.error(`Tentativa ${attempts} falhou:`, error);
+				if (attempts === maxRetries) {
+					console.error(
+						"Erro ao enviar mensagem após todas as tentativas:",
+						error,
+					);
+					throw error;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 5000)); // espera 5 segundos antes de tentar novamente
 			}
-		} catch (error) {
-			console.error("Erro ao enviar mensagem:", error);
-			throw error;
 		}
+		throw new Error("Erro inesperado ao enviar mensagem");
 	}
 
 	public async resumeDispatch(params: {

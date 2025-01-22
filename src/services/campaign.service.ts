@@ -5,6 +5,8 @@ import type { CampaignParams, ImportLeadsResult } from "../interface";
 import { prisma } from "../lib/prisma";
 import { getFromCache, setToCache } from "../lib/redis";
 import { messageDispatcherService } from "./campaign-dispatcher.service";
+import { leadSegmentationService } from "./lead-segmentation.service";
+import { unreadMessageHandler } from "./unread-message-handler.service";
 
 interface MediaParams {
 	type: "image" | "video" | "audio";
@@ -413,6 +415,14 @@ export class CampaignService {
 			console.error("Erro ao gerar relatório detalhado:", error);
 			throw new Error("Erro ao gerar relatório");
 		}
+	}
+
+	async processUnreadMessages(): Promise<void> {
+		await unreadMessageHandler.processUnreadMessages();
+	}
+
+	async segmentLeads(): Promise<void> {
+		await leadSegmentationService.segmentLeads();
 	}
 }
 

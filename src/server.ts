@@ -2,6 +2,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import cron from "node-cron";
 import setupMinioBucket from "./config/setupMinio";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
@@ -25,6 +26,7 @@ import uploadRoutes from "./routes/upload.routes";
 import userRoutes from "./routes/user.routes";
 import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
+import { campaignService } from "./services/campaign.service";
 
 dotenv.config();
 
@@ -81,6 +83,19 @@ app.use("/api/campaigns", campaignDispatcherRoutes);
 app.use("/api/scheduler", campaignSchedulerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+
+// Executar processamento de mensagens não lidas a cada hora
+cron.schedule("0 * * * *", async () => {
+	console.log("Processando mensagens não lidas...");
+	await campaignService.processUnreadMessages();
+});
+
+// Executar segmentação de leads diariamente às 00:00
+cron.schedule("0 0 * * *", async () => {
+	console.log("Segmentando leads...");
+	await campaignService.segmentLeads();
+});
 
 // Função de encerramento limpo
 async function gracefulShutdown() {
