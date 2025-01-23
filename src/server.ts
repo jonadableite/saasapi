@@ -41,15 +41,22 @@ let server: ReturnType<typeof app.listen>;
 app.use(errorHandler);
 
 // Configurações de CORS
-app.use(
-	cors({
-		origin: ["https://whatlead-front-disparos.hlvhsf.easypanel.host", "*"],
-		optionsSuccessStatus: 200,
-		methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-		allowedHeaders: ["Content-Type", "Authorization"],
-		credentials: true,
-	}),
-);
+const corsOptions = {
+	origin: [
+		"https://whatlead-front-disparos.hlvhsf.easypanel.host",
+		"http://localhost:5173",
+	],
+	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+	allowedHeaders: ["Content-Type", "Authorization", "headers"], // Adicionado 'headers' aqui
+	credentials: true,
+	optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+app.use(express.json());
+app.use("/api/stripe", stripeRoutes);
 
 // Rotas que precisam do body raw (antes dos parsers)
 app.post(
@@ -67,7 +74,6 @@ app.use("/webhook", webhookRoutes); // Rotas de webhook da Evolution
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
-app.use("/api/stripe", stripeRoutes);
 
 // Middleware de autenticação para todas as rotas protegidas
 app.use("/api", authMiddleware);
