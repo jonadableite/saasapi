@@ -186,69 +186,81 @@ export const createPaymentIntent = async (
 	req: RequestWithUser,
 	res: Response,
 ) => {
+	console.log("Iniciando createPaymentIntent");
 	try {
-		try {
-			console.log("Received request for create-payment-intent");
-			console.log("User:", req.user);
-			console.log("Request body:", req.body);
-			const { priceId } = req.body;
-			const userId = req.user?.id;
+		const { priceId } = req.body;
+		const userId = req.user?.id;
 
-			if (!userId) {
-				return res.status(401).json({ error: "Usuário não autenticado" });
-			}
+		console.log("PriceId:", priceId);
+		console.log("UserId:", userId);
 
-			const user = await prisma.user.findUnique({ where: { id: userId } });
-			if (!user) {
-				return res.status(404).json({ error: "Usuário não encontrado" });
-			}
-
-			const price = await stripe.prices.retrieve(priceId);
-			if (!price.unit_amount) {
-				return res.status(400).json({ error: "Preço inválido" });
-			}
-
-			const planType =
-				PRICE_TO_PLAN_MAPPING[priceId as keyof typeof PRICE_TO_PLAN_MAPPING];
-			if (!planType) {
-				return res.status(400).json({ error: "Plano inválido" });
-			}
-
-			let stripeCustomer = user.stripeCustomerId;
-			if (!stripeCustomer) {
-				const customer = await stripe.customers.create({
-					email: user.email,
-					metadata: { userId: user.id.toString() },
-				});
-				stripeCustomer = customer.id;
-
-				await prisma.user.update({
-					where: { id: userId },
-					data: { stripeCustomerId: customer.id },
-				});
-			}
-
-			const paymentIntent = await stripe.paymentIntents.create({
-				customer: stripeCustomer,
-				setup_future_usage: "off_session",
-				amount: price.unit_amount,
-				currency: "brl",
-				automatic_payment_methods: { enabled: true },
-				metadata: {
-					priceId,
-					userId: userId.toString(),
-					planType,
-				},
-			});
-
-			return res.json({ clientSecret: paymentIntent.client_secret });
-		} catch (error) {
-			console.error("Erro ao criar PaymentIntent:", error);
-			return res.status(500).json({ error: "Erro ao criar PaymentIntent" });
+		if (!userId) {
+			console.log("Usuário não autenticado");
+			return res.status(401).json({ error: "Usuário não autenticado" });
 		}
+
+		const user = await prisma.user.findUnique({ where: { id: userId } });
+		if (!user) {
+			console.log("Usuário não encontrado");
+			return res.status(404).json({ error: "Usuário não encontrado" });
+		}
+
+		console.log("Buscando preço no Stripe");
+		const price = await stripe.prices.retrieve(priceId);
+		if (!price.unit_amount) {
+			console.log("Preço inválido");
+			return res.status(400).json({ error: "Preço inválido" });
+		}
+
+		const planType =
+			PRICE_TO_PLAN_MAPPING[priceId as keyof typeof PRICE_TO_PLAN_MAPPING];
+		if (!planType) {
+			console.log("Plano inválido");
+			return res.status(400).json({ error: "Plano inválido" });
+		}
+
+		console.log("Verificando ou criando cliente Stripe");
+		let stripeCustomer = user.stripeCustomerId;
+		if (!stripeCustomer) {
+			console.log("Criando novo cliente Stripe");
+			const customer = await stripe.customers.create({
+				email: user.email,
+				metadata: { userId: user.id.toString() },
+			});
+			stripeCustomer = customer.id;
+
+			await prisma.user.update({
+				where: { id: userId },
+				data: { stripeCustomerId: customer.id },
+			});
+		}
+
+		console.log("Criando PaymentIntent");
+		const paymentIntent = await stripe.paymentIntents.create({
+			customer: stripeCustomer,
+			setup_future_usage: "off_session",
+			amount: price.unit_amount,
+			currency: "brl",
+			automatic_payment_methods: { enabled: true },
+			metadata: {
+				priceId,
+				userId: userId.toString(),
+				planType,
+			},
+		});
+
+		console.log("PaymentIntent criado com sucesso");
+		return res.json({ clientSecret: paymentIntent.client_secret });
 	} catch (error) {
 		console.error("Erro ao criar PaymentIntent:", error);
-		return res.status(500).json({ error: "Erro ao criar PaymentIntent" });
+		if (error instanceof Error) {
+			return res
+				.status(500)
+				.json({ error: `Erro ao criar PaymentIntent: ${error.message}` });
+		}
+		return res
+			.status(500)
+			.json({ error: "Erro desconhecido ao criar PaymentIntent" });
 	}
 };
 
