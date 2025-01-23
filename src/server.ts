@@ -113,6 +113,7 @@ async function gracefulShutdown() {
 		process.exit(0);
 	}
 }
+process.env.TZ = "America/Sao_Paulo";
 
 // Inicia o servidor
 setupMinioBucket().then(() => {
