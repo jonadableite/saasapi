@@ -1,4 +1,9 @@
-import { Router } from "express";
+import {
+	type NextFunction,
+	type Request,
+	type Response,
+	Router,
+} from "express";
 import {
 	cancelSubscription,
 	createCheckoutSession,
@@ -9,6 +14,17 @@ import {
 import { authMiddleware } from "../middlewares/authenticate";
 
 const router = Router();
+
+// Middleware de log para depuração
+const logMiddleware = (req: Request, res: Response, next: NextFunction) => {
+	console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+	console.log("Headers:", req.headers);
+	console.log("Body:", req.body);
+	next();
+};
+
+// Aplique o middleware de log em todas as rotas
+router.use(logMiddleware);
 
 // Rota para criar uma sessão de checkout
 router.post("/create-checkout-session", authMiddleware, createCheckoutSession);

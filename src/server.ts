@@ -43,7 +43,8 @@ app.use(errorHandler);
 // Configurações de CORS
 app.use(
 	cors({
-		origin: "*",
+		origin: ["https://whatlead-front-disparos.hlvhsf.easypanel.host", "*"],
+		optionsSuccessStatus: 200,
 		methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 		allowedHeaders: ["Content-Type", "Authorization"],
 		credentials: true,
@@ -66,6 +67,7 @@ app.use("/webhook", webhookRoutes); // Rotas de webhook da Evolution
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
+app.use("/api/stripe", stripeRoutes);
 
 // Middleware de autenticação para todas as rotas protegidas
 app.use("/api", authMiddleware);
@@ -76,7 +78,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/instances", instanceRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/warmup", warmupRoutes);
-app.use("/api/stripe", stripeRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/campaigns", campaignRoutes);
 app.use("/api/campaigns", campaignLeadRoutes);

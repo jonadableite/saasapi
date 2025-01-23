@@ -187,57 +187,65 @@ export const createPaymentIntent = async (
 	res: Response,
 ) => {
 	try {
-		const { priceId } = req.body;
-		const userId = req.user?.id;
+		try {
+			console.log("Received request for create-payment-intent");
+			console.log("User:", req.user);
+			console.log("Request body:", req.body);
+			const { priceId } = req.body;
+			const userId = req.user?.id;
 
-		if (!userId) {
-			return res.status(401).json({ error: "Usuário não autenticado" });
-		}
+			if (!userId) {
+				return res.status(401).json({ error: "Usuário não autenticado" });
+			}
 
-		const user = await prisma.user.findUnique({ where: { id: userId } });
-		if (!user) {
-			return res.status(404).json({ error: "Usuário não encontrado" });
-		}
+			const user = await prisma.user.findUnique({ where: { id: userId } });
+			if (!user) {
+				return res.status(404).json({ error: "Usuário não encontrado" });
+			}
 
-		const price = await stripe.prices.retrieve(priceId);
-		if (!price.unit_amount) {
-			return res.status(400).json({ error: "Preço inválido" });
-		}
+			const price = await stripe.prices.retrieve(priceId);
+			if (!price.unit_amount) {
+				return res.status(400).json({ error: "Preço inválido" });
+			}
 
-		const planType =
-			PRICE_TO_PLAN_MAPPING[priceId as keyof typeof PRICE_TO_PLAN_MAPPING];
-		if (!planType) {
-			return res.status(400).json({ error: "Plano inválido" });
-		}
+			const planType =
+				PRICE_TO_PLAN_MAPPING[priceId as keyof typeof PRICE_TO_PLAN_MAPPING];
+			if (!planType) {
+				return res.status(400).json({ error: "Plano inválido" });
+			}
 
-		let stripeCustomer = user.stripeCustomerId;
-		if (!stripeCustomer) {
-			const customer = await stripe.customers.create({
-				email: user.email,
-				metadata: { userId: user.id.toString() },
+			let stripeCustomer = user.stripeCustomerId;
+			if (!stripeCustomer) {
+				const customer = await stripe.customers.create({
+					email: user.email,
+					metadata: { userId: user.id.toString() },
+				});
+				stripeCustomer = customer.id;
+
+				await prisma.user.update({
+					where: { id: userId },
+					data: { stripeCustomerId: customer.id },
+				});
+			}
+
+			const paymentIntent = await stripe.paymentIntents.create({
+				customer: stripeCustomer,
+				setup_future_usage: "off_session",
+				amount: price.unit_amount,
+				currency: "brl",
+				automatic_payment_methods: { enabled: true },
+				metadata: {
+					priceId,
+					userId: userId.toString(),
+					planType,
+				},
 			});
-			stripeCustomer = customer.id;
 
-			await prisma.user.update({
-				where: { id: userId },
-				data: { stripeCustomerId: customer.id },
-			});
+			return res.json({ clientSecret: paymentIntent.client_secret });
+		} catch (error) {
+			console.error("Erro ao criar PaymentIntent:", error);
+			return res.status(500).json({ error: "Erro ao criar PaymentIntent" });
 		}
-
-		const paymentIntent = await stripe.paymentIntents.create({
-			customer: stripeCustomer,
-			setup_future_usage: "off_session",
-			amount: price.unit_amount,
-			currency: "brl",
-			automatic_payment_methods: { enabled: true },
-			metadata: {
-				priceId,
-				userId: userId.toString(),
-				planType,
-			},
-		});
-
-		return res.json({ clientSecret: paymentIntent.client_secret });
 	} catch (error) {
 		console.error("Erro ao criar PaymentIntent:", error);
 		return res.status(500).json({ error: "Erro ao criar PaymentIntent" });
