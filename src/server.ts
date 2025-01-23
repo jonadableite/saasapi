@@ -37,14 +37,11 @@ const PORT = process.env.PORT || 9000;
 
 let server: ReturnType<typeof app.listen>;
 
-// Middleware de erro deve ser o último
-app.use(errorHandler);
-
 // Configurações de CORS
 const corsOptions = {
 	origin: "*",
 	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-	allowedHeaders: ["Content-Type", "Authorization", "headers"], // Adicionado 'headers' aqui
+	allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"], // Adicionado 'apikey'
 	credentials: true,
 	optionsSuccessStatus: 200,
 };
@@ -52,8 +49,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-app.use(express.json());
-app.use("/api/stripe", stripeRoutes);
+// Configurar limites para o body-parser
+app.use(express.json({ limit: "300mb" }));
+app.use(express.urlencoded({ limit: "300mb", extended: true }));
 
 // Rotas que precisam do body raw (antes dos parsers)
 app.post(
@@ -62,9 +60,7 @@ app.post(
 	handleWebhook,
 );
 
-// Parsers
-app.use(express.json({ limit: "300mb" }));
-app.use(express.urlencoded({ limit: "300mb", extended: true }));
+app.use("/api/stripe", stripeRoutes);
 
 // Rotas públicas (sem autenticação)
 app.use("/webhook", webhookRoutes); // Rotas de webhook da Evolution
@@ -92,13 +88,15 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/dashboards", dashboardsRoutes);
 app.use("/api/message-logs", messageLogRoutes);
 
-// Executar processamento de mensagens não lidas a cada hora
+// Middleware de erro deve ser o último
+app.use(errorHandler);
+
+// Cron jobs
 cron.schedule("0 * * * *", async () => {
 	console.log("Processando mensagens não lidas...");
 	await campaignService.processUnreadMessages();
 });
 
-// Executar segmentação de leads diariamente às 00:00
 cron.schedule("0 0 * * *", async () => {
 	console.log("Segmentando leads...");
 	await campaignService.segmentLeads();
@@ -117,6 +115,7 @@ async function gracefulShutdown() {
 		process.exit(0);
 	}
 }
+
 process.env.TZ = "America/Sao_Paulo";
 
 // Inicia o servidor
@@ -127,7 +126,7 @@ setupMinioBucket().then(() => {
 });
 
 // Encerramento limpo
-process.on("SIGTERM", () => gracefulShutdown());
-process.on("SIGINT", () => gracefulShutdown());
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
 
 export default app;
