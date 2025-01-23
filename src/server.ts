@@ -42,10 +42,7 @@ app.use(errorHandler);
 
 // Configurações de CORS
 const corsOptions = {
-	origin: [
-		"https://whatlead-front-disparos.hlvhsf.easypanel.host",
-		"http://localhost:5173",
-	],
+	origin: "*",
 	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 	allowedHeaders: ["Content-Type", "Authorization", "headers"], // Adicionado 'headers' aqui
 	credentials: true,
