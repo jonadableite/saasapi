@@ -187,6 +187,8 @@ export const createPaymentIntent = async (
 	res: Response,
 ) => {
 	console.log("Iniciando createPaymentIntent");
+	console.log("Headers recebidos:", req.headers);
+	console.log("Body recebido:", req.body);
 	try {
 		const { priceId } = req.body;
 		const userId = req.user?.id;
