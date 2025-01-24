@@ -74,6 +74,13 @@ export const passwordResetController = {
       <p>Se você não solicitou esta alteração, por favor, ignore este email ou entre em contato com nossa equipe de suporte imediatamente.</p>
       <p>Para sua segurança, recomendamos que você altere sua senha regularmente e utilize senhas fortes e únicas para cada uma de suas contas online.</p>
       <p>Atenciosamente,<br>Equipe WhatLead</p>
+      <p style="font-style: italic;">"Quando qualidade, ética e profissionalismo precisam caminhar juntos"!</p>
+      <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;">
+      <p style="font-size: 12px; color: #666;">
+        Aviso legal: Esta mensagem, incluindo seus anexos, tem caráter confidencial e seu conteúdo é restrito ao destinatário.
+        Caso você a tenha recebido por engano, por favor, retorne-a ao destinatário e apague-a de seus arquivos.
+        É expressamente proibido qualquer uso não autorizado, replicação ou disseminação desta mensagem ou de parte dela, sob qualquer meio.
+      </p>
     </div>
   `,
 			});
