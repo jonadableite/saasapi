@@ -108,7 +108,7 @@ export const updateTypebotConfigController = async (
 ) => {
 	try {
 		const { id } = req.params;
-		const { typebot } = req.body;
+		const typebot = req.body; // Recebe o objeto typebot diretamente
 
 		// Validação dos dados
 		await typebotConfigSchema.validate({ typebot }, { abortEarly: false });
@@ -139,15 +139,16 @@ export const updateTypebotConfigController = async (
 			},
 		});
 
-		return res.json(updatedInstance);
+		return res.json({ success: true, instance: updatedInstance });
 	} catch (error) {
 		console.error("Erro ao atualizar configuração do typebot:", error);
 
 		if (error instanceof yup.ValidationError) {
-			return res.status(400).json({ errors: error.errors });
+			return res.status(400).json({ success: false, errors: error.errors });
 		}
 
 		return res.status(500).json({
+			success: false,
 			error: "Erro ao atualizar configuração do typebot",
 			details: error instanceof Error ? error.message : "Erro desconhecido",
 		});
