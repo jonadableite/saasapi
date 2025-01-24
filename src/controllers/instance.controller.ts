@@ -449,7 +449,7 @@ export const deleteTypebotConfig = async (
 		const updatedInstance = await prisma.instance.update({
 			where: { id },
 			data: {
-				typebot: null, // Use null em vez de Prisma.JsonNull
+				typebot: Prisma.JsonNull,
 			},
 		});
 
