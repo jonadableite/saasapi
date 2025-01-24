@@ -1,9 +1,10 @@
+import crypto from "node:crypto";
+// src/controllers/password.controller.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import type { Request, Response } from "express";
 import Redis from "ioredis";
-import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type smtpTransport from "nodemailer/lib/smtp-transport";
 
@@ -18,7 +19,7 @@ const redis = new Redis({
 });
 
 const smtpSenderEmail =
-	process.env.SMTP_SENDER_EMAIL || "whatLead Warmup <contato@whatlead.com.br>";
+	process.env.SMTP_SENDER_EMAIL || "WhatLead <contato@whatlead.com.br>";
 const smtpHost = process.env.SMTP_HOST || "smtp.zoho.com";
 const smtpPort = Number(process.env.SMTP_PORT) || 587;
 const smtpUsername = process.env.SMTP_USERNAME || "contato@whatlead.com.br";
@@ -60,12 +61,21 @@ export const passwordResetController = {
 			await transporter.sendMail({
 				from: smtpSenderEmail,
 				to: email,
-				subject: "Código de Recuperação de Senha",
+				subject: "Recuperação de Senha - WhatLead",
 				html: `
-          <h1>Código de Recuperação</h1>
-          <p>Seu código de recuperação é: <strong>${resetCode}</strong></p>
-          <p>Este código expira em 15 minutos.</p>
-        `,
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #4a4a4a;">Recuperação de Senha - WhatLead</h2>
+      <p>Prezado(a) usuário(a),</p>
+      <p>Recebemos uma solicitação para recuperação de senha da sua conta WhatLead. Para prosseguir com o processo de redefinição, utilize o código de verificação abaixo:</p>
+      <div style="background-color: #f2f2f2; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; margin: 20px 0;">
+        ${resetCode}
+      </div>
+      <p>Este código é válido por 15 minutos. Por favor, não compartilhe este código com ninguém.</p>
+      <p>Se você não solicitou esta alteração, por favor, ignore este email ou entre em contato com nossa equipe de suporte imediatamente.</p>
+      <p>Para sua segurança, recomendamos que você altere sua senha regularmente e utilize senhas fortes e únicas para cada uma de suas contas online.</p>
+      <p>Atenciosamente,<br>Equipe WhatLead</p>
+    </div>
+  `,
 			});
 
 			return res.status(200).json({
