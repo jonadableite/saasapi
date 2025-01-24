@@ -418,25 +418,46 @@ export const updateInstanceStatusController = async (
 	}
 };
 
-// Controlador para deletar configuração do Typebot
 export const deleteTypebotConfig = async (
 	req: RequestWithUser,
 	res: Response,
 ) => {
 	try {
 		const { id } = req.params;
+		const userId = req.user?.id;
 
-		const updatedInstance = await prisma.instance.update({
-			where: { id }, // Removido Number()
-			data: {
-				typebot: Prisma.JsonNull,
+		if (!userId) {
+			return res
+				.status(401)
+				.json({ success: false, error: "Usuário não autenticado" });
+		}
+
+		// Verifica se a instância pertence ao usuário
+		const instance = await prisma.instance.findFirst({
+			where: {
+				id: id,
+				userId: userId,
 			},
 		});
 
-		res.json(updatedInstance);
+		if (!instance) {
+			return res
+				.status(404)
+				.json({ success: false, error: "Instância não encontrada" });
+		}
+
+		const updatedInstance = await prisma.instance.update({
+			where: { id },
+			data: {
+				typebot: null, // Use null em vez de Prisma.JsonNull
+			},
+		});
+
+		res.json({ success: true, instance: updatedInstance });
 	} catch (error) {
 		console.error("Erro ao remover configurações do Typebot:", error);
 		res.status(500).json({
+			success: false,
 			error: "Erro ao remover configurações do Typebot",
 			details: error instanceof Error ? error.message : "Erro desconhecido",
 		});
