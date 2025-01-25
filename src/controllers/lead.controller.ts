@@ -4,9 +4,11 @@ import { BadRequestError, UnauthorizedError } from "../errors/AppError";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 import {
+	deleteLead,
 	fetchLeads,
 	importLeads,
 	segmentLeads,
+	updateLead,
 } from "../services/lead.service";
 import { fetchUserPlan } from "../services/user.service";
 
@@ -37,6 +39,70 @@ export class LeadController {
 			} else {
 				res.status(500).json({
 					error: "Erro ao buscar leads",
+					details: error instanceof Error ? error.message : "Erro desconhecido",
+				});
+			}
+		}
+	}
+
+	public async updateLead(req: RequestWithUser, res: Response): Promise<void> {
+		try {
+			const userId = req.user?.id;
+			if (!userId) {
+				throw new UnauthorizedError("Usuário não autenticado");
+			}
+
+			const { id } = req.params;
+			if (!id) {
+				throw new BadRequestError("ID do lead é obrigatório");
+			}
+			const updateData = req.body;
+
+			const updatedLead = await updateLead(id, updateData);
+
+			res.json({
+				success: true,
+				message: "Lead atualizado com sucesso",
+				data: updatedLead,
+			});
+		} catch (error) {
+			console.error("Erro ao atualizar lead:", error);
+			if (error instanceof UnauthorizedError) {
+				res.status(401).json({ error: error.message });
+			} else {
+				res.status(500).json({
+					error: "Erro ao atualizar lead",
+					details: error instanceof Error ? error.message : "Erro desconhecido",
+				});
+			}
+		}
+	}
+
+	public async deleteLead(req: RequestWithUser, res: Response): Promise<void> {
+		try {
+			const userId = req.user?.id;
+			if (!userId) {
+				throw new UnauthorizedError("Usuário não autenticado");
+			}
+
+			const { id } = req.params;
+			if (!id) {
+				throw new BadRequestError("ID do lead é obrigatório");
+			}
+
+			await deleteLead(id);
+
+			res.json({
+				success: true,
+				message: "Lead excluído com sucesso",
+			});
+		} catch (error) {
+			console.error("Erro ao excluir lead:", error);
+			if (error instanceof UnauthorizedError) {
+				res.status(401).json({ error: error.message });
+			} else {
+				res.status(500).json({
+					error: "Erro ao excluir lead",
 					details: error instanceof Error ? error.message : "Erro desconhecido",
 				});
 			}
@@ -133,12 +199,23 @@ export class LeadController {
 				throw new UnauthorizedError("Usuário não autenticado");
 			}
 
-			const { rules } = req.body;
+			const { rules, source } = req.body;
 			if (!rules || !Array.isArray(rules) || rules.length === 0) {
 				throw new BadRequestError("Regras de segmentação inválidas");
 			}
 
-			const segmentedLeads = await segmentLeads(userId, rules);
+			// Verifica se o source foi fornecido e é válido
+			if (source && typeof source !== "string") {
+				throw new BadRequestError("Fonte de segmentação inválida");
+			}
+
+			// Segmentar leads com base nas regras e na fonte (se fornecida)
+			let segmentedLeads: any;
+			if (source) {
+				segmentedLeads = await segmentLeads({ userId, rules, source });
+			} else {
+				segmentedLeads = await segmentLeads({ userId, rules });
+			}
 
 			res.json({
 				success: true,

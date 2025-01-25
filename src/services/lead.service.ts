@@ -1,42 +1,56 @@
-import { Readable } from "stream";
-// src/services/lead.service.ts
 import { PrismaClient } from "@prisma/client";
 import csv from "csv-parser";
-import type { SegmentationRule } from "../interface";
+import { Readable } from "stream";
+// src/services/lead.service.ts
+import type { Lead, SegmentationRule } from "../interface";
 
 const prisma = new PrismaClient();
 
-export const segmentLeads = async (
-	userId: string,
-	rules: SegmentationRule[],
-) => {
+export async function segmentLeads({
+	userId,
+	rules,
+	source,
+}: {
+	userId: string;
+	rules: SegmentationRule[];
+	source?: string;
+}): Promise<any> {
+	// Construir a condição de segmentação baseada nas regras fornecidas
 	const whereConditions = rules.map((rule) => {
-		switch (rule.operator) {
-			case "contains":
-				return { [rule.field]: { contains: rule.value } };
-			case "equals":
-				return { [rule.field]: rule.value };
-			case "startsWith":
-				return { [rule.field]: { startsWith: rule.value } };
+		let condition: { [key: string]: any };
+		switch (rule.field) {
+			case "name":
+			case "email":
+			case "phone":
+				condition = { [rule.field]: { [rule.operator]: rule.value } };
+				break;
+			case "status":
+			case "segment":
+				condition = {
+					[rule.field]:
+						rule.operator === "equals"
+							? rule.value
+							: { [rule.operator]: rule.value },
+				};
+				break;
+			// Adicione outros casos conforme necessário
 			default:
-				return {};
+				condition = {};
 		}
+		return condition;
 	});
 
-	const segmentedLeads = await prisma.campaignLead.findMany({
-		where: {
-			AND: [
-				{ user: { id: userId } }, // Correto modo de referenciar o userId
-				...whereConditions,
-			],
-		},
-		include: {
-			user: true, // Se precisar incluir dados do usuário
-		},
+	// Combinar condições usando AND/OR conforme necessário
+	const combinedWhere =
+		whereConditions.length > 0 ? { AND: whereConditions } : {};
+
+	// Consultar leads com base nas condições de segmentação
+	const segmentedLeads = await prisma.lead.findMany({
+		where: combinedWhere,
 	});
 
 	return segmentedLeads;
-};
+}
 
 export const importLeads = async (
 	file: Express.Multer.File,
@@ -55,11 +69,11 @@ export const importLeads = async (
 
 	const createdLeads = await prisma.campaignLead.createMany({
 		data: leads.map((lead) => ({
-			campaignId, // Adicionar campaignId
+			campaignId,
 			userId,
 			name: lead.name || lead.nome || null,
 			phone: formatPhone(lead.phone || lead.telefone),
-			status: "pending",
+			status: "novo",
 		})),
 		skipDuplicates: true,
 	});
@@ -112,4 +126,17 @@ export const fetchLeads = async (
 		page,
 		pageCount: Math.ceil(total / limit),
 	};
+};
+
+export const updateLead = async (leadId: string, data: Partial<Lead>) => {
+	return prisma.campaignLead.update({
+		where: { id: leadId },
+		data,
+	});
+};
+
+export const deleteLead = async (leadId: string) => {
+	return prisma.campaignLead.delete({
+		where: { id: leadId },
+	});
 };

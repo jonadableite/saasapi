@@ -25,6 +25,15 @@ export interface StatusHistoryEntry {
 	timestamp: string;
 }
 
+export interface LeadBehavior {
+	responseRate: number;
+	averageResponseTime: number;
+	messageReadRate: number;
+	lastInteraction: Date;
+	totalMessages: number;
+	engagementScore: number;
+}
+
 export interface InputJsonValue {
 	[key: string]: any;
 }
