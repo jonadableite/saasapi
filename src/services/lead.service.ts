@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import csv from "csv-parser";
 import { Readable } from "stream";
 // src/services/lead.service.ts
-import type { Lead, SegmentationRule } from "../interface";
+import type { SegmentationRule } from "../interface";
 
 const prisma = new PrismaClient();
 
@@ -128,14 +128,21 @@ export const fetchLeads = async (
 	};
 };
 
-export const updateLead = async (leadId: string, data: Partial<Lead>) => {
-	const { ...updateData } = data;
+export const updateLead = async (
+	leadId: string,
+	data: { name?: string; phone?: string; status?: string; email?: string },
+) => {
+	const updateData = {
+		name: data.name,
+		phone: data.phone,
+		status: data.status,
+		email: data.email,
+		// Adicione outros campos que podem ser atualizados
+	};
 
 	return prisma.campaignLead.update({
 		where: { id: leadId },
-		data: {
-			...updateData,
-		},
+		data: updateData,
 	});
 };
 
