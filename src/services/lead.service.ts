@@ -104,7 +104,7 @@ export const fetchLeads = async (
 					],
 				}
 			: {}),
-		...(userId ? { user: { id: userId } } : {}),
+		...(userId ? { userId: userId } : {}),
 	};
 
 	const [leads, total] = await Promise.all([
@@ -114,14 +114,21 @@ export const fetchLeads = async (
 			take: limit,
 			orderBy: { createdAt: "desc" },
 			include: {
-				user: true, // Se precisar incluir dados do usuário
+				campaign: {
+					select: {
+						name: true,
+					},
+				},
 			},
 		}),
 		prisma.campaignLead.count({ where }),
 	]);
 
 	return {
-		leads,
+		leads: leads.map((lead) => ({
+			...lead,
+			campaignName: lead.campaign.name,
+		})),
 		total,
 		page,
 		pageCount: Math.ceil(total / limit),
@@ -130,13 +137,12 @@ export const fetchLeads = async (
 
 export const updateLead = async (
 	leadId: string,
-	data: { name?: string; phone?: string; status?: string; email?: string },
+	data: { name?: string; phone?: string; status?: string },
 ) => {
 	const updateData = {
 		name: data.name,
 		phone: data.phone,
 		status: data.status,
-		email: data.email,
 		// Adicione outros campos que podem ser atualizados
 	};
 
