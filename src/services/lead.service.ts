@@ -129,14 +129,24 @@ export const fetchLeads = async (
 };
 
 export const updateLead = async (leadId: string, data: Partial<Lead>) => {
+	const { ...updateData } = data;
+
 	return prisma.campaignLead.update({
 		where: { id: leadId },
-		data,
+		data: {
+			...updateData,
+		},
 	});
 };
 
 export const deleteLead = async (leadId: string) => {
 	return prisma.campaignLead.delete({
+		where: { id: leadId },
+	});
+};
+
+export const getLeadById = async (leadId: string) => {
+	return prisma.campaignLead.findUnique({
 		where: { id: leadId },
 	});
 };

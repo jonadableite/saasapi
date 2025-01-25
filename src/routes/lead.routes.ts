@@ -13,6 +13,7 @@ const leadController = new LeadController();
 router.use(authMiddleware);
 
 router.get("/", leadController.getLeads);
+router.get("/:id", leadController.getLeads);
 router.put("/:id", leadController.updateLead);
 router.delete("/:id", leadController.deleteLead);
 router.get("/plan", leadController.getUserPlan);
