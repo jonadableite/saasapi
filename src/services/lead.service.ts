@@ -3,6 +3,7 @@ import csv from "csv-parser";
 import { Readable } from "stream";
 // src/services/lead.service.ts
 import type { SegmentationRule } from "../interface";
+import { fetchUserPlan } from "./user.service";
 
 const prisma = new PrismaClient();
 
@@ -67,8 +68,21 @@ export const importLeads = async (
 			.on("error", reject);
 	});
 
+	// Buscar o plano do usuário e o limite de leads
+	const userPlan = await fetchUserPlan(userId);
+	const leadLimit = userPlan.limits.maxLeads;
+
+	// Contar o número atual de leads do usuário
+	const currentLeadCount = await prisma.campaignLead.count({
+		where: { userId },
+	});
+
+	// Calcular quantos leads podem ser adicionados
+	const availableSlots = Math.max(0, leadLimit - currentLeadCount);
+	const leadsToCreate = leads.slice(0, availableSlots);
+
 	const createdLeads = await prisma.campaignLead.createMany({
-		data: leads.map((lead) => ({
+		data: leadsToCreate.map((lead) => ({
 			campaignId,
 			userId,
 			name: lead.name || lead.nome || null,
@@ -78,7 +92,11 @@ export const importLeads = async (
 		skipDuplicates: true,
 	});
 
-	return createdLeads;
+	return {
+		createdCount: createdLeads.count,
+		totalImported: leads.length,
+		limitReached: createdLeads.count < leads.length,
+	};
 };
 
 // Função auxiliar para formatar o telefone
@@ -163,3 +181,5 @@ export const getLeadById = async (leadId: string) => {
 		where: { id: leadId },
 	});
 };
+export { fetchUserPlan };
+
