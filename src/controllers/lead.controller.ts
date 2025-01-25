@@ -47,11 +47,6 @@ export class LeadController {
 
 	public async updateLead(req: RequestWithUser, res: Response): Promise<void> {
 		try {
-			const userId = req.user?.id;
-			if (!userId) {
-				throw new UnauthorizedError("Usuário não autenticado");
-			}
-
 			const { id } = req.params;
 			if (!id) {
 				throw new BadRequestError("ID do lead é obrigatório");
