@@ -1,14 +1,19 @@
+import { createServer } from "node:http";
 // src/server.ts
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import cron from "node-cron";
+import swaggerUi from "swagger-ui-express";
 import setupMinioBucket from "./config/setupMinio";
+import specs from "./config/swagger";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
+import { initializeSocket } from "./helpers/socketEmit";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
+import { chatbotRoutes } from "./routes/Chatbot/chatbot.routes";
 import { analyticsRoutes } from "./routes/analytics.routes";
 import { campaignDispatcherRoutes } from "./routes/campaign-dispatcher.routes";
 import { campaignLeadRoutes } from "./routes/campaign-lead.routes";
@@ -33,17 +38,20 @@ import { campaignService } from "./services/campaign.service";
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 9000;
 
 let server: ReturnType<typeof app.listen>;
 
+initializeSocket(httpServer);
+
 // Configurações de CORS
 const corsOptions = {
-	origin: "*",
-	methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-	allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"], // Adicionado 'apikey'
-	credentials: true,
-	optionsSuccessStatus: 200,
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"], // Adicionado 'apikey'
+  credentials: true,
+  optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
@@ -53,11 +61,13 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "300mb" }));
 app.use(express.urlencoded({ limit: "300mb", extended: true }));
 
+app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
+
 // Rotas que precisam do body raw (antes dos parsers)
 app.post(
-	"/api/stripe/webhook",
-	express.raw({ type: "application/json" }),
-	handleWebhook,
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  handleWebhook,
 );
 
 app.use("/api/stripe", stripeRoutes);
@@ -72,6 +82,7 @@ app.use("/api/users/register", createUsersController);
 app.use("/api", authMiddleware);
 
 // Rotas protegidas (com autenticação)
+app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/instances", instanceRoutes);
@@ -93,36 +104,36 @@ app.use(errorHandler);
 
 // Cron jobs
 cron.schedule("0 * * * *", async () => {
-	console.log("Processando mensagens não lidas...");
-	await campaignService.processUnreadMessages();
+  console.log("Processando mensagens não lidas...");
+  await campaignService.processUnreadMessages();
 });
 
 cron.schedule("0 0 * * *", async () => {
-	console.log("Segmentando leads...");
-	await campaignService.segmentLeads();
+  console.log("Segmentando leads...");
+  await campaignService.segmentLeads();
 });
 
 // Função de encerramento limpo
 async function gracefulShutdown() {
-	console.log("Encerrando servidor...");
-	await prisma.$disconnect();
-	if (server) {
-		server.close(() => {
-			console.log("Servidor encerrado.");
-			process.exit(0);
-		});
-	} else {
-		process.exit(0);
-	}
+  console.log("Encerrando servidor...");
+  await prisma.$disconnect();
+  if (server) {
+    server.close(() => {
+      console.log("Servidor encerrado.");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
 }
 
 process.env.TZ = "America/Sao_Paulo";
 
 // Inicia o servidor
 setupMinioBucket().then(() => {
-	server = app.listen(PORT, () => {
-		console.log(`🚀 Servidor rodando na porta ${PORT}`);
-	});
+  server = app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  });
 });
 
 // Encerramento limpo

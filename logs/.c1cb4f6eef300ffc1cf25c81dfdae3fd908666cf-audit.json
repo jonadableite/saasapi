@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/.c1cb4f6eef300ffc1cf25c81dfdae3fd908666cf-audit.json",
+    "files": [
+        {
+            "date": 1738445948482,
+            "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/application-2025-02-01.log",
+            "hash": "75541e72699f0afb2364e44af6861786aa23ed33beeb71f8b305c2548b75b8cf"
+        }
+    ],
+    "hashType": "sha256"
+}

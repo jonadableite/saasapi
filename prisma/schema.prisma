@@ -50,6 +50,8 @@ model User {
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
+  ChatSession ChatSession[]
+  ChatbotFlow ChatbotFlow[]
 }
 
 model CompaniesUnites {
@@ -113,6 +115,7 @@ model Lead {
   updatedat               DateTime?       @updatedAt
   curation                Json?
   config                  CompaniesUnites @relation(fields: [configid], references: [id])
+  chatSessions            ChatSession[]
 
   @@index([phone, configid])
   @@map("whatleadleads")
@@ -247,7 +250,9 @@ model Campaign {
   CampaignErrorLog CampaignErrorLog[]
   CampaignSchedule CampaignSchedule[]
   MessageAnalytics MessageAnalytics[]
-
+  chatSessions     ChatSession[]
+  chatbotFlowId    String?
+  chatbotFlow      ChatbotFlow? @relation(fields: [chatbotFlowId], references: [id])
   @@index([userId])
   @@index([status])
   @@map("whatlead_campaigns")
@@ -301,6 +306,7 @@ model CampaignLead {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   campaign      Campaign     @relation(fields: [campaignId], references: [id])
+  chatSessions  ChatSession[]
 
   @@unique([campaignId, phone], name: "unique_campaign_phone")
   @@index([campaignId])
@@ -402,4 +408,62 @@ model CampaignErrorLog {
   errorDetails Json?
   createdAt    DateTime @default(now())
   campaign     Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model ChatbotFlow {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  nodes       Node[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  campaigns   Campaign[]
+  sessions    ChatSession[]
+}
+
+model Node {
+  id           String      @id @default(uuid())
+  type         String      // message, condition, input, media, delay, tag, etc.
+  content      Json
+  position     Json        // {x: number, y: number}
+  chatbotFlowId String
+  chatbotFlow  ChatbotFlow @relation(fields: [chatbotFlowId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model ChatSession {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  campaignId   String?
+  campaign     Campaign? @relation(fields: [campaignId], references: [id])
+  currentNodeId String?
+  variables    Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  endedAt      DateTime?
+  chatbotFlowId String?
+  chatbotFlow  ChatbotFlow? @relation(fields: [chatbotFlowId], references: [id])
+  CampaignLead CampaignLead[]
+}
+
+model Ticket {
+  id String @id @default(uuid())
+  chatFlowId String?
+  status String
+  isGroup Boolean
+  answered Boolean
+  contactId String
+  userId String
+  botRetries Int @default(0)
+  campaignId String?
+  tenantId String
+  unreadMessages Int @default(0)
+  queueId String?
+  lastInteractionBot DateTime?
 }
