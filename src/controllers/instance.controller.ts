@@ -113,6 +113,8 @@ export const updateTypebotConfigController = async (
     const { id } = req.params; // ID da instância
     const { typebot } = req.body; // Configurações do Typebot
 
+    console.log("Payload recebido no backend:", typebot);
+
     // Validações iniciais do formato da configuração
     await typebotConfigSchema.validate({ typebot }, { abortEarly: false });
 
@@ -131,16 +133,20 @@ export const updateTypebotConfigController = async (
       return res.status(404).json({ error: "Instância não encontrada" });
     }
 
-    // Primeiramente, tente atualizar na API externa (Evolution)
+    // Enviar as configurações para a API externa (Evolution)
     try {
-      const externalApiUrl = `${API_URL}/instance/updateTypebotConfig/${instance.instanceName}`;
-      const externalResponse = await axios.put(
+      const externalApiUrl = `${API_URL}/typebot/set/${instance.instanceName}`;
+      console.log("Enviando para API externa:", externalApiUrl, typebot);
+
+      const externalResponse = await axios.post(
         externalApiUrl,
-        { typebot }, // Dados enviados para a API externa
+        typebot, // Envia o objeto completo para a API externa
         {
           headers: { apikey: API_KEY, "Content-Type": "application/json" },
         },
       );
+
+      console.log("Resposta da API externa:", externalResponse.data);
 
       if (externalResponse.status !== 200) {
         throw new Error(
