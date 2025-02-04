@@ -87,36 +87,21 @@ export class CampaignLeadService {
           );
       }
 
-      console.log("Leads extraídos:", processedLeads);
+      console.log("Leads extraídos do arquivo:", processedLeads);
 
       if (processedLeads.length === 0) {
         throw new BadRequestError("Nenhum lead válido encontrado no arquivo");
       }
 
-      // Remover duplicatas
+      // Remover duplicatas no arquivo
       const uniqueLeads = this.removeDuplicateLeads(processedLeads);
-      console.log("Leads únicos:", uniqueLeads);
-
-      // Verificar leads existentes
-      const existingLeads = await prisma.campaignLead.findMany({
-        where: {
-          campaignId,
-          phone: {
-            in: uniqueLeads.map((lead) => lead.phone),
-          },
-        },
-      });
-
-      const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
-      const newLeads = uniqueLeads.filter(
-        (lead) => !existingPhones.has(lead.phone),
-      );
+      console.log("Leads únicos no arquivo:", uniqueLeads);
 
       // Criar novos leads
       const result = await this.createLeads(
         campaignId,
         campaign.userId,
-        newLeads,
+        uniqueLeads, // Passa os leads únicos para o método createLeads
       );
 
       // Atualizar estatísticas
@@ -129,7 +114,7 @@ export class CampaignLeadService {
           total: uniqueLeads.length,
           totalInFile: processedLeads.length,
           duplicatesInFile: processedLeads.length - uniqueLeads.length,
-          existingInCampaign: existingLeads.length,
+          existingInCampaign: uniqueLeads.length - result.count,
           newLeadsImported: result.count,
         },
       };
@@ -144,6 +129,8 @@ export class CampaignLeadService {
       const leads: Lead[] = [];
       const readable = Readable.from(buffer.toString());
 
+      let isFirstRow = true; // Flag para ignorar a primeira linha (cabeçalho)
+
       readable
         .pipe(
           csv({
@@ -157,16 +144,13 @@ export class CampaignLeadService {
         )
         .on("data", (row: Record<string, any>) => {
           try {
-            // Verifica pela presença de colunas de cabeçalho
-            if (
-              row.phone?.toLowerCase() === "phone" ||
-              row.name?.toLowerCase() === "name"
-            ) {
-              return; // Ignora o cabeçalho
+            if (isFirstRow) {
+              isFirstRow = false; // Ignora a primeira linha
+              return;
             }
 
             // Obtém valores das colunas
-            const phoneValue = row.phone || row.telefone || ""; // Ajusta mapeamento para diferentes nomes
+            const phoneValue = row.phone || row.telefone || "";
             const nameValue = row.name || row.nome || null;
 
             // Formata o número de telefone
@@ -316,19 +300,8 @@ export class CampaignLeadService {
       // Verifica se o número possui comprimento mínimo válido
       if (cleaned.length < 10) return null;
 
-      // Se o número não começar com "55"
-      if (!cleaned.startsWith("55")) {
-        // Se tiver 10 dígitos, adicionar "55"
-        if (cleaned.length === 10) {
-          return `55${cleaned}`;
-        }
-        // Se tiver 11 dígitos e começar com "5", tratá-lo como número nacional
-        else if (cleaned.length === 11 && cleaned.startsWith("5")) {
-          return cleaned; // Não adicionar "55"
-        }
-      }
-
-      return cleaned;
+      // Se o número não começar com "55", adiciona o código do país
+      return cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
     } catch (error) {
       console.error("Erro ao formatar telefone:", phone, error);
       return null;
@@ -342,21 +315,22 @@ export class CampaignLeadService {
   }
 
   private removeDuplicateLeads(leads: Lead[]): Lead[] {
-    const uniquePhones = new Map<string, Lead>();
+    const uniquePhones = new Set<string>();
 
-    leads.forEach((lead) => {
-      if (lead && lead.phone) {
-        const phone = this.formatPhone(lead.phone);
-        if (phone && !uniquePhones.has(phone)) {
-          uniquePhones.set(phone, {
-            name: lead.name || null,
-            phone: phone,
-          });
-        }
+    return leads.filter((lead) => {
+      if (!lead || !lead.phone) {
+        console.warn("Lead inválido ignorado:", lead);
+        return false;
       }
-    });
 
-    return Array.from(uniquePhones.values());
+      const phone = this.formatPhone(lead.phone);
+      if (phone && !uniquePhones.has(phone)) {
+        uniquePhones.add(phone);
+        return true;
+      }
+
+      return false;
+    });
   }
 
   private async createLeads(
@@ -364,7 +338,24 @@ export class CampaignLeadService {
     userId: string,
     leads: Lead[],
   ): Promise<{ count: number }> {
-    const leadsToCreate = leads.map((lead) => ({
+    // Verificar duplicatas apenas dentro da campanha atual
+    const existingLeads = await prisma.campaignLead.findMany({
+      where: {
+        campaignId, // Verifica apenas na campanha atual
+        phone: {
+          in: leads.map((lead) => lead.phone), // Use os leads passados como parâmetro
+        },
+      },
+    });
+
+    const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
+
+    // Filtrar apenas os leads que não existem na campanha atual
+    const newLeads = leads.filter((lead) => !existingPhones.has(lead.phone));
+
+    console.log("Leads novos a serem importados:", newLeads);
+
+    const leadsToCreate = newLeads.map((lead) => ({
       campaignId,
       userId,
       name: lead.name?.trim() || null,
@@ -376,9 +367,9 @@ export class CampaignLeadService {
 
     console.log("Leads a serem criados:", leadsToCreate);
 
+    // Criar os novos leads
     const result = await prisma.campaignLead.createMany({
       data: leadsToCreate,
-      skipDuplicates: true,
     });
 
     return { count: result.count };

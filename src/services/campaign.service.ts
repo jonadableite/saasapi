@@ -1,7 +1,7 @@
 // src/services/campaign.service.ts
 import { type Campaign, PrismaClient } from "@prisma/client";
 import { endOfDay, startOfDay } from "date-fns";
-import type { CampaignParams, ImportLeadsResult } from "../interface";
+import type { CampaignParams, ImportLeadsResult, Lead } from "../interface";
 import { prisma } from "../lib/prisma";
 import { getFromCache, setToCache } from "../lib/redis";
 import { messageDispatcherService } from "./campaign-dispatcher.service";
@@ -22,7 +22,7 @@ export class CampaignService {
   }
 
   // Função para remover duplicatas do arquivo
-  private removeDuplicateLeads(leads: any[]): any[] {
+  private removeDuplicateLeads(leads: Lead[]): Lead[] {
     const uniquePhones = new Set<string>();
 
     return leads.filter((lead) => {
@@ -112,16 +112,19 @@ export class CampaignService {
       // Verificar leads existentes na campanha
       const existingLeads = await prisma.campaignLead.findMany({
         where: {
-          campaignId,
+          campaignId, // Verifica apenas na campanha atual
           phone: {
-            in: uniqueLeads
-              .map((lead) => this.formatPhone(lead.phone))
-              .filter((phone): phone is string => phone !== null), // Filtra valores null
+            in: leads.map((lead) => lead.phone), // Use os leads passados como parâmetro
           },
         },
       });
 
       const existingPhones = new Set(existingLeads.map((lead) => lead.phone));
+
+      // Filtrar apenas os leads que não existem na campanha atual
+      const newLeads = leads.filter((lead) => !existingPhones.has(lead.phone));
+
+      console.log("Leads novos a serem importados:", newLeads);
 
       // Atualizar leads existentes
       await prisma.campaignLead.updateMany({
@@ -138,12 +141,6 @@ export class CampaignService {
           failureReason: null,
           messageId: null,
         },
-      });
-
-      // Criar apenas leads novos
-      const newLeads = uniqueLeads.filter((lead) => {
-        const phone = this.formatPhone(lead.phone);
-        return phone !== null && !existingPhones.has(phone); // Verifica se phone não é null
       });
 
       let createResult;
@@ -195,17 +192,16 @@ export class CampaignService {
   }
 
   /// Função auxiliar para formatar números de telefone
-  private formatPhone(phone: string | undefined | null): string | null {
-    if (!phone) return null; // Verifica se o valor é nulo ou indefinido
-
+  private formatPhone(phone: unknown): string | null {
+    if (!phone) return null;
     try {
       // Remove todos os caracteres não numéricos
       const cleaned = String(phone).replace(/\D/g, "");
 
-      // Verifica se o número possui comprimento mínimo válido (Brasil: 10 ou 11 dígitos para números locais)
+      // Verifica se o número possui comprimento mínimo válido
       if (cleaned.length < 10) return null;
 
-      // Adiciona o código do país (55 para Brasil) se necessário
+      // Se o número não começar com "55", adiciona o código do país
       return cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
     } catch (error) {
       console.error("Erro ao formatar telefone:", phone, error);
