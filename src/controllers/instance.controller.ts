@@ -38,6 +38,9 @@ interface TypebotRequest extends RequestWithUser {
   };
 }
 
+const API_URL = "https://evo.whatlead.com.br";
+const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
+
 // Atualize o schema do typebot
 const typebotConfigSchema = yup.object().shape({
   typebot: yup
