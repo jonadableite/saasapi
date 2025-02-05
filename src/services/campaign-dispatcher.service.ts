@@ -45,6 +45,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
     try {
       console.log("Iniciando processo de dispatch...");
 
+      // Buscar leads pendentes para envio
       const leads = await prisma.campaignLead.findMany({
         where: {
           campaignId: params.campaignId,
@@ -618,6 +619,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
   }
 
   stopDispatch(): void {
+    console.log("Chamando stopDispatch() - Interrompendo disparo");
     this.stop = true;
   }
 
