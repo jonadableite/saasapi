@@ -214,17 +214,35 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       where: { status: "completed" },
     });
 
-    // Adicionando usuários recentes
-    const recentUsers = await prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5, // Limite de usuários recentes a serem retornados
+    // Buscar usuários com pagamentos próximos ao vencimento
+    const usersWithDuePayments = await prisma.user.findMany({
+      where: {
+        payments: {
+          some: {
+            status: { in: ["pending", "overdue"] },
+            dueDate: { gte: new Date() },
+          },
+        },
+      },
       select: {
         id: true,
         name: true,
         email: true,
-        createdAt: true,
-        affiliate: { select: { name: true } },
+        plan: true,
+        payments: {
+          select: {
+            dueDate: true,
+            status: true,
+          },
+        },
       },
+    });
+
+    // Ordenar manualmente os usuários com base na data de vencimento mais próxima
+    usersWithDuePayments.sort((a, b) => {
+      const aDueDate = a.payments[0]?.dueDate || new Date();
+      const bDueDate = b.payments[0]?.dueDate || new Date();
+      return aDueDate.getTime() - bDueDate.getTime();
     });
 
     return res.status(200).json({
@@ -232,7 +250,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       totalRevenue: totalRevenue._sum.amount || 0,
       overduePayments,
       completedPayments,
-      recentUsers,
+      usersWithDuePayments,
     });
   } catch (error) {
     console.error("Erro ao buscar dados do painel de administração:", error);
