@@ -24,6 +24,8 @@ export const createUser = async (req: Request, res: Response) => {
       trialEndDate,
       role,
       referredBy,
+      payment,
+      dueDate,
     } = req.body;
 
     if (!name || !email || !password) {
@@ -40,7 +42,7 @@ export const createUser = async (req: Request, res: Response) => {
     let affiliate = null;
     if (referredBy) {
       affiliate = await prisma.user.findUnique({
-        where: { id: referredBy, role: "affiliate" },
+        where: { id: referredBy },
       });
 
       if (!affiliate) {
@@ -50,29 +52,44 @@ export const createUser = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        phone: phone || "",
-        profile: "user",
-        plan: plan || "free",
-        status: status !== undefined ? status : true,
-        maxInstances: maxInstances || 2,
-        messagesPerDay: messagesPerDay || 20,
-        features: features ? JSON.parse(features) : [],
-        support: support || "basic",
-        trialEndDate: trialEndDate ? new Date(trialEndDate) : null,
-        whatleadCompanyId: "default_company_id",
-        role: role || "user",
-        referredBy: referredBy || null,
-      },
+    await prisma.$transaction(async (tx) => {
+      // Criar o usuário associado à empresa temporária
+      const user = await tx.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          phone: phone || "",
+          profile: "user",
+          plan: plan || "free",
+          status: status !== undefined ? status : true,
+          maxInstances: maxInstances || 2,
+          messagesPerDay: messagesPerDay || 20,
+          features: features ? JSON.parse(features) : [],
+          support: support || "basic",
+          trialEndDate: trialEndDate ? new Date(trialEndDate) : null,
+          whatleadCompanyId: "temporary_company_id", // Associar a empresa temporária
+          role: role || "user",
+          referredBy: referredBy || null,
+        },
+      });
+
+      // Registra o pagamento
+      await tx.payment.create({
+        data: {
+          userId: user.id,
+          amount: Number.parseFloat(payment),
+          dueDate: new Date(dueDate),
+          status: "completed", // Corrigido para "completed"
+          stripePaymentId: `manual_${Date.now()}`, // Gerar um ID único para pagamentos manuais
+          currency: "BRL", // Define a moeda como Real Brasileiro
+        },
+      });
+
+      return user; // Retorna o usuário criado
     });
 
-    return res
-      .status(201)
-      .json({ message: "Usuário criado com sucesso.", user });
+    return res.status(201).json({ message: "Usuário criado com sucesso." });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     return res.status(500).json({ error: "Erro interno do servidor." });
