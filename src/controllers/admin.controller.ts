@@ -214,11 +214,25 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       where: { status: "completed" },
     });
 
+    // Adicionando usuários recentes
+    const recentUsers = await prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5, // Limite de usuários recentes a serem retornados
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        affiliate: { select: { name: true } },
+      },
+    });
+
     return res.status(200).json({
       totalUsers,
       totalRevenue: totalRevenue._sum.amount || 0,
       overduePayments,
       completedPayments,
+      recentUsers,
     });
   } catch (error) {
     console.error("Erro ao buscar dados do painel de administração:", error);
