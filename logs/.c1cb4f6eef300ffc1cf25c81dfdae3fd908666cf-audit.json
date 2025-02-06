@@ -24,6 +24,11 @@
             "date": 1738714418624,
             "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/application-2025-02-05.log",
             "hash": "dac10c7ed924ac7ef41a04494fd0608ead16a219ae15751e3596d4c5ff076122"
+        },
+        {
+            "date": 1738807980260,
+            "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/application-2025-02-06.log",
+            "hash": "b8a9b0a08fad0cf356435d52039e1b423b2984c06337e6a917d9d78174f5c9c2"
         }
     ],
     "hashType": "sha256"

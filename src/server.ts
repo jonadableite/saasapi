@@ -14,6 +14,7 @@ import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
 import { chatbotRoutes } from "./routes/Chatbot/chatbot.routes";
+import adminRoutes from "./routes/admin.routes";
 import { analyticsRoutes } from "./routes/analytics.routes";
 import { campaignDispatcherRoutes } from "./routes/campaign-dispatcher.routes";
 import { campaignLeadRoutes } from "./routes/campaign-lead.routes";
@@ -82,6 +83,7 @@ app.use("/api/users/register", createUsersController);
 app.use("/api", authMiddleware);
 
 // Rotas protegidas (com autenticação)
+app.use("/api/admin", adminRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/users", userRoutes);
