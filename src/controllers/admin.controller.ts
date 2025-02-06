@@ -1,6 +1,7 @@
+// src/controllers/admin.controller.ts
+import bcrypt from "bcrypt";
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import bcrypt from "bcrypt"; // Para criptografar a senha
 
 // Função para obter os dados do painel de administração
 export const getAdminDashboard = async (req: Request, res: Response) => {
@@ -71,10 +72,11 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
 // Função para criar um novo usuário e registrar um pagamento
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, payment, dueDate } = req.body;
+    console.log("Dados recebidos no backend:", req.body);
 
-    // Validação básica dos campos
-    if (!name || !email || !password || !payment || !dueDate) {
+    const { name, email, payment, dueDate, password } = req.body;
+
+    if (!name || !email || !payment || !dueDate || !password) {
       return res
         .status(400)
         .json({ error: "Todos os campos são obrigatórios." });
@@ -108,7 +110,7 @@ export const createUser = async (req: Request, res: Response) => {
     await prisma.payment.create({
       data: {
         userId: user.id,
-        amount: Number.parseFloat(payment), // Corrigido o erro de digitação
+        amount: Number.parseFloat(payment),
         dueDate: new Date(dueDate),
         status: "pending", // Define como pendente por padrão
         stripePaymentId: `manual_${Date.now()}`, // Gerar um ID único para pagamentos manuais
