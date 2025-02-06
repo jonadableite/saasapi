@@ -94,31 +94,46 @@ export const createUser = async (req: Request, res: Response) => {
     // Criptografar a senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Cria o usuário
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword, // Senha criptografada
-        profile: "user", // Perfil padrão
-        phone: "0000000000", // Telefone padrão
-        whatleadCompanyId: "default_company_id", // Substitua pelo ID de uma empresa válida
-      },
+    // Criar usuário usando transação para garantir consistência
+    const result = await prisma.$transaction(async (tx) => {
+      // Criar uma empresa temporária para o usuário
+      const tempCompany = await tx.company.create({
+        data: {
+          name: "Temporary Company", // Nome da empresa temporária
+          active: true,
+        },
+      });
+
+      // Criar o usuário associado à empresa temporária
+      const user = await tx.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          profile: "user",
+          phone: "0000000000",
+          whatleadCompanyId: tempCompany.id, // Associar a empresa temporária
+        },
+      });
+
+      // Registra o pagamento
+      await tx.payment.create({
+        data: {
+          userId: user.id,
+          amount: Number.parseFloat(payment),
+          dueDate: new Date(dueDate),
+          status: "pending", // Define como pendente por padrão
+          stripePaymentId: `manual_${Date.now()}`, // Gerar um ID único para pagamentos manuais
+          currency: "BRL", // Define a moeda como Real Brasileiro
+        },
+      });
+
+      return user; // Retorna o usuário criado
     });
 
-    // Registra o pagamento
-    await prisma.payment.create({
-      data: {
-        userId: user.id,
-        amount: Number.parseFloat(payment),
-        dueDate: new Date(dueDate),
-        status: "pending", // Define como pendente por padrão
-        stripePaymentId: `manual_${Date.now()}`, // Gerar um ID único para pagamentos manuais
-        currency: "BRL", // Define a moeda como Real Brasileiro
-      },
-    });
-
-    return res.status(201).json({ message: "Usuário criado com sucesso." });
+    return res
+      .status(201)
+      .json({ message: "Usuário criado com sucesso.", user: result });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     return res.status(500).json({ error: "Erro interno do servidor." });
