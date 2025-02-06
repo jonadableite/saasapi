@@ -39,30 +39,18 @@ export const createUser = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Email já cadastrado." });
     }
 
-    let affiliate = null;
-    if (referredBy) {
-      affiliate = await prisma.user.findUnique({
-        where: { id: referredBy },
-      });
-
-      if (!affiliate) {
-        return res.status(400).json({ error: "Afiliado não encontrado." });
-      }
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await prisma.$transaction(async (tx) => {
       // Criar uma empresa temporária para o usuário
       const tempCompany = await tx.company.create({
         data: {
-          // biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-          name: `Temporary Company`,
+          name: `Empresa ${name}`,
           active: true,
         },
       });
 
-      // Criar o usuário associado à empresa temporária
+      // Criar o usuário com trialEndDate
       const user = await tx.user.create({
         data: {
           name,
@@ -77,30 +65,33 @@ export const createUser = async (req: Request, res: Response) => {
           features: features ? JSON.parse(features) : [],
           support: support || "basic",
           trialEndDate: trialEndDate ? new Date(trialEndDate) : null,
-          whatleadCompanyId: tempCompany.id, // Associar a empresa temporária
+          whatleadCompanyId: tempCompany.id,
           role: role || "user",
           referredBy: referredBy || null,
         },
       });
 
-      // Registrar o pagamento
-      await tx.payment.create({
-        data: {
-          userId: user.id,
-          amount: Number.parseFloat(payment),
-          dueDate: new Date(dueDate),
-          status: "completed",
-          stripePaymentId: `manual_${Date.now()}`,
-          currency: "BRL",
-        },
-      });
+      // Registrar o pagamento com a data de vencimento correta
+      if (payment && dueDate) {
+        await tx.payment.create({
+          data: {
+            userId: user.id,
+            amount: Math.round(Number.parseFloat(payment) * 100), // Convertendo para centavos
+            dueDate: new Date(dueDate),
+            status: "pending",
+            stripePaymentId: `manual_${Date.now()}`,
+            currency: "BRL",
+          },
+        });
+      }
 
       return user;
     });
 
-    return res
-      .status(201)
-      .json({ message: "Usuário criado com sucesso.", user: result });
+    return res.status(201).json({
+      message: "Usuário criado com sucesso.",
+      user: result,
+    });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     return res.status(500).json({ error: "Erro interno do servidor." });
@@ -230,29 +221,50 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
   try {
     const totalUsers = await prisma.user.count();
 
-    // Consulta para somar os valores dos pagamentos completados
+    // Modificando a consulta para calcular o faturamento total corretamente
     const totalRevenue = await prisma.payment.aggregate({
-      _sum: { amount: true },
-      where: { status: "completed" },
+      _sum: {
+        amount: true,
+      },
+      where: {
+        status: "completed",
+      },
     });
+
+    // Convertendo o valor para centavos para reais
+    const revenueInReais = (totalRevenue._sum.amount || 0) / 100;
 
     // Pagamentos vencidos
     const overduePayments = await prisma.payment.count({
-      where: { status: "overdue" },
+      where: {
+        status: "overdue",
+      },
     });
 
     // Pagamentos concluídos
     const completedPayments = await prisma.payment.count({
-      where: { status: "completed" },
+      where: {
+        status: "completed",
+      },
     });
 
-    // Buscar usuários com pagamentos próximos ao vencimento
+    // Buscar usuários com pagamentos próximos ao vencimento (próximos 30 dias)
     const usersWithDuePayments = await prisma.user.findMany({
       where: {
         payments: {
           some: {
-            status: { in: ["pending", "overdue"] },
-            dueDate: { gte: new Date() },
+            OR: [
+              {
+                status: "pending",
+                dueDate: {
+                  gte: new Date(),
+                  lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+              {
+                status: "overdue",
+              },
+            ],
           },
         },
       },
@@ -262,24 +274,25 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
         email: true,
         plan: true,
         payments: {
+          where: {
+            OR: [{ status: "pending" }, { status: "overdue" }],
+          },
           select: {
             dueDate: true,
             status: true,
+            amount: true,
           },
+          orderBy: {
+            dueDate: "asc",
+          },
+          take: 1,
         },
       },
     });
 
-    // Ordenar manualmente os usuários com base na data de vencimento mais próxima
-    usersWithDuePayments.sort((a, b) => {
-      const aDueDate = a.payments[0]?.dueDate || new Date();
-      const bDueDate = b.payments[0]?.dueDate || new Date();
-      return aDueDate.getTime() - bDueDate.getTime();
-    });
-
     return res.status(200).json({
       totalUsers,
-      totalRevenue: totalRevenue._sum.amount || 0, // Certifique-se de que o valor está correto
+      totalRevenue: revenueInReais,
       overduePayments,
       completedPayments,
       usersWithDuePayments,
