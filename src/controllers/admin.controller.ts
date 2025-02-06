@@ -1,4 +1,3 @@
-// src/controllers/admin.controller.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
@@ -7,6 +6,7 @@ const prisma = new PrismaClient();
 
 /**
  * ✅ Criar um novo usuário com papel (`role`) e afiliado opcional (`referredBy`)
+ *    e uma empresa temporária associada.
  */
 export const createUser = async (req: Request, res: Response) => {
   try {
@@ -52,7 +52,16 @@ export const createUser = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      // Criar uma empresa temporária para o usuário
+      const tempCompany = await tx.company.create({
+        data: {
+          // biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
+          name: `Temporary Company`,
+          active: true,
+        },
+      });
+
       // Criar o usuário associado à empresa temporária
       const user = await tx.user.create({
         data: {
@@ -68,28 +77,30 @@ export const createUser = async (req: Request, res: Response) => {
           features: features ? JSON.parse(features) : [],
           support: support || "basic",
           trialEndDate: trialEndDate ? new Date(trialEndDate) : null,
-          whatleadCompanyId: "temporary_company_id", // Associar a empresa temporária
+          whatleadCompanyId: tempCompany.id, // Associar a empresa temporária
           role: role || "user",
           referredBy: referredBy || null,
         },
       });
 
-      // Registra o pagamento
+      // Registrar o pagamento
       await tx.payment.create({
         data: {
           userId: user.id,
           amount: Number.parseFloat(payment),
           dueDate: new Date(dueDate),
-          status: "completed", // Corrigido para "completed"
-          stripePaymentId: `manual_${Date.now()}`, // Gerar um ID único para pagamentos manuais
-          currency: "BRL", // Define a moeda como Real Brasileiro
+          status: "completed",
+          stripePaymentId: `manual_${Date.now()}`,
+          currency: "BRL",
         },
       });
 
-      return user; // Retorna o usuário criado
+      return user;
     });
 
-    return res.status(201).json({ message: "Usuário criado com sucesso." });
+    return res
+      .status(201)
+      .json({ message: "Usuário criado com sucesso.", user: result });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     return res.status(500).json({ error: "Erro interno do servidor." });
@@ -219,16 +230,18 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
   try {
     const totalUsers = await prisma.user.count();
 
-    // Corrigir a consulta para somar os valores dos pagamentos completados
+    // Consulta para somar os valores dos pagamentos completados
     const totalRevenue = await prisma.payment.aggregate({
       _sum: { amount: true },
       where: { status: "completed" },
     });
 
+    // Pagamentos vencidos
     const overduePayments = await prisma.payment.count({
       where: { status: "overdue" },
     });
 
+    // Pagamentos concluídos
     const completedPayments = await prisma.payment.count({
       where: { status: "completed" },
     });
