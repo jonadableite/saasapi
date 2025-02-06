@@ -47,11 +47,16 @@ model User {
   Campaign                 Campaign[]
   company                  Company        @relation(fields: [whatleadCompanyId], references: [id])
   CampaignLead             CampaignLead[]
+  referredBy               String?
+  affiliate                User? @relation("AffiliateReferral", fields: [referredBy], references: [id])
+  role                     String         @default("user") // Valores: "admin", "affiliate", "manager", "user"
+
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
   ChatSession ChatSession[]
   ChatbotFlow ChatbotFlow[]
+  User User[] @relation("AffiliateReferral")
 }
 
 model CompaniesUnites {
