@@ -225,3 +225,23 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Erro interno do servidor." });
   }
 };
+
+/**
+ * ✅ Listar todos os afiliados
+ */
+export const getAllAffiliates = async (req: Request, res: Response) => {
+  try {
+    const affiliates = await prisma.user.findMany({
+      where: { role: "affiliate" },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return res.status(200).json(affiliates);
+  } catch (error) {
+    console.error("Erro ao buscar afiliados:", error);
+    return res.status(500).json({ error: "Erro interno do servidor." });
+  }
+};

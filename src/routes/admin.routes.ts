@@ -3,6 +3,7 @@ import {
   createUser,
   getAdminDashboard,
   getAffiliateUsers,
+  getAllAffiliates,
   getAllUsers,
   updatePaymentStatus,
   updateUser,
@@ -31,5 +32,8 @@ router.get("/affiliate/:affiliateId", getAffiliateUsers);
 
 // ✅ Atualizar status de pagamento de um usuário
 router.put("/users/:userId/payment", updatePaymentStatus);
+
+// ✅ Listar todos os afiliados
+router.get("/affiliates", getAllAffiliates);
 
 export default router;
