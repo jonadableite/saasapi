@@ -27,6 +27,7 @@ import instanceRoutes from "./routes/instance.routes";
 import leadRoutes from "./routes/lead.routes";
 import messageLogRoutes from "./routes/message-log.routes";
 import passwordRoutes from "./routes/password.routes";
+import paymentRoutes from "./routes/payment.routes";
 import reportsRoutes from "./routes/reports.routes";
 import sessionRoutes from "./routes/session.routes";
 import stripeRoutes from "./routes/stripe.routes";
@@ -83,6 +84,7 @@ app.use("/api/users/register", createUsersController);
 app.use("/api", authMiddleware);
 
 // Rotas protegidas (com autenticação)
+app.use("/api/payments", paymentRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/leads", leadRoutes);

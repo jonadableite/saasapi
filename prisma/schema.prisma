@@ -126,7 +126,8 @@ model Payment {
   stripePaymentId String   @unique
   amount          Int
   currency        String
-  status          String
+  status          String   // Valores: "pending", "completed", "overdue"
+  dueDate         DateTime // Data de vencimento
   customerId      String?
   metadata        Json?
   disputeStatus   String?
