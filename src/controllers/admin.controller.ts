@@ -218,6 +218,8 @@ export const updatePaymentStatus = async (req: Request, res: Response) => {
 export const getAdminDashboard = async (req: Request, res: Response) => {
   try {
     const totalUsers = await prisma.user.count();
+
+    // Corrigir a consulta para somar os valores dos pagamentos completados
     const totalRevenue = await prisma.payment.aggregate({
       _sum: { amount: true },
       where: { status: "completed" },
@@ -264,7 +266,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       totalUsers,
-      totalRevenue: totalRevenue._sum.amount || 0,
+      totalRevenue: totalRevenue._sum.amount || 0, // Certifique-se de que o valor está correto
       overduePayments,
       completedPayments,
       usersWithDuePayments,
