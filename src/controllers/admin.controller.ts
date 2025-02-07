@@ -258,6 +258,12 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       },
     });
 
+    const pendingPayments = await prisma.payment.count({
+      where: {
+        status: "pending",
+      },
+    });
+
     const usersWithDuePayments = await prisma.user.findMany({
       where: {
         payments: {
@@ -312,6 +318,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       overduePayments,
       completedPayments,
       usersWithDuePayments,
+      pendingPayments,
     });
   } catch (error) {
     console.error("Erro ao buscar dados do painel de administração:", error);
