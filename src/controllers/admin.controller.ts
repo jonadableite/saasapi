@@ -230,7 +230,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       },
     });
 
-    const revenueInReais = Number(totalRevenue._sum.amount || 0) / 100;
+    const revenueInReais = Number(totalRevenue._sum.amount || 0);
 
     const overduePayments = await prisma.payment.count({
       where: {
@@ -268,6 +268,12 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
         name: true,
         email: true,
         plan: true,
+        referredBy: true,
+        affiliate: {
+          select: {
+            name: true,
+          },
+        },
         payments: {
           where: {
             OR: [{ status: "pending" }, { status: "overdue" }],
