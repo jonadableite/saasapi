@@ -5,6 +5,8 @@ import {
   getAffiliateUsers,
   getAllAffiliates,
   getAllUsers,
+  getRevenueByDay,
+  getUserSignups,
   updatePaymentStatus,
   updateUser,
 } from "../controllers/admin.controller";
@@ -35,5 +37,9 @@ router.put("/users/:userId/payment", updatePaymentStatus);
 
 // ✅ Listar todos os afiliados
 router.get("/affiliates", getAllAffiliates);
+
+// Novas rotas
+router.get("/user-signups", getUserSignups);
+router.get("/revenue-by-day", getRevenueByDay);
 
 export default router;

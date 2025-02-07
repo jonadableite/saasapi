@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { format, subDays } from "date-fns";
 import type { Request, Response } from "express";
-
 const prisma = new PrismaClient();
 
 /**
@@ -221,16 +221,30 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
   try {
     const totalUsers = await prisma.user.count();
 
-    const totalRevenue = await prisma.payment.aggregate({
-      _sum: {
-        amount: true,
-      },
+    const payments = await prisma.payment.findMany({
       where: {
         status: "completed",
       },
+      include: {
+        user: {
+          select: {
+            referredBy: true,
+          },
+        },
+      },
     });
 
-    const revenueInReais = Number(totalRevenue._sum.amount || 0);
+    let totalRevenue = 0;
+    let revenueWithDiscount = 0;
+
+    for (const payment of payments) {
+      totalRevenue += payment.amount;
+      if (payment.user?.referredBy) {
+        revenueWithDiscount += payment.amount / 2;
+      } else {
+        revenueWithDiscount += payment.amount;
+      }
+    }
 
     const overduePayments = await prisma.payment.count({
       where: {
@@ -291,20 +305,96 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       },
     });
 
-    console.log(
-      "Usuários com pagamentos próximos:",
-      JSON.stringify(usersWithDuePayments, null, 2),
-    );
-
     return res.status(200).json({
       totalUsers,
-      totalRevenue: revenueInReais,
+      totalRevenue,
+      revenueWithDiscount,
       overduePayments,
       completedPayments,
       usersWithDuePayments,
     });
   } catch (error) {
     console.error("Erro ao buscar dados do painel de administração:", error);
+    return res.status(500).json({ error: "Erro interno do servidor." });
+  }
+};
+
+/**
+ * Retorna o número de cadastros de usuários por dia
+ */
+export const getUserSignups = async (req: Request, res: Response) => {
+  try {
+    const endDate = new Date();
+    const startDate = subDays(endDate, 30); // Últimos 30 dias
+
+    const users = await prisma.user.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        createdAt: true,
+      },
+    });
+
+    const signupsByDay: Record<string, number> = {};
+
+    users.forEach((user) => {
+      const date = format(user.createdAt, "yyyy-MM-dd");
+      signupsByDay[date] = (signupsByDay[date] || 0) + 1;
+    });
+
+    const result = Object.entries(signupsByDay).map(([date, count]) => ({
+      date,
+      count,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Erro ao buscar cadastros de usuários:", error);
+    return res.status(500).json({ error: "Erro interno do servidor." });
+  }
+};
+
+/**
+ * Retorna o faturamento por dia
+ */
+export const getRevenueByDay = async (req: Request, res: Response) => {
+  try {
+    const endDate = new Date();
+    const startDate = subDays(endDate, 30); // Últimos 30 dias
+
+    const payments = await prisma.payment.findMany({
+      where: {
+        status: "completed",
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    const revenueByDay: Record<string, number> = {};
+
+    payments.forEach((payment) => {
+      const date = format(payment.createdAt, "yyyy-MM-dd");
+      revenueByDay[date] = (revenueByDay[date] || 0) + payment.amount;
+    });
+
+    const result = Object.entries(revenueByDay).map(([date, amount]) => ({
+      date,
+      amount,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Erro ao buscar faturamento por dia:", error);
     return res.status(500).json({ error: "Erro interno do servidor." });
   }
 };
