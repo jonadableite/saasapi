@@ -10,6 +10,7 @@ import specs from "./config/swagger";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
 import { initializeSocket } from "./helpers/socketEmit";
+import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -107,6 +108,7 @@ app.use("/api/message-logs", messageLogRoutes);
 app.use(errorHandler);
 
 // Cron jobs
+cron.schedule("0 0 * * *", () => updatePaymentStatuses(prisma));
 cron.schedule("0 * * * *", async () => {
   console.log("Processando mensagens não lidas...");
   await campaignService.processUnreadMessages();

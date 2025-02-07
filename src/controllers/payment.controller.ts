@@ -41,3 +41,24 @@ export const createPaymentController = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Erro interno do servidor." });
   }
 };
+
+export const updatePaymentController = async (req: Request, res: Response) => {
+  try {
+    const { paymentId } = req.params;
+    const { amount, dueDate, status } = req.body;
+
+    const updatedPayment = await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        amount: amount ? Number.parseFloat(amount) : undefined,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        status: status,
+      },
+    });
+
+    return res.status(200).json(updatedPayment);
+  } catch (error) {
+    console.error("Erro ao atualizar pagamento:", error);
+    return res.status(500).json({ error: "Erro interno do servidor." });
+  }
+};
