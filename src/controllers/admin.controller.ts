@@ -375,7 +375,6 @@ export const getRevenueByDay = async (req: Request, res: Response) => {
 
     const payments = await prisma.payment.findMany({
       where: {
-        status: "completed",
         createdAt: {
           gte: startDate,
           lte: endDate,
@@ -384,19 +383,39 @@ export const getRevenueByDay = async (req: Request, res: Response) => {
       select: {
         amount: true,
         createdAt: true,
+        status: true,
       },
     });
 
-    const revenueByDay: Record<string, number> = {};
+    const revenueByDay: Record<
+      string,
+      { completed: number; pending: number; overdue: number }
+    > = {};
 
     payments.forEach((payment) => {
       const date = format(payment.createdAt, "yyyy-MM-dd");
-      revenueByDay[date] = (revenueByDay[date] || 0) + payment.amount;
+      if (!revenueByDay[date]) {
+        revenueByDay[date] = { completed: 0, pending: 0, overdue: 0 };
+      }
+
+      switch (payment.status) {
+        case "completed":
+          revenueByDay[date].completed += payment.amount;
+          break;
+        case "pending":
+          revenueByDay[date].pending += payment.amount;
+          break;
+        case "overdue":
+          revenueByDay[date].overdue += payment.amount;
+          break;
+      }
     });
 
-    const result = Object.entries(revenueByDay).map(([date, amount]) => ({
+    const result = Object.entries(revenueByDay).map(([date, amounts]) => ({
       date,
-      amount,
+      completed: amounts.completed,
+      pending: amounts.pending,
+      overdue: amounts.overdue,
     }));
 
     return res.status(200).json(result);
