@@ -232,7 +232,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
     });
 
     // Convertendo o valor para centavos para reais
-    const revenueInReais = (totalRevenue._sum.amount || 0) / 100;
+    const revenueInReais = Number((totalRevenue._sum.amount || 0) / 100);
 
     // Pagamentos vencidos
     const overduePayments = await prisma.payment.count({
