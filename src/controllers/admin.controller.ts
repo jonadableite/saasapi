@@ -231,8 +231,8 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       },
     });
 
-    // Convertendo o valor para reais (sem dividir por 100)
-    const revenueInReais = Number(totalRevenue._sum.amount || 0);
+    // Convertendo o valor para reais (assumindo que amount está em centavos)
+    const revenueInReais = Number(totalRevenue._sum.amount || 0) / 100;
 
     // Pagamentos vencidos
     const overduePayments = await prisma.payment.count({
@@ -258,14 +258,11 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
                 status: "pending",
                 dueDate: {
                   gte: new Date(),
-                  lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Próximos 30 dias
+                  lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
                 },
               },
               {
                 status: "overdue",
-                dueDate: {
-                  lt: new Date(), // Vencidos
-                },
               },
             ],
           },
@@ -288,7 +285,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
           orderBy: {
             dueDate: "asc",
           },
-          take: 1, // Pega apenas o próximo pagamento
+          take: 1,
         },
       },
     });
