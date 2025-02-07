@@ -222,9 +222,6 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
     const totalUsers = await prisma.user.count();
 
     const payments = await prisma.payment.findMany({
-      where: {
-        status: "completed",
-      },
       include: {
         user: {
           select: {
@@ -236,13 +233,18 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
 
     let totalRevenue = 0;
     let revenueWithDiscount = 0;
+    let pendingPaymentsTotal = 0;
 
     for (const payment of payments) {
-      totalRevenue += payment.amount;
-      if (payment.user?.referredBy) {
-        revenueWithDiscount += payment.amount / 2;
-      } else {
-        revenueWithDiscount += payment.amount;
+      if (payment.status === "completed") {
+        totalRevenue += payment.amount;
+        if (payment.user?.referredBy) {
+          revenueWithDiscount += payment.amount / 2;
+        } else {
+          revenueWithDiscount += payment.amount;
+        }
+      } else if (payment.status === "pending") {
+        pendingPaymentsTotal += payment.amount;
       }
     }
 
@@ -255,12 +257,6 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
     const completedPayments = await prisma.payment.count({
       where: {
         status: "completed",
-      },
-    });
-
-    const pendingPayments = await prisma.payment.count({
-      where: {
-        status: "pending",
       },
     });
 
@@ -318,7 +314,7 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       overduePayments,
       completedPayments,
       usersWithDuePayments,
-      pendingPayments,
+      pendingPaymentsTotal,
     });
   } catch (error) {
     console.error("Erro ao buscar dados do painel de administração:", error);
