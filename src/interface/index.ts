@@ -369,6 +369,8 @@ export interface RequestWithUser extends Request {
   user?: {
     id: string;
     email: string;
+    role?: string;
+    whatleadCompanyId: string;
     company?: {
       id: string;
       name: string;

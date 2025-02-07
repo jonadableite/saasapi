@@ -6,125 +6,148 @@ import type { RequestWithUser } from "../interface";
 const prisma = new PrismaClient();
 
 export class CompanyController {
-	async listCompanies(req: RequestWithUser, res: Response): Promise<void> {
-		try {
-			// Pegar o userId do usuário autenticado
-			const userId = req.user?.id;
+  async listCompanies(req: RequestWithUser, res: Response): Promise<void> {
+    console.log("Iniciando listCompanies");
+    console.log("Usuário autenticado:", req.user);
+    try {
+      if (!req.user || req.user.role !== "admin") {
+        console.log("Usuário sem permissão para listar empresas");
+        res.status(403).json({ error: "Sem permissão para listar empresas" });
+        return;
+      }
 
-			if (!userId) {
-				res.status(401).json({ error: "Usuário não autenticado" });
-				return;
-			}
+      const userId = req.user?.id;
+      console.log("UserId:", userId);
 
-			// Buscar a empresa do usuário
-			const userCompany = await prisma.company.findFirst({
-				where: {
-					WhatleadUser: {
-						some: {
-							id: userId,
-						},
-					},
-				},
-				include: {
-					whatleadparceiroconfigs: {
-						select: {
-							id: true,
-							name: true,
-							campaignnumberbusiness: true, // Nome correto do campo
-							enabled: true,
-							createdAt: true,
-							updatedAt: true,
-						},
-					},
-				},
-			});
+      if (!userId) {
+        console.log("Usuário não autenticado");
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
 
-			if (!userCompany) {
-				res.json([]);
-				return;
-			}
+      console.log("Buscando empresa do usuário");
+      const userCompany = await prisma.company.findFirst({
+        where: {
+          id: req.user.whatleadCompanyId,
+        },
+        include: {
+          whatleadparceiroconfigs: {
+            select: {
+              id: true,
+              name: true,
+              campaignnumberbusiness: true,
+              enabled: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
 
-			// Transformar os dados para o formato esperado pelo frontend
-			const formattedCompany = {
-				id: userCompany.id,
-				name: userCompany.name,
-				acelera_parceiro_configs: userCompany.whatleadparceiroconfigs.map(
-					(config) => ({
-						id: config.id,
-						name: config.name,
-						campaign_number_business: config.campaignnumberbusiness,
-						enabled: config.enabled,
-						createdAt: config.createdAt,
-						updatedAt: config.updatedAt,
-					}),
-				),
-			};
+      console.log("Resultado da busca:", userCompany);
 
-			res.json([formattedCompany]);
-		} catch (error) {
-			console.error("Erro ao listar empresas:", error);
-			res.status(500).json({ error: "Erro ao listar empresas" });
-		}
-	}
+      if (!userCompany) {
+        console.log("Nenhuma empresa encontrada para o usuário");
+        res.json([]);
+        return;
+      }
 
-	async getCompany(req: RequestWithUser, res: Response): Promise<void> {
-		try {
-			const { id } = req.params;
-			const userId = req.user?.id;
+      // Transformar os dados para o formato esperado pelo frontend
+      const formattedCompany = {
+        id: userCompany.id,
+        name: userCompany.name,
+        aceleraParceirosConfigs: userCompany.whatleadparceiroconfigs.map(
+          (config) => ({
+            id: config.id,
+            name: config.name,
+            campaignnumberbusiness: config.campaignnumberbusiness,
+            enabled: config.enabled,
+            createdAt: config.createdAt,
+            updatedAt: config.updatedAt,
+          }),
+        ),
+      };
 
-			if (!userId) {
-				res.status(401).json({ error: "Usuário não autenticado" });
-				return;
-			}
+      console.log("Resposta formatada:", formattedCompany);
+      res.json([formattedCompany]);
+    } catch (error) {
+      console.error("Erro detalhado em listCompanies:", error);
+      res.status(500).json({
+        error: "Erro ao listar empresas",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
-			const company = await prisma.company.findFirst({
-				where: {
-					id,
-					WhatleadUser: {
-						some: {
-							id: userId,
-						},
-					},
-				},
-				include: {
-					whatleadparceiroconfigs: {
-						select: {
-							id: true,
-							name: true,
-							campaignnumberbusiness: true,
-							enabled: true,
-							createdAt: true,
-							updatedAt: true,
-						},
-					},
-				},
-			});
+  async getCompany(req: RequestWithUser, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
 
-			if (!company) {
-				res.status(404).json({ error: "Empresa não encontrada" });
-				return;
-			}
+      if (!userId) {
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
 
-			// Transformar os dados para o formato esperado
-			const formattedCompany = {
-				id: company.id,
-				name: company.name,
-				acelera_parceiro_configs: company.whatleadparceiroconfigs.map(
-					(config) => ({
-						id: config.id,
-						name: config.name,
-						campaign_number_business: config.campaignnumberbusiness,
-						enabled: config.enabled,
-						createdAt: config.createdAt,
-						updatedAt: config.updatedAt,
-					}),
-				),
-			};
+      const company = await prisma.company.findFirst({
+        where: {
+          id,
+          WhatleadUser: {
+            some: {
+              id: userId,
+            },
+          },
+        },
+        include: {
+          whatleadparceiroconfigs: {
+            select: {
+              id: true,
+              name: true,
+              campaignnumberbusiness: true,
+              enabled: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
 
-			res.json(formattedCompany);
-		} catch (error) {
-			console.error("Erro ao buscar empresa:", error);
-			res.status(500).json({ error: "Erro ao buscar empresa" });
-		}
-	}
+      if (!company) {
+        res.status(404).json({ error: "Empresa não encontrada" });
+        return;
+      }
+
+      // Transformar os dados para o formato esperado
+      const formattedCompany = {
+        id: company.id,
+        name: company.name,
+        // biome-ignore lint/style/useNamingConvention: <explanation>
+        acelera_parceiro_configs: company.whatleadparceiroconfigs.map(
+          (config) =>
+            ({
+              id: config.id,
+              name: config.name,
+              // biome-ignore lint/style/useNamingConvention: <explanation>
+              campaign_number_business: config.campaignnumberbusiness,
+              enabled: config.enabled,
+              createdAt: config.createdAt,
+              updatedAt: config.updatedAt,
+            }) as {
+              id: string;
+              name: string | null;
+              // biome-ignore lint/style/useNamingConvention: <explanation>
+              campaign_number_business: string | null;
+              enabled: boolean | null;
+              createdAt: Date | null;
+              updatedAt: Date | null;
+            },
+        ),
+      };
+
+      res.json(formattedCompany);
+    } catch (error) {
+      console.error("Erro ao buscar empresa:", error);
+      res.status(500).json({ error: "Erro ao buscar empresa" });
+    }
+  }
 }
