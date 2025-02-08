@@ -113,6 +113,8 @@ export const getUserProfileController = async (
       return res.status(401).json({ error: "Usuário não autenticado" });
     }
 
+    console.log("Buscando perfil do usuário com ID:", userId);
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -129,7 +131,6 @@ export const getUserProfileController = async (
             active: true,
           },
         },
-        // Adicione outros campos que você quer retornar
       },
     });
 

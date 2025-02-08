@@ -67,14 +67,18 @@ export const authMiddleware = async (
       console.log("Buscando usuário no banco de dados");
       const user = await prisma.user.findUnique({
         where: { id: userIdFromToken },
-        include: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          whatleadCompanyId: true,
+          name: true,
+          plan: true,
+          maxInstances: true,
           company: {
             select: {
               id: true,
               name: true,
-              active: true,
-              createdAt: true,
-              updatedAt: true,
             },
           },
         },
@@ -87,12 +91,21 @@ export const authMiddleware = async (
         return res.status(401).json({ error: "Usuário não encontrado" });
       }
 
-      // Adicione o role ao req.user
       req.user = {
-        ...user,
-        role: user.role, // Use o role do banco de dados
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        whatleadCompanyId: user.whatleadCompanyId,
+        name: user.name,
+        plan: user.plan,
+        maxInstances: user.maxInstances,
+        company: user.company
+          ? {
+              id: user.company.id,
+              name: user.company.name,
+            }
+          : undefined,
       };
-
       console.log("Autenticação bem-sucedida");
       return next();
     } catch (error) {

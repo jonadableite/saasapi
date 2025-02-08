@@ -9,6 +9,9 @@ const router = Router();
 // Rotas públicas
 router.post("/register", routes.createUsersController);
 
+// Rota para obter o perfil do usuário atual
+router.get("/me", authMiddleware, routes.getUserProfileController);
+
 // Rotas protegidas pelo middleware de autenticação
 router.use(authMiddleware);
 
@@ -29,8 +32,5 @@ router.get("/", routes.listUsersController);
 router.get("/:id", routes.findOneUsersController);
 router.put("/:id", routes.updateUserController);
 router.delete("/:id", routes.deleteUserController);
-
-// Rota para obter o perfil do usuário atual
-router.get("/me", routes.getUserProfileController);
 
 export default router;
