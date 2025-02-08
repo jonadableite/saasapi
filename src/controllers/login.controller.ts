@@ -42,6 +42,8 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
       return res.status(401).json({ error: "Credenciais inválidas" });
     }
 
+    console.log("Usuário encontrado:", user);
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Credenciais inválidas" });
@@ -53,15 +55,17 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
       throw new Error("JWT_SECRET não está definido");
     }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-        profile: user.profile,
-      },
-      secretKey,
-      { expiresIn: "20d" },
-    );
+    const tokenPayload = {
+      id: user.id,
+      role: user.role,
+      profile: user.profile,
+    };
+
+    console.log("Payload do token:", tokenPayload);
+
+    const token = jwt.sign(tokenPayload, secretKey, { expiresIn: "20d" });
+
+    console.log("Token gerado:", token);
 
     // Verificar status do plano
     const now = new Date();
@@ -90,7 +94,7 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
       token,
       user: {
         ...userWithoutPassword,
-        companyId: user.whatleadCompanyId, // Manter compatibilidade com o frontend
+        companyId: user.whatleadCompanyId,
       },
       planStatus,
     });
