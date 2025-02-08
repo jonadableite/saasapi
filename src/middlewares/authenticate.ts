@@ -8,6 +8,8 @@ interface JwtPayload {
   userId?: string;
   id?: string;
   plan?: string;
+  role?: string;
+  profile?: string;
 }
 
 const isWebhookRoute = (path: string): boolean => {
@@ -85,7 +87,12 @@ export const authMiddleware = async (
         return res.status(401).json({ error: "Usuário não encontrado" });
       }
 
-      req.user = user;
+      // Adicione o role ou profile ao req.user
+      req.user = {
+        ...user,
+        role: decoded.role || user.role, // Use o role do token ou do banco de dados
+      };
+
       console.log("Autenticação bem-sucedida");
       return next();
     } catch (error) {
