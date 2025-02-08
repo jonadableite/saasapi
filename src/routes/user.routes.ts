@@ -30,4 +30,7 @@ router.get("/:id", routes.findOneUsersController);
 router.put("/:id", routes.updateUserController);
 router.delete("/:id", routes.deleteUserController);
 
+// Rota para obter o perfil do usuário atual
+router.get("/me", routes.getUserProfileController);
+
 export default router;
