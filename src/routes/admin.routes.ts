@@ -1,3 +1,4 @@
+// src/routes/admin.routes.ts
 import { Router } from "express";
 import {
   createUser,
@@ -11,11 +12,15 @@ import {
   updateUser,
 } from "../controllers/admin.controller";
 import { authMiddleware } from "../middlewares/authenticate";
+import { checkRole } from "../middlewares/roleCheck";
 
 const router = Router();
 
-// ✅ Middleware para proteger todas as rotas (somente usuários autenticados)
+// Middleware para proteger todas as rotas (somente usuários autenticados)
 router.use(authMiddleware);
+
+// Middleware para verificar se o usuário é admin
+router.use(checkRole(["admin"]));
 
 // ✅ Rota para o painel de administração
 router.get("/dashboard", getAdminDashboard);

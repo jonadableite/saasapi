@@ -87,10 +87,10 @@ export const authMiddleware = async (
         return res.status(401).json({ error: "Usuário não encontrado" });
       }
 
-      // Adicione o role ou profile ao req.user
+      // Adicione o role ao req.user
       req.user = {
         ...user,
-        role: decoded.role || user.role, // Use o role do token ou do banco de dados
+        role: user.role, // Use o role do banco de dados
       };
 
       console.log("Autenticação bem-sucedida");
