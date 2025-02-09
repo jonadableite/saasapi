@@ -10,6 +10,7 @@ import specs from "./config/swagger";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
 import { initializeSocket } from "./helpers/socketEmit";
+import { schedulePaymentReminders } from "./jobs/payment-reminder.job";
 import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
@@ -120,6 +121,9 @@ cron.schedule("0 0 * * *", async () => {
   console.log("Segmentando leads...");
   await campaignService.segmentLeads();
 });
+
+// Agende os lembretes de pagamento
+schedulePaymentReminders();
 
 // Função de encerramento limpo
 async function gracefulShutdown() {
