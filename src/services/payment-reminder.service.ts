@@ -228,7 +228,7 @@ export class PaymentReminderService {
 
       <div style="text-align: center; margin-top: 25px; color: #7f8c8d;">
         <p>Precisa de ajuda? Entre em contato conosco: <a href="mailto:suporte@whatlead.com.br" style="color: #3278fa;">suporte@whatlead.com.br</a></p>
-        <p style="font-size: 0.8em;">© 2023 WhatLead. Todos os direitos reservados.</p>
+        <p style="font-size: 0.8em;">© 2025 WhatLead. Todos os direitos reservados.</p>
       </div>
     </div>
     `,
