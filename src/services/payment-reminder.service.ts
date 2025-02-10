@@ -186,18 +186,8 @@ export class PaymentReminderService {
 
     const paymentAmount = user.payments[0].amount;
 
-    // Carregue a imagem e converta para base64
-    let logoBase64;
-    try {
-      const response = await axios.get(
-        "https://site.whatlead.com.br/assets/favicon-BigImLji.svg",
-        { responseType: "arraybuffer" },
-      );
-      logoBase64 = Buffer.from(response.data as ArrayBuffer).toString("base64");
-    } catch (error) {
-      console.error("Erro ao carregar a imagem do logo:", error);
-      logoBase64 = ""; // Use uma string vazia se falhar ao carregar a imagem
-    }
+    // URL da logo hospedada publicamente
+    const logoUrl = "https://site.whatlead.com.br/assets/favicon-BigImLji.svg";
 
     const mailOptions = {
       from: process.env.SMTP_SENDER_EMAIL,
@@ -206,7 +196,7 @@ export class PaymentReminderService {
       html: `
     <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f4f6f9; padding: 30px; border-radius: 12px;">
       <div style="text-align: center; margin-bottom: 25px;">
-        <img src="https://site.whatlead.com.br/assets/favicon-BigImLji.svg" alt="WhatLead Logo" style="max-width: 150px;">
+        <img src="${logoUrl}" alt="WhatLead Logo" style="max-width: 150px;">
       </div>
 
       <h2 style="color: #2c3e50; text-align: center; margin-bottom: 20px;">Olá, ${user.name} 👋</h2>
