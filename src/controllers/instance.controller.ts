@@ -7,7 +7,6 @@ import type { RequestWithUser } from "../types";
 
 import {
   createInstance,
-  deleteInstance,
   fetchAndUpdateInstanceStatuses,
   syncInstancesWithExternalApi,
   updateInstance,
@@ -368,34 +367,43 @@ export const deleteInstanceController = async (
     return res.status(401).json({ error: "Usuário não autenticado" });
   }
 
-  const instanceId = req.params.id; // Removido Number()
+  const instanceId = req.params.id;
   if (!instanceId) {
     return res.status(400).json({ error: "ID da instância inválido" });
   }
 
   try {
-    await deleteInstance(instanceId, userId);
+    // Primeiro, busque a instância para obter o instanceName
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, userId },
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: "Instância não encontrada" });
+    }
+
+    // Tenta deletar na API externa
+    try {
+      await axios.delete(
+        `${API_URL}/instance/delete/${instance.instanceName}`,
+        {
+          headers: { apikey: API_KEY },
+        },
+      );
+    } catch (externalError) {
+      console.error("Erro ao deletar na API externa:", externalError);
+      // Continua a execução para deletar localmente
+    }
+
+    // Deleta a instância localmente
+    await prisma.instance.delete({
+      where: { id: instanceId },
+    });
+
     return res.status(200).json({ message: "Instância deletada com sucesso" });
   } catch (error) {
     console.error("Erro ao deletar instância:", error);
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2025") {
-        return res.status(404).json({ error: "Instância não encontrada" });
-      }
-      if (error.code === "P2003") {
-        return res.status(400).json({
-          error:
-            "Não foi possível deletar a instância devido a registros relacionados",
-        });
-      }
-    }
-
-    // Se não for um erro conhecido do Prisma, retorna erro genérico
-    return res.status(500).json({
-      error: "Erro ao deletar instância",
-      details: error instanceof Error ? error.message : "Erro desconhecido",
-    });
+    return res.status(500).json({ error: "Erro ao deletar instância." });
   }
 };
 
