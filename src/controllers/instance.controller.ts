@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import axios from "axios";
 // src/controllers/instance.controller.ts
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
 import {
@@ -354,6 +354,22 @@ export const listInstancesController = async (
   } catch (error) {
     console.error("Erro ao buscar instâncias:", error);
     return res.status(500).json({ error: "Erro ao buscar instâncias." });
+  }
+};
+
+export const deleteMediaStats = async (req: Request, res: Response) => {
+  const { instanceId } = req.params;
+
+  try {
+    await prisma.mediaStats.deleteMany({
+      where: {
+        instance: { id: instanceId },
+      },
+    });
+    res.status(200).json({ message: "MediaStats deletados com sucesso" });
+  } catch (error) {
+    console.error("Erro ao deletar MediaStats:", error);
+    res.status(500).json({ error: "Erro ao deletar MediaStats" });
   }
 };
 
