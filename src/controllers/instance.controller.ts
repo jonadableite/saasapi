@@ -411,7 +411,17 @@ export const deleteInstanceController = async (
       // Continua a execução para deletar localmente
     }
 
-    // Deleta a instância localmente
+    // Deleta os registros relacionados em MediaStats
+    await prisma.mediaStats.deleteMany({
+      where: { instanceName: instance.instanceName },
+    });
+
+    // Deleta o registro relacionado em WarmupStats
+    await prisma.warmupStats.delete({
+      where: { instanceName: instance.instanceName },
+    });
+
+    // Agora deleta a instância
     await prisma.instance.delete({
       where: { id: instanceId },
     });
