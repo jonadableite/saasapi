@@ -416,10 +416,24 @@ export const deleteInstanceController = async (
       where: { instanceName: instance.instanceName },
     });
 
-    // Deleta o registro relacionado em WarmupStats
-    await prisma.warmupStats.delete({
-      where: { instanceName: instance.instanceName },
-    });
+    // Tenta deletar o registro relacionado em WarmupStats, ignorando se não existir
+    try {
+      await prisma.warmupStats.delete({
+        where: { instanceName: instance.instanceName },
+      });
+    } catch (warmupStatsError) {
+      if (warmupStatsError instanceof Prisma.PrismaClientKnownRequestError) {
+        if (warmupStatsError.code !== "P2025") {
+          throw warmupStatsError;
+        }
+        // Ignora o erro se o registro não for encontrado (código P2025)
+        console.log(
+          `Nenhum registro WarmupStats encontrado para a instância ${instance.instanceName}`,
+        );
+      } else {
+        throw warmupStatsError;
+      }
+    }
 
     // Agora deleta a instância
     await prisma.instance.delete({
