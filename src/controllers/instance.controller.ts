@@ -1,16 +1,16 @@
 import { Prisma } from "@prisma/client";
+import axios from "axios";
 // src/controllers/instance.controller.ts
 import type { Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
-import type { RequestWithUser } from "../types";
-
 import {
   createInstance,
   fetchAndUpdateInstanceStatuses,
   syncInstancesWithExternalApi,
   updateInstance,
 } from "../services/instance.service";
+import type { RequestWithUser } from "../types";
 
 // Interface estendida para incluir os parâmetros e corpo da requisição
 interface TypebotRequest extends RequestWithUser {
