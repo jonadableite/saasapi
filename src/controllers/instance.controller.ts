@@ -389,61 +389,77 @@ export const deleteInstanceController = async (
   }
 
   try {
-    // Primeiro, busque a instância para obter o instanceName
-    const instance = await prisma.instance.findFirst({
-      where: { id: instanceId, userId },
-    });
+    // Usar uma transação para garantir a integridade dos dados
+    const result = await prisma.$transaction(async (prismaClient) => {
+      // Buscar a instância
+      const instance = await prismaClient.instance.findFirst({
+        where: { id: instanceId, userId },
+      });
 
-    if (!instance) {
-      return res.status(404).json({ error: "Instância não encontrada" });
-    }
+      if (!instance) {
+        throw new Error("Instância não encontrada");
+      }
 
-    // Tenta deletar na API externa
-    try {
-      await axios.delete(
-        `${API_URL}/instance/delete/${instance.instanceName}`,
-        {
-          headers: { apikey: API_KEY },
-        },
-      );
-    } catch (externalError) {
-      console.error("Erro ao deletar na API externa:", externalError);
-      // Continua a execução para deletar localmente
-    }
+      // Tentar deletar na API externa
+      try {
+        await axios.delete(
+          `${API_URL}/instance/delete/${instance.instanceName}`,
+          {
+            headers: { apikey: API_KEY },
+          },
+        );
+        console.log(
+          `Instância ${instance.instanceName} deletada na API externa`,
+        );
+      } catch (externalError) {
+        console.error("Erro ao deletar na API externa:", externalError);
+        // Continua a execução para deletar localmente
+      }
 
-    // Deleta os registros relacionados em MediaStats
-    await prisma.mediaStats.deleteMany({
-      where: { instanceName: instance.instanceName },
-    });
-
-    // Tenta deletar o registro relacionado em WarmupStats, ignorando se não existir
-    try {
-      await prisma.warmupStats.delete({
+      // Deletar registros relacionados
+      await prismaClient.mediaStats.deleteMany({
         where: { instanceName: instance.instanceName },
       });
-    } catch (warmupStatsError) {
-      if (warmupStatsError instanceof Prisma.PrismaClientKnownRequestError) {
-        if (warmupStatsError.code !== "P2025") {
-          throw warmupStatsError;
-        }
-        // Ignora o erro se o registro não for encontrado (código P2025)
-        console.log(
-          `Nenhum registro WarmupStats encontrado para a instância ${instance.instanceName}`,
-        );
-      } else {
-        throw warmupStatsError;
-      }
-    }
 
-    // Agora deleta a instância
-    await prisma.instance.delete({
-      where: { id: instanceId },
+      await prismaClient.warmupStats.deleteMany({
+        where: { instanceName: instance.instanceName },
+      });
+
+      // Deletar outros registros relacionados, se houver
+      await prismaClient.campaignDispatch.deleteMany({
+        where: { instanceName: instance.instanceName },
+      });
+
+      await prismaClient.campaignSchedule.deleteMany({
+        where: { instanceName: instance.instanceName },
+      });
+
+      // Finalmente, deletar a instância
+      await prismaClient.instance.delete({
+        where: { id: instanceId },
+      });
+
+      return instance.instanceName;
     });
 
-    return res.status(200).json({ message: "Instância deletada com sucesso" });
+    console.log(
+      `Instância ${result} e todos os registros relacionados foram deletados com sucesso.`,
+    );
+    return res.status(200).json({
+      message: "Instância e registros relacionados deletados com sucesso",
+    });
   } catch (error) {
     console.error("Erro ao deletar instância:", error);
-    return res.status(500).json({ error: "Erro ao deletar instância." });
+    if (error instanceof Error) {
+      return res
+        .status(error.message === "Instância não encontrada" ? 404 : 500)
+        .json({
+          error: error.message,
+        });
+    }
+    return res
+      .status(500)
+      .json({ error: "Erro interno ao deletar instância." });
   }
 };
 
