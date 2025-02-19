@@ -2,6 +2,7 @@
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
 import { prisma } from "../lib/prisma";
+import redisClient from "../lib/redis";
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
@@ -342,10 +343,18 @@ export const updateInstanceConnectionStatus = async (
 export const syncInstancesWithExternalApi = async (
   userId: string,
 ): Promise<void> => {
+  const cacheKey = `user:${userId}:external_instances`;
+
   try {
     console.log("Sincronizando instâncias com a API externa...");
 
-    // Primeiro, buscar as instâncias do usuário no banco local
+    // Tenta buscar do cache
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      console.log("Usando dados em cache para sincronização");
+      return;
+    }
+
     const userInstances = await prisma.instance.findMany({
       where: { userId },
       select: { instanceName: true },
@@ -355,7 +364,6 @@ export const syncInstancesWithExternalApi = async (
       userInstances.map((inst) => inst.instanceName),
     );
 
-    // Obter instâncias da API externa
     const externalResponse = await axios.get<ExternalInstance[]>(
       `${API_URL}/instance/fetchInstances`,
       {
@@ -370,42 +378,36 @@ export const syncInstancesWithExternalApi = async (
     const externalInstances = externalResponse.data;
     console.log("Instâncias recebidas da API externa:", externalInstances);
 
-    // Iterar sobre as instâncias retornadas
-    for (const instance of externalInstances) {
-      if (!instance.name) continue;
+    const updatePromises = externalInstances
+      .filter(
+        (instance) => instance.name && userInstanceNames.has(instance.name),
+      )
+      .map(async (instance) => {
+        const syncData = {
+          ownerJid: instance.ownerJid,
+          profileName: instance.profileName,
+          profilePicUrl: instance.profilePicUrl,
+          connectionStatus: instance.connectionStatus || "disconnected",
+          token: instance.token,
+          number: instance.number,
+          clientName: instance.clientName,
+        };
 
-      // Verificar se a instância pertence ao usuário
-      if (!userInstanceNames.has(instance.name)) {
-        console.log(
-          `Instância ${instance.name} não pertence ao usuário ${userId}, pulando...`,
-        );
-        continue;
-      }
-
-      const syncData = {
-        ownerJid: instance.ownerJid,
-        profileName: instance.profileName,
-        profilePicUrl: instance.profilePicUrl,
-        connectionStatus: instance.connectionStatus || "disconnected",
-        token: instance.token,
-        number: instance.number,
-        clientName: instance.clientName,
-      };
-
-      try {
-        // Atualizar instância local
-        await prisma.instance.update({
+        return prisma.instance.update({
           where: {
             instanceName: instance.name,
-            userId: userId, // Garantir que a instância pertence ao usuário
+            userId: userId,
           },
           data: syncData,
         });
-        console.log(`Instância ${instance.name} atualizada no banco local.`);
-      } catch (error) {
-        console.error(`Erro ao processar instância ${instance.name}:`, error);
-      }
-    }
+      });
+
+    await Promise.all(updatePromises);
+
+    // Salva no cache por 5 minutos
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(externalInstances));
+
+    console.log("Sincronização concluída e dados em cache atualizados");
   } catch (error: any) {
     console.error(
       "Erro ao sincronizar instâncias com a API externa:",

@@ -4,6 +4,7 @@ import axios from "axios";
 import type { Request, Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
+import redisClient from "../lib/redis";
 import { TypebotService } from "../services/Chatbot/typebot.service";
 import {
   createInstance,
@@ -244,7 +245,15 @@ export const listInstancesController = async (
     return res.status(401).json({ error: "Usuário não autenticado" });
   }
 
+  const cacheKey = `user:${userId}:instances`;
+
   try {
+    // Tenta buscar do cache
+    const cachedData = await redisClient.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json(JSON.parse(cachedData));
+    }
+
     await syncInstancesWithExternalApi(userId);
 
     const user = await prisma.user.findUnique({
@@ -280,9 +289,7 @@ export const listInstancesController = async (
     }
 
     const processedInstances = user.instances.map((instance) => {
-      // Sendo 'warmupStats' um único objeto, nenhuma necessidade de acessar o índice [0]
       const warmupStats = instance.warmupStats;
-
       const warmupTime = warmupStats?.warmupTime || 0;
       const warmupHours = warmupTime / 3600;
       const progress = Math.min((warmupHours / 400) * 100, 100);
@@ -309,7 +316,7 @@ export const listInstancesController = async (
         0,
       ) / (processedInstances.length || 1);
 
-    return res.status(200).json({
+    const responseData = {
       instances: processedInstances,
       currentPlan: user.plan,
       instanceLimit: user.maxInstances,
@@ -319,7 +326,12 @@ export const listInstancesController = async (
         recommended: recommendedCount,
         averageProgress: Math.round(averageProgress * 100) / 100,
       },
-    });
+    };
+
+    // Salva no cache por 5 minutos
+    await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+
+    return res.status(200).json(responseData);
   } catch (error) {
     console.error("Erro ao buscar instâncias:", error);
     return res.status(500).json({ error: "Erro ao buscar instâncias." });
