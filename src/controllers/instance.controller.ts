@@ -4,6 +4,7 @@ import axios from "axios";
 import type { Request, Response } from "express";
 import * as yup from "yup";
 import { prisma } from "../lib/prisma";
+import { TypebotService } from "../services/Chatbot/typebot.service";
 import {
   createInstance,
   fetchAndUpdateInstanceStatuses,
@@ -109,12 +110,10 @@ export const updateTypebotConfigController = async (
   res: Response,
 ): Promise<Response> => {
   try {
-    const { id } = req.params; // ID da instância
-    const { typebot } = req.body; // Configurações do Typebot
+    const { id } = req.params;
+    const { typebot } = req.body;
 
-    console.log("Payload recebido no backend:", typebot);
-
-    // Validações iniciais do formato da configuração
+    // Validar payload
     await typebotConfigSchema.validate({ typebot }, { abortEarly: false });
 
     if (!id || !req.user?.id) {
@@ -123,7 +122,7 @@ export const updateTypebotConfigController = async (
         .json({ error: "ID da instância ou usuário inválido" });
     }
 
-    // Buscar a instância no banco e verificar a propriedade do usuário
+    // Buscar instância
     const instance = await prisma.instance.findFirst({
       where: { id, userId: req.user.id },
     });
@@ -132,62 +131,32 @@ export const updateTypebotConfigController = async (
       return res.status(404).json({ error: "Instância não encontrada" });
     }
 
-    // Enviar as configurações para a API externa (Evolution)
     try {
-      const externalApiUrl = `${API_URL}/typebot/set/${instance.instanceName}`;
-      console.log("Enviando para API externa:", externalApiUrl, typebot);
-
-      const externalResponse = await axios.post(
-        externalApiUrl,
-        typebot, // Envia o objeto completo para a API externa
-        {
-          headers: { apikey: API_KEY, "Content-Type": "application/json" },
-        },
+      // Usar o novo serviço para atualizar o typebot
+      const result = await TypebotService.updateTypebot(
+        instance.instanceName,
+        typebot,
       );
-
-      console.log("Resposta da API externa:", externalResponse.data);
-
-      if (externalResponse.status !== 200) {
-        throw new Error(
-          `Erro ao atualizar na API externa, status: ${externalResponse.status}`,
-        );
-      }
-
-      console.log(
-        `Configuração do Typebot atualizada com sucesso na API externa para a instância: ${instance.instanceName}`,
-      );
-
-      // Após sucesso na API externa, atualizamos o banco local
-      const updatedInstance = await prisma.instance.update({
-        where: { id },
-        data: { typebot },
-      });
 
       return res.status(200).json({
         success: true,
         message: "Configuração do Typebot atualizada com sucesso",
-        instance: updatedInstance,
+        data: result,
       });
-    } catch (externalError: any) {
-      console.error(
-        `Erro ao atualizar configuração do Typebot na API externa: ${externalError.message}`,
-      );
-
-      // Retorna um erro ao cliente, sem salvar no banco local
+    } catch (error) {
+      console.error("Erro ao atualizar typebot:", error);
       return res.status(500).json({
         success: false,
-        error: "Falha ao atualizar configuração na API externa",
+        error: "Erro ao atualizar configuração na API Evolution",
       });
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("Erro ao processar atualização do Typebot:", error);
 
-    // Caso erro de validação
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ success: false, errors: error.errors });
     }
 
-    // Retorna erro genérico
     return res.status(500).json({
       success: false,
       error: "Erro ao atualizar configuração do Typebot",
@@ -537,12 +506,8 @@ export const deleteTypebotConfig = async (
         .json({ success: false, error: "Usuário não autenticado" });
     }
 
-    // Verifica se a instância pertence ao usuário
     const instance = await prisma.instance.findFirst({
-      where: {
-        id: id,
-        userId: userId,
-      },
+      where: { id, userId },
     });
 
     if (!instance) {
@@ -551,17 +516,26 @@ export const deleteTypebotConfig = async (
         .json({ success: false, error: "Instância não encontrada" });
     }
 
-    const updatedInstance = await prisma.instance.update({
-      where: { id },
-      data: {
-        typebot: Prisma.JsonNull,
-      },
-    });
+    try {
+      // Usar o novo serviço para deletar o typebot
+      await TypebotService.deleteTypebot(instance.instanceName);
 
-    res.json({ success: true, instance: updatedInstance });
+      const updatedInstance = await prisma.instance.update({
+        where: { id },
+        data: { typebot: Prisma.JsonNull },
+      });
+
+      return res.json({ success: true, instance: updatedInstance });
+    } catch (error) {
+      console.error("Erro ao deletar typebot:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Erro ao deletar configuração na API Evolution",
+      });
+    }
   } catch (error) {
     console.error("Erro ao remover configurações do Typebot:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Erro ao remover configurações do Typebot",
       details: error instanceof Error ? error.message : "Erro desconhecido",
