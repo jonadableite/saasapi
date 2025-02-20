@@ -6,11 +6,6 @@
     "auditLog": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/.022f4c5a2a1b62d3f406f198a9399db543defeeb-audit.json",
     "files": [
         {
-            "date": 1738807980264,
-            "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/error-2025-02-06.log",
-            "hash": "b58cc85d91867c9f0f88bf94413389b4f4535c7a3cf29d1441d3c3ecc9ab0327"
-        },
-        {
             "date": 1738886604076,
             "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/error-2025-02-07.log",
             "hash": "d4226b1c1e12576688a017790104b77ff81b5119cecd6124303715b1cefac7fb"
@@ -39,6 +34,11 @@
             "date": 1739933413308,
             "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/error-2025-02-19.log",
             "hash": "c2d9b7171a174365a3212fc530ee84bda17156119433f94a1829f50c06e70310"
+        },
+        {
+            "date": 1740073557141,
+            "name": "/home/jonadab/Documentos/Saas-Aquecimento/SaasAPI/logs/error-2025-02-20.log",
+            "hash": "3e8b1ace5f8a671313536364dfa17df348ac9972221bf8eeacccd5b3af0e1403"
         }
     ],
     "hashType": "sha256"
