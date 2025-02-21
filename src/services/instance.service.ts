@@ -3,6 +3,7 @@ import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
 import { prisma } from "../lib/prisma";
 import redisClient from "../lib/redis";
+import { logger } from "../utils/logger";
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
@@ -43,10 +44,9 @@ interface ExternalApiResponse {
   data: ExternalInstance[];
 }
 
-/**
- * Busca e atualiza o status das instâncias no banco de dados.
- */
 export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
+  const instanceLogger = logger.setContext("InstanceStatusUpdate");
+
   try {
     const instances = await prisma.instance.findMany();
 
@@ -65,45 +65,41 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
               where: { id: instance.id },
               data: { connectionStatus: currentStatus },
             });
-            console.log(
+            instanceLogger.info(
               `Status da instância ${instance.instanceName} atualizado para ${currentStatus}`,
             );
           }
         }
       } catch (error: any) {
-        console.error(
-          `Erro ao verificar status da instância ${instance.instanceName}:`,
-          error.message,
+        instanceLogger.error(
+          `Erro ao verificar status da instância ${instance.instanceName}`,
+          error,
         );
       }
     }
   } catch (error: any) {
-    console.error("Erro ao atualizar status das instâncias:", error.message);
+    instanceLogger.error("Erro ao atualizar status das instâncias", error);
   }
 };
 
-/**
- * Cria uma nova instância na API externa e no banco de dados.
- * @param userId - ID do usuário.
- * @param instanceName - Nome da instância.
- * @returns A instância criada.
- */
 export const createInstance = async (userId: string, instanceName: string) => {
+  const instanceLogger = logger.setContext("InstanceCreation");
+
   try {
-    // Passo 1: Verificar se a instância já existe no banco de dados
     const existingInstance = await prisma.instance.findUnique({
       where: { instanceName },
     });
 
     if (existingInstance) {
+      instanceLogger.warn(
+        `Tentativa de criar instância duplicada: ${instanceName}`,
+      );
       return { error: "Uma instância com esse nome já existe." };
     }
 
-    // Passo 2: Garantir que o nome da instância seja único (adicionando sufixo numérico)
     let uniqueInstanceName = instanceName;
     let count = 1;
 
-    // Verifique se o nome da instância já existe no banco e gere um nome único
     while (
       await prisma.instance.findUnique({
         where: { instanceName: uniqueInstanceName },
@@ -113,7 +109,8 @@ export const createInstance = async (userId: string, instanceName: string) => {
       count++;
     }
 
-    // Cria a instância na API externa (Evo)
+    instanceLogger.info(`Criando instância: ${uniqueInstanceName}`);
+
     const evoResponse = await axios.post(
       `${API_URL}/instance/create`,
       {
@@ -139,12 +136,12 @@ export const createInstance = async (userId: string, instanceName: string) => {
     };
 
     if (evoResponse.status !== 201 || !data.instance) {
+      instanceLogger.error("Falha ao criar instância na Evo");
       throw new Error("Erro ao criar instância na Evo");
     }
 
     const instanceData = data.instance;
 
-    // Criação da instância no banco de dados local
     const newInstance = await prisma.instance.create({
       data: {
         userId,
@@ -154,7 +151,6 @@ export const createInstance = async (userId: string, instanceName: string) => {
       },
     });
 
-    // Criar um registro de warmup para a nova instância
     await prisma.warmupStats.create({
       data: {
         instance: { connect: { id: newInstance.id } },
@@ -163,22 +159,21 @@ export const createInstance = async (userId: string, instanceName: string) => {
       },
     });
 
+    instanceLogger.log(`Instância criada com sucesso: ${newInstance.id}`);
+
     return {
       instance: newInstance,
       qrcode: data.qrcode,
     };
   } catch (error) {
-    console.error("Erro ao criar instância:", error);
+    instanceLogger.error("Erro ao criar instância", error);
     throw new Error("Erro ao criar instância");
   }
 };
 
-/**
- * Lista todas as instâncias de um usuário.
- * @param userId - ID do usuário.
- * @returns Lista de instâncias.
- */
 export const listInstances = async (userId: string) => {
+  const instanceLogger = logger.setContext("InstanceListing");
+
   try {
     const instances = await prisma.instance.findMany({
       where: { userId },
@@ -192,7 +187,10 @@ export const listInstances = async (userId: string) => {
       },
     });
 
-    // Mapeia os dados para o formato esperado
+    instanceLogger.log(
+      `Listando ${instances.length} instâncias para usuário ${userId}`,
+    );
+
     return instances.map((instance) => ({
       instanceId: instance.id,
       instanceName: instance.instanceName,
@@ -202,29 +200,27 @@ export const listInstances = async (userId: string) => {
       typebot: instance.typebot,
     }));
   } catch (error) {
-    console.error("Erro ao listar instâncias:", error);
+    instanceLogger.error("Erro ao listar instâncias", error);
     throw new Error("Erro ao listar instâncias");
   }
 };
 
-/**
- * Deleta uma instância.
- * @param instanceId - ID da instância.
- * @param userId - ID do usuário.
- */
 export const deleteInstance = async (userId: string, instanceId: string) => {
+  const instanceLogger = logger.setContext("InstanceDeletion");
+
   try {
     return await prisma.$transaction(async (transaction) => {
-      // Primeiro, busque a instância para obter o instanceName
       const instance = await transaction.instance.findFirst({
         where: { id: instanceId, userId },
       });
 
       if (!instance) {
+        instanceLogger.warn(
+          `Tentativa de deletar instância não encontrada: ${instanceId}`,
+        );
         throw new Error("Instância não encontrada ou não pertence ao usuário");
       }
 
-      // Deleta registros relacionados na ordem correta
       await transaction.mediaStats.deleteMany({
         where: { instanceName: instance.instanceName },
       });
@@ -241,33 +237,27 @@ export const deleteInstance = async (userId: string, instanceId: string) => {
         where: { instanceName: instance.instanceName },
       });
 
-      // Por fim, deleta a instância
       const deletedInstance = await transaction.instance.delete({
         where: { id: instanceId },
       });
 
+      instanceLogger.log(`Instância deletada com sucesso: ${instanceId}`);
       return deletedInstance;
     });
   } catch (error) {
-    console.error("Erro ao deletar instância:", error);
+    instanceLogger.error("Erro ao deletar instância", error);
     throw error;
   }
 };
 
-/**
- * Atualiza uma instância.
- * @param instanceId - ID da instância.
- * @param userId - ID do usuário.
- * @param updateData - Dados para atualização.
- * @returns Instância atualizada.
- */
 export const updateInstance = async (
   instanceId: string,
   userId: string,
   updateData: Partial<{ instanceName: string; connectionStatus: string }>,
 ) => {
+  const instanceLogger = logger.setContext("InstanceUpdate");
+
   try {
-    // Primeiro verifica se a instância existe e pertence ao usuário
     const instance = await prisma.instance.findFirst({
       where: {
         id: instanceId,
@@ -276,38 +266,35 @@ export const updateInstance = async (
     });
 
     if (!instance) {
+      instanceLogger.warn(
+        `Tentativa de atualizar instância não encontrada: ${instanceId}`,
+      );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
 
-    // Atualiza a instância
     const updatedInstance = await prisma.instance.update({
       where: { id: instanceId },
       data: updateData,
     });
 
+    instanceLogger.log(`Instância atualizada com sucesso: ${instanceId}`);
     return updatedInstance;
   } catch (error) {
-    console.error("Erro ao atualizar instância:", error);
+    instanceLogger.error("Erro ao atualizar instância", error);
     throw error;
   }
 };
 
-/**
- * Atualiza o status de conexão de uma instância.
- * @param instanceId - ID da instância.
- * @param userId - ID do usuário.
- * @param connectionStatus - Novo status de conexão.
- * @returns Instância atualizada.
- */
 export const updateInstanceConnectionStatus = async (
   instanceId: string,
   userId: string,
   connectionStatus: string,
 ) => {
-  try {
-    console.log(`Atualizando status para: ${connectionStatus}`);
+  const instanceLogger = logger.setContext("InstanceConnectionStatusUpdate");
 
-    // Primeiro verifica se a instância existe e pertence ao usuário
+  try {
+    instanceLogger.info(`Atualizando status para: ${connectionStatus}`);
+
     const instance = await prisma.instance.findFirst({
       where: {
         id: instanceId,
@@ -316,42 +303,44 @@ export const updateInstanceConnectionStatus = async (
     });
 
     if (!instance) {
+      instanceLogger.warn(
+        `Instância não encontrada para atualização de status: ${instanceId}`,
+      );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
 
-    // Atualiza apenas o status de conexão
     const updatedInstance = await prisma.instance.update({
       where: { id: instanceId },
       data: {
         connectionStatus,
-        updatedAt: new Date(), // Força atualização do timestamp
+        updatedAt: new Date(),
       },
     });
 
-    console.log(`Status atualizado para: ${updatedInstance.connectionStatus}`);
+    instanceLogger.log(
+      `Status atualizado para: ${updatedInstance.connectionStatus}`,
+    );
     return updatedInstance;
   } catch (error) {
-    console.error("Erro ao atualizar status da instância:", error);
+    instanceLogger.error("Erro ao atualizar status da instância", error);
     throw error;
   }
 };
 
-/**
- * Sincroniza as instâncias do banco local com a API externa.
- * Atualiza os campos: ownerJid, profileName, profilePicUrl, e outros necessários.
- */
 export const syncInstancesWithExternalApi = async (
   userId: string,
 ): Promise<void> => {
+  const instanceLogger = logger.setContext("InstanceSync");
   const cacheKey = `user:${userId}:external_instances`;
 
   try {
-    console.log("Sincronizando instâncias com a API externa...");
+    instanceLogger.info(
+      "Iniciando sincronização de instâncias com API externa",
+    );
 
-    // Tenta buscar do cache
     const cachedData = await redisClient.get(cacheKey);
     if (cachedData) {
-      console.log("Usando dados em cache para sincronização");
+      instanceLogger.verbose("Usando dados em cache para sincronização");
       return;
     }
 
@@ -372,11 +361,11 @@ export const syncInstancesWithExternalApi = async (
     );
 
     if (externalResponse.status !== 200) {
+      instanceLogger.error("Falha ao buscar instâncias da API externa");
       throw new Error("Erro ao buscar instâncias da API externa.");
     }
 
     const externalInstances = externalResponse.data;
-    console.log("Instâncias recebidas da API externa:", externalInstances);
 
     const updatePromises = externalInstances
       .filter(
@@ -404,14 +393,13 @@ export const syncInstancesWithExternalApi = async (
 
     await Promise.all(updatePromises);
 
-    // Salva no cache por 5 minutos
     await redisClient.setEx(cacheKey, 300, JSON.stringify(externalInstances));
 
-    console.log("Sincronização concluída e dados em cache atualizados");
+    instanceLogger.info("Sincronização de instâncias concluída");
   } catch (error: any) {
-    console.error(
-      "Erro ao sincronizar instâncias com a API externa:",
-      error.message,
+    instanceLogger.error(
+      "Erro ao sincronizar instâncias com a API externa",
+      error,
     );
     throw new Error("Erro ao sincronizar instâncias com a API externa.");
   }
