@@ -184,8 +184,8 @@ export class Logger {
 
   // Método para adicionar contexto de rastreamento
   private addTraceContext(message: string): string {
-    const traceId = process.env.TRACE_ID || "N/A";
-    return `[TraceID: ${traceId}] ${message}`;
+    const traceId = process.env.TRACE_ID;
+    return traceId ? `[TraceID: ${traceId}] ${message}` : message;
   }
 
   private logMessage(type: Type, message: any, typeValue?: string): void {
