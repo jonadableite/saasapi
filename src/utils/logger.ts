@@ -1,10 +1,18 @@
+// src/utils/logger.ts
 import fs from "fs";
 import path from "path";
-// src/utils/logger.ts
 import dayjs from "dayjs";
 
-const packageJsonPath = path.resolve(__dirname, "../../package.json");
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+// Função para ler o package.json de forma segura
+const getPackageVersion = (): string => {
+  try {
+    const packageJsonPath = path.resolve(__dirname, "../../package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+};
 
 // Definição de cores ANSI
 enum Color {
@@ -44,132 +52,146 @@ interface ColorConfig {
   bright: Color;
 }
 
+interface LogOptions {
+  timestamp?: boolean;
+  pid?: boolean;
+  version?: boolean;
+}
+
 export class Logger {
   private context: string;
   private isDebugEnabled: boolean;
+  private version: string;
 
-  constructor(context = "Logger") {
+  constructor(context = "Logger", options: LogOptions = {}) {
     this.context = context;
+    this.version = getPackageVersion();
+
     // Lê a variável de ambiente DEBUG, padrão é false
     this.isDebugEnabled = process.env.DEBUG === "true";
   }
 
-  public setContext(value: string) {
-    this.context = value;
-    return this;
+  public setContext(value: string): Logger {
+    return new Logger(value);
   }
 
   private getColorConfig(type: Type): ColorConfig {
-    switch (type) {
-      case Type.LOG:
-        return {
-          text: Color.LOG_TEXT,
-          bg: Color.LOG_BG,
-          bright: Color.BRIGHT,
-        };
-      case Type.INFO:
-        return {
-          text: Color.INFO_TEXT,
-          bg: Color.INFO_BG,
-          bright: Color.BRIGHT,
-        };
-      case Type.WARN:
-        return {
-          text: Color.WARN_TEXT,
-          bg: Color.WARN_BG,
-          bright: Color.BRIGHT,
-        };
-      case Type.ERROR:
-        return {
-          text: Color.ERROR_TEXT,
-          bg: Color.ERROR_BG,
-          bright: Color.BRIGHT,
-        };
-      case Type.DEBUG:
-        return {
-          text: Color.DEBUG_TEXT,
-          bg: Color.DEBUG_BG,
-          bright: Color.BRIGHT,
-        };
-      case Type.VERBOSE:
-        return {
-          text: Color.VERBOSE_TEXT,
-          bg: Color.VERBOSE_BG,
-          bright: Color.BRIGHT,
-        };
-      default:
-        return {
-          text: Color.LOG_TEXT,
-          bg: Color.LOG_BG,
-          bright: Color.BRIGHT,
-        };
-    }
+    const colorMap: Record<Type, ColorConfig> = {
+      [Type.LOG]: {
+        text: Color.LOG_TEXT,
+        bg: Color.LOG_BG,
+        bright: Color.BRIGHT,
+      },
+      [Type.INFO]: {
+        text: Color.INFO_TEXT,
+        bg: Color.INFO_BG,
+        bright: Color.BRIGHT,
+      },
+      [Type.WARN]: {
+        text: Color.WARN_TEXT,
+        bg: Color.WARN_BG,
+        bright: Color.BRIGHT,
+      },
+      [Type.ERROR]: {
+        text: Color.ERROR_TEXT,
+        bg: Color.ERROR_BG,
+        bright: Color.BRIGHT,
+      },
+      [Type.DEBUG]: {
+        text: Color.DEBUG_TEXT,
+        bg: Color.DEBUG_BG,
+        bright: Color.BRIGHT,
+      },
+      [Type.VERBOSE]: {
+        text: Color.VERBOSE_TEXT,
+        bg: Color.VERBOSE_BG,
+        bright: Color.BRIGHT,
+      },
+    };
+
+    return colorMap[type] || colorMap[Type.LOG];
   }
 
-  private formatLog(type: Type, message: any, typeValue?: string): string {
+  private formatMessage(type: Type, message: any, typeValue?: string): string {
     const timestamp = dayjs().format("ddd MMM DD YYYY HH:mm:ss");
     const pid = process.pid.toString();
     const colors = this.getColorConfig(type);
 
     const typeValuePart = typeValue || "[string]";
-    const messageStr =
-      typeof message === "object"
-        ? JSON.stringify(message)
-        : message.toString();
+    const messageStr = this.serializeMessage(message);
 
-    // Formato similar ao exemplo
     return [
-      Color.BRIGHT, // Negrito para toda a primeira parte
+      Color.BRIGHT,
       `[WhatLead API]`,
-      `v${packageJson.version}`,
+      `v${this.version}`,
       pid,
       `-`,
       timestamp,
       ` ${colors.bg}${colors.bright} ${type} ${Color.RESET}`,
-      Color.GOLD_TEXT + Color.BRIGHT, // Amarelo dourado e negrito para o contexto
+      Color.GOLD_TEXT + Color.BRIGHT,
       `[${this.context}]`,
       Color.RESET,
-      `${colors.text}`, // Cor do tipo de log para o tipo de valor
+      `${colors.text}`,
       `[${typeValuePart}]`,
       Color.RESET,
       `${colors.text}${messageStr}${Color.RESET}`,
     ].join(" ");
   }
 
-  private coloredConsoleLog(type: Type, message: string) {
-    const colors = this.getColorConfig(type);
-    console.log(`${colors.text}${message}${Color.RESET}`);
+  private serializeMessage(message: any): string {
+    if (message === null || message === undefined) return "null";
+
+    if (typeof message === "object") {
+      try {
+        // Tenta serializar com indentação para objetos complexos
+        return JSON.stringify(message, null, 2);
+      } catch {
+        return String(message);
+      }
+    }
+
+    return String(message);
   }
 
-  private logMessage(type: Type, message: any, typeValue?: string) {
-    const formattedMessage = this.formatLog(type, message, typeValue);
+  private logMessage(type: Type, message: any, typeValue?: string): void {
+    // Só loga debug se estiver habilitado
+    if (type === Type.DEBUG && !this.isDebugEnabled) return;
+
+    const formattedMessage = this.formatMessage(type, message, typeValue);
 
     // Colored console log
     if (process.env.ENABLECOLOREDLOGS === "true") {
-      this.coloredConsoleLog(type, formattedMessage);
+      const colors = this.getColorConfig(type);
+      console.log(`${colors.text}${formattedMessage}${Color.RESET}`);
     } else {
       console.log(formattedMessage);
     }
   }
 
-  public info(message: any, details?: any) {
-    if (details !== undefined) {
-      // Combina mensagem e detalhes
-      const combinedMessage =
-        typeof details === "object"
-          ? `${message}: ${JSON.stringify(details)}`
-          : `${message}: ${details}`;
-      this.logMessage(Type.INFO, combinedMessage);
-    } else {
-      this.logMessage(Type.INFO, message);
-    }
+  public info(message: any, details?: any): void {
+    const combinedMessage =
+      details !== undefined
+        ? this.combineMessageAndDetails(message, details)
+        : message;
+
+    this.logMessage(Type.INFO, combinedMessage);
   }
 
-  public warn(message: any, p0: { statusCode: number; name: string; }) {
-    this.logMessage(Type.WARN, message);
+  public warn(message: string, context?: Record<string, any>): void {
+    const logContext = context
+      ? Object.entries(context)
+          .filter(([_, value]) => value !== undefined)
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+      : undefined;
+
+    const fullMessage = logContext
+      ? `${message} - ${JSON.stringify(logContext)}`
+      : message;
+
+    this.logMessage(Type.WARN, fullMessage);
   }
 
-  public error(message: string, error?: any) {
+  public error(message: string, error?: any): void {
     const fullMessage = error
       ? `${message} - ${error instanceof Error ? error.message : error}`
       : message;
@@ -182,19 +204,22 @@ export class Logger {
     }
   }
 
-  public log(message: any) {
+  public log(message: any): void {
     this.logMessage(Type.LOG, message);
   }
 
-  public verbose(message: any) {
+  public verbose(message: any): void {
     this.logMessage(Type.VERBOSE, message);
   }
 
-  public debug(message: any) {
-    // Só loga se debug estiver habilitado
-    if (this.isDebugEnabled) {
-      this.logMessage(Type.DEBUG, message);
-    }
+  public debug(message: any): void {
+    this.logMessage(Type.DEBUG, message);
+  }
+
+  private combineMessageAndDetails(message: any, details: any): string {
+    return typeof details === "object"
+      ? `${message}: ${this.serializeMessage(details)}`
+      : `${message}: ${details}`;
   }
 }
 

@@ -1,333 +1,285 @@
 // src/controllers/campaign-scheduler.controller.ts
 import type { Response } from "express";
-import { AppError, BadRequestError } from "../errors/AppError";
+import { BadRequestError } from "../errors/AppError";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 import { campaignSchedulerService } from "../services/campaign-scheduler.service";
+import { logger } from "../utils/logger";
 
 export class CampaignSchedulerController {
-	private handleError(error: unknown, res: Response): void {
-		console.error(error);
+  public async scheduleCampaign(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    const scheduleLogger = logger.setContext("CampaignScheduler");
 
-		if (error instanceof AppError) {
-			res.status(error.statusCode).json({
-				success: false,
-				message: error.message,
-			});
-			return;
-		}
+    const campaignId = req.params.id || "N/A";
 
-		res.status(500).json({
-			success: false,
-			message: "Erro interno do servidor",
-			error: error instanceof Error ? error.message : "Erro desconhecido",
-		});
-	}
+    try {
+      scheduleLogger.info("Recebendo requisição de agendamento", {
+        campaignId,
+        body: req.body,
+      });
 
-	public async scheduleCampaign(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			console.log("Recebendo requisição de agendamento:", req.body);
+      const {
+        scheduledDate,
+        instanceName,
+        message,
+        mediaPayload,
+        minDelay,
+        maxDelay,
+      } = req.body;
 
-			const { campaignId } = req.params;
-			const {
-				scheduledDate,
-				instanceName,
-				message,
-				mediaPayload,
-				minDelay,
-				maxDelay,
-			} = req.body;
+      const userId = req.user?.id;
 
-			const userId = req.user?.id;
+      if (!userId) {
+        scheduleLogger.warn(
+          "Tentativa de agendamento sem usuário autenticado",
+          {
+            campaignId,
+          },
+        );
+        throw new BadRequestError("Usuário não autenticado");
+      }
+    } catch (error) {
+      const scheduleLogger = logger.setContext("CampaignSchedulerError");
 
-			if (!userId) {
-				throw new BadRequestError("Usuário não autenticado");
-			}
+      if (error instanceof BadRequestError) {
+        scheduleLogger.warn("Erro de requisição ao agendar campanha", {
+          message: error.message,
+          campaignId,
+        });
 
-			// Verificar se a campanha pertence ao usuário
-			const campaign = await prisma.campaign.findFirst({
-				where: {
-					id: campaignId,
-					userId,
-				},
-			});
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+        return;
+      }
 
-			if (!campaign) {
-				throw new BadRequestError(
-					"Campanha não encontrada ou não pertence ao usuário",
-				);
-			}
+      scheduleLogger.error("Erro inesperado ao agendar campanha", {
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+        campaignId,
+      });
 
-			if (!scheduledDate || !instanceName) {
-				throw new BadRequestError(
-					"Data de agendamento e instância são obrigatórios",
-				);
-			}
+      res.status(500).json({
+        success: false,
+        message: "Erro interno ao agendar campanha",
+      });
+    }
+  }
 
-			console.log("Criando agendamento com mídia:", {
-				campaignId,
-				instanceName,
-				scheduledDate,
-				mediaPayload,
-				message,
-				minDelay,
-				maxDelay,
-			});
+  public async getSchedules(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { campaignId } = req.params;
 
-			const schedule = await campaignSchedulerService.createSchedule({
-				campaignId,
-				instanceName,
-				scheduledDate: new Date(scheduledDate),
-				message,
-				mediaPayload,
-				minDelay,
-				maxDelay,
-			});
+      if (!campaignId) {
+        throw new BadRequestError("ID da campanha é obrigatório");
+      }
 
-			// Resetar status dos leads
-			await prisma.campaignLead.updateMany({
-				where: { campaignId },
-				data: { status: "pending" },
-			});
+      const schedules = await campaignSchedulerService.getSchedules(campaignId);
 
-			res.json({
-				success: true,
-				message: "Campanha agendada com sucesso",
-				data: schedule,
-			});
-		} catch (error) {
-			console.error("Erro completo ao agendar campanha:", error);
+      res.json({
+        success: true,
+        data: schedules,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
 
-			if (error instanceof BadRequestError) {
-				res.status(400).json({
-					success: false,
-					message: error.message,
-				});
-				return;
-			}
+  public async cancelSchedule(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { scheduleId } = req.params;
 
-			res.status(500).json({
-				success: false,
-				message: "Erro interno ao agendar campanha",
-				error: error instanceof Error ? error.message : "Erro desconhecido",
-			});
-		}
-	}
+      if (!scheduleId) {
+        throw new BadRequestError("ID do agendamento é obrigatório");
+      }
 
-	public async getSchedules(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			const { campaignId } = req.params;
+      await campaignSchedulerService.cancelSchedule(scheduleId);
 
-			if (!campaignId) {
-				throw new BadRequestError("ID da campanha é obrigatório");
-			}
+      res.json({
+        success: true,
+        message: "Agendamento cancelado com sucesso",
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
 
-			const schedules = await campaignSchedulerService.getSchedules(campaignId);
+  public async getScheduledCampaigns(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
 
-			res.json({
-				success: true,
-				data: schedules,
-			});
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
+      if (!userId) {
+        throw new BadRequestError("Usuário não autenticado");
+      }
 
-	public async cancelSchedule(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			const { scheduleId } = req.params;
+      console.log("Buscando agendamentos para usuário:", userId);
 
-			if (!scheduleId) {
-				throw new BadRequestError("ID do agendamento é obrigatório");
-			}
+      const scheduledCampaigns = await prisma.campaignSchedule.findMany({
+        where: {
+          campaign: {
+            userId: userId,
+          },
+          status: {
+            in: ["pending", "running"],
+          },
+          scheduledDate: {
+            gte: new Date(),
+          },
+        },
+        include: {
+          campaign: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              type: true,
+              mediaType: true,
+              mediaUrl: true,
+              mediaCaption: true,
+              leads: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          },
+          instance: {
+            select: {
+              instanceName: true,
+              connectionStatus: true,
+            },
+          },
+        },
+        orderBy: {
+          scheduledDate: "asc",
+        },
+      });
 
-			await campaignSchedulerService.cancelSchedule(scheduleId);
+      console.log("Agendamentos encontrados:", scheduledCampaigns);
 
-			res.json({
-				success: true,
-				message: "Agendamento cancelado com sucesso",
-			});
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
+      const formattedCampaigns = scheduledCampaigns.map((schedule) => ({
+        id: schedule.id,
+        campaignId: schedule.campaignId,
+        name: schedule.campaign.name,
+        scheduledDate: schedule.scheduledDate,
+        status: schedule.status,
+        instance: schedule.instance.instanceName,
+        message: schedule.message || schedule.campaign.description,
+        mediaType: schedule.mediaType || schedule.campaign.mediaType,
+        mediaUrl: schedule.campaign.mediaUrl,
+        mediaCaption: schedule.mediaCaption || schedule.campaign.mediaCaption,
+        minDelay: schedule.minDelay,
+        maxDelay: schedule.maxDelay,
+        startedAt: schedule.startedAt,
+        completedAt: schedule.completedAt,
+        totalLeads: schedule.campaign.leads?.length || 0,
+      }));
 
-	public async getScheduledCampaigns(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			const userId = req.user?.id;
+      console.log("Agendamentos formatados:", formattedCampaigns);
 
-			if (!userId) {
-				throw new BadRequestError("Usuário não autenticado");
-			}
+      res.json({
+        success: true,
+        data: formattedCampaigns,
+      });
+    } catch (error) {
+      console.error("Erro ao buscar agendamentos:", error);
+      this.handleError(error, res);
+    }
+  }
 
-			console.log("Buscando agendamentos para usuário:", userId);
+  public async pauseCampaign(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { campaignId } = req.params;
+      await campaignSchedulerService.pauseCampaign(campaignId);
 
-			const scheduledCampaigns = await prisma.campaignSchedule.findMany({
-				where: {
-					campaign: {
-						userId: userId,
-					},
-					status: {
-						in: ["pending", "running"],
-					},
-					scheduledDate: {
-						gte: new Date(),
-					},
-				},
-				include: {
-					campaign: {
-						select: {
-							id: true,
-							name: true,
-							description: true,
-							type: true,
-							mediaType: true,
-							mediaUrl: true,
-							mediaCaption: true,
-							leads: {
-								select: {
-									id: true,
-								},
-							},
-						},
-					},
-					instance: {
-						select: {
-							instanceName: true,
-							connectionStatus: true,
-						},
-					},
-				},
-				orderBy: {
-					scheduledDate: "asc",
-				},
-			});
+      res.status(200).json({
+        success: true,
+        message: "Campanha pausada com sucesso",
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
 
-			console.log("Agendamentos encontrados:", scheduledCampaigns);
+  public async resumeCampaign(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    // ... resto do código
+    try {
+      const { campaignId } = req.params;
+      const { instanceName } = req.body;
 
-			const formattedCampaigns = scheduledCampaigns.map((schedule) => ({
-				id: schedule.id,
-				campaignId: schedule.campaignId,
-				name: schedule.campaign.name,
-				scheduledDate: schedule.scheduledDate,
-				status: schedule.status,
-				instance: schedule.instance.instanceName,
-				message: schedule.message || schedule.campaign.description,
-				mediaType: schedule.mediaType || schedule.campaign.mediaType,
-				mediaUrl: schedule.campaign.mediaUrl,
-				mediaCaption: schedule.mediaCaption || schedule.campaign.mediaCaption,
-				minDelay: schedule.minDelay,
-				maxDelay: schedule.maxDelay,
-				startedAt: schedule.startedAt,
-				completedAt: schedule.completedAt,
-				totalLeads: schedule.campaign.leads?.length || 0,
-			}));
+      if (!instanceName) {
+        res.status(400).json({
+          success: false,
+          message: "Instância não fornecida",
+        });
+        return;
+      }
 
-			console.log("Agendamentos formatados:", formattedCampaigns);
+      await campaignSchedulerService.resumeCampaign(campaignId, instanceName);
 
-			res.json({
-				success: true,
-				data: formattedCampaigns,
-			});
-		} catch (error) {
-			console.error("Erro ao buscar agendamentos:", error);
-			this.handleError(error, res);
-		}
-	}
+      res.status(200).json({
+        success: true,
+        message: "Campanha retomada com sucesso",
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
 
-	public async pauseCampaign(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			const { campaignId } = req.params;
-			await campaignSchedulerService.pauseCampaign(campaignId);
+  public async getCampaignProgress(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { campaignId } = req.params;
 
-			res.status(200).json({
-				success: true,
-				message: "Campanha pausada com sucesso",
-			});
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: {
+          progress: true,
+          status: true,
+          scheduledStatus: true,
+        },
+      });
 
-	public async resumeCampaign(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		// ... resto do código
-		try {
-			const { campaignId } = req.params;
-			const { instanceName } = req.body;
+      if (!campaign) {
+        res.status(404).json({
+          success: false,
+          message: "Campanha não encontrada",
+        });
+        return;
+      }
 
-			if (!instanceName) {
-				res.status(400).json({
-					success: false,
-					message: "Instância não fornecida",
-				});
-				return;
-			}
-
-			await campaignSchedulerService.resumeCampaign(campaignId, instanceName);
-
-			res.status(200).json({
-				success: true,
-				message: "Campanha retomada com sucesso",
-			});
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
-
-	public async getCampaignProgress(
-		req: RequestWithUser,
-		res: Response,
-	): Promise<void> {
-		try {
-			const { campaignId } = req.params;
-
-			const campaign = await prisma.campaign.findUnique({
-				where: { id: campaignId },
-				select: {
-					progress: true,
-					status: true,
-					scheduledStatus: true,
-				},
-			});
-
-			if (!campaign) {
-				res.status(404).json({
-					success: false,
-					message: "Campanha não encontrada",
-				});
-				return;
-			}
-
-			res.json({
-				success: true,
-				data: {
-					progress: campaign.progress,
-					status: campaign.status,
-					scheduledStatus: campaign.scheduledStatus,
-				},
-			});
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
+      res.json({
+        success: true,
+        data: {
+          progress: campaign.progress,
+          status: campaign.status,
+          scheduledStatus: campaign.scheduledStatus,
+        },
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
 }
 
 export const campaignSchedulerController = new CampaignSchedulerController();

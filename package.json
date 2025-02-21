@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node dist/server.js",
-    "build": "tsc",
+    "build": "tsc --skipLibCheck",
     "dev": "tsnd -r tsconfig-paths/register --files --transpile-only --respawn --ignore-watch node_modules ./src/server.ts"
   },
   "keywords": [],
