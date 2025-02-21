@@ -1,7 +1,7 @@
-// src/fsls/logpfsts
-// src/pathils/logpathr.ts
+import fs from "fs";
+import path from "path";
 // src/utils/logger.ts
-import dayjsss fromdayjsjsjs";
+import dayjs from "dayjs";
 
 const packageJsonPath = path.resolve(__dirname, "../../package.json");
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
