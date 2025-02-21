@@ -1,3 +1,4 @@
+// src/utils/logger.ts
 import dayjs from "dayjs";
 import fs from "fs";
 import path from "path";
@@ -148,8 +149,17 @@ export class Logger {
     }
   }
 
-  public info(message: any) {
-    this.logMessage(Type.INFO, message);
+  public info(message: any, details?: any) {
+    if (details !== undefined) {
+      // Combina mensagem e detalhes
+      const combinedMessage =
+        typeof details === "object"
+          ? `${message}: ${JSON.stringify(details)}`
+          : `${message}: ${details}`;
+      this.logMessage(Type.INFO, combinedMessage);
+    } else {
+      this.logMessage(Type.INFO, message);
+    }
   }
 
   public warn(message: any) {

@@ -1,3 +1,4 @@
+import { logger } from "@/utils/logger";
 import { Prisma } from "@prisma/client";
 import axios from "axios";
 // src/controllers/instance.controller.ts
@@ -99,7 +100,9 @@ export const updateProxyConfigController = async (
 
     return res.status(200).json(updatedInstance);
   } catch (error) {
-    console.error("Erro ao atualizar configuração de proxy:", error);
+    const proxyLogger = logger.setContext("ProxyConfiguration");
+    proxyLogger.error("Erro ao atualizar configuração de proxy", error);
+
     return res.status(500).json({
       error: "Erro ao atualizar configuração de proxy",
     });
@@ -142,14 +145,17 @@ export const updateTypebotConfigController = async (
         data: result,
       });
     } catch (error) {
-      console.error("Erro ao atualizar typebot:", error);
+      const typebotLogger = logger.setContext("TypebotUpdate");
+      typebotLogger.error("Erro ao atualizar typebot", error);
+
       return res.status(500).json({
         success: false,
         error: "Erro ao atualizar configuração na API Evolution",
       });
     }
   } catch (error) {
-    console.error("Erro ao processar atualização do Typebot:", error);
+    const typebotLogger = logger.setContext("TypebotUpdate");
+    typebotLogger.error("Erro ao processar atualização do Typebot:", error);
 
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ success: false, errors: error.errors });
@@ -193,7 +199,7 @@ export const updateInstanceStatusesController = async (
       .status(200)
       .json({ message: "Status das instâncias atualizados com sucesso" });
   } catch (error) {
-    console.error("Erro ao atualizar os status das instâncias:", error);
+    logger.error("Erro ao atualizar os status das instâncias:", error);
     return res
       .status(500)
       .json({ error: "Erro ao atualizar os status das instâncias." });
@@ -205,6 +211,8 @@ export const createInstanceController = async (
   req: RequestWithUser,
   res: Response,
 ): Promise<Response> => {
+  const instanceLogger = logger.setContext("InstanceCreation");
+
   const userId = req.user?.id;
   if (!userId) {
     return res.status(401).json({ error: "Usuário não autenticado" });
@@ -215,18 +223,22 @@ export const createInstanceController = async (
     const { instanceName } = req.body;
     const result = await createInstance(userId, instanceName);
 
-    console.log("QR Code gerado:", result.qrcode);
+    // Log do QR Code com contexto e detalhes
+    instanceLogger.info(
+      `QR Code gerado para instância ${instanceName}`,
+      result.qrcode,
+    );
 
     return res.status(201).json({
       instance: result.instance,
       qrcode: result.qrcode,
     });
   } catch (error) {
+    instanceLogger.error("Erro ao criar instância", error);
+
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ errors: error.errors });
-      // biome-ignore lint/style/noUselessElse: <explanation>
     } else {
-      console.error("Erro ao criar instância:", error);
       return res.status(500).json({ error: "Erro ao criar instância." });
     }
   }
@@ -330,7 +342,8 @@ export const listInstancesController = async (
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Erro ao buscar instâncias:", error);
+    const instanceLogger = logger.setContext("InstanceList");
+    instanceLogger.error("Erro ao buscar instâncias:", error);
     return res.status(500).json({ error: "Erro ao buscar instâncias." });
   }
 };
@@ -346,7 +359,8 @@ export const deleteMediaStats = async (req: Request, res: Response) => {
     });
     res.status(200).json({ message: "MediaStats deletados com sucesso" });
   } catch (error) {
-    console.error("Erro ao deletar MediaStats:", error);
+    const instanceLogger = logger.setContext("MediaStatsDeletion");
+    instanceLogger.error("Erro ao deletar MediaStats:", error);
     res.status(500).json({ error: "Erro ao deletar MediaStats" });
   }
 };
@@ -386,11 +400,13 @@ export const deleteInstanceController = async (
             headers: { apikey: API_KEY },
           },
         );
-        console.log(
+        const instanceLogger = logger.setContext("InstanceDeletion");
+        instanceLogger.info(
           `Instância ${instance.instanceName} deletada na API externa`,
         );
       } catch (externalError) {
-        console.error("Erro ao deletar na API externa:", externalError);
+        const instanceLogger = logger.setContext("InstanceDeletion");
+        instanceLogger.error("Erro ao deletar na API externa:", externalError);
         // Continua a execução para deletar localmente
       }
 
@@ -419,15 +435,16 @@ export const deleteInstanceController = async (
 
       return instance.instanceName;
     });
-
-    console.log(
+    const instanceLogger = logger.setContext("InstanceDeletion");
+    instanceLogger.info(
       `Instância ${result} e todos os registros relacionados foram deletados com sucesso.`,
     );
     return res.status(200).json({
       message: "Instância e registros relacionados deletados com sucesso",
     });
   } catch (error) {
-    console.error("Erro ao deletar instância:", error);
+    const instanceLogger = logger.setContext("InstanceDeletion");
+    instanceLogger.error("Erro ao deletar instância:", error);
     if (error instanceof Error) {
       return res
         .status(error.message === "Instância não encontrada" ? 404 : 500)
@@ -465,7 +482,8 @@ export const updateInstanceController = async (
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ errors: error.errors });
     } else {
-      console.error("Erro ao atualizar instância:", error);
+      const instanceLogger = logger.setContext("InstanceUpdate");
+      instanceLogger.error("Erro ao atualizar instância:", error);
       return res.status(500).json({ error: "Erro ao atualizar instância." });
     }
   }
@@ -494,7 +512,8 @@ export const updateInstanceStatusController = async (
 
     return res.status(200).json(updatedInstance);
   } catch (error) {
-    console.error("Erro ao atualizar status da instância:", error);
+    const instanceLogger = logger.setContext("InstanceStatusUpdate");
+    instanceLogger.error("Erro ao atualizar status da instância:", error);
     return res
       .status(500)
       .json({ error: "Erro ao atualizar status da instância" });
@@ -535,14 +554,16 @@ export const deleteTypebotConfig = async (
 
       return res.json({ success: true, instance: updatedInstance });
     } catch (error) {
-      console.error("Erro ao deletar typebot:", error);
+      const instanceLogger = logger.setContext("TypebotDeletion");
+      instanceLogger.error("Erro ao deletar typebot:", error);
       return res.status(500).json({
         success: false,
         error: "Erro ao deletar configuração na API Evolution",
       });
     }
   } catch (error) {
-    console.error("Erro ao remover configurações do Typebot:", error);
+    const instanceLogger = logger.setContext("TypebotDeletion");
+    instanceLogger.error("Erro ao remover configurações do Typebot:", error);
     return res.status(500).json({
       success: false,
       error: "Erro ao remover configurações do Typebot",
