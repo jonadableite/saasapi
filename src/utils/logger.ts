@@ -168,13 +168,18 @@ export class Logger {
     }
   }
 
-  public info(message: any, details?: any): void {
-    const combinedMessage =
-      details !== undefined
-        ? this.combineMessageAndDetails(message, details)
-        : message;
+  public info(message: string, context?: Record<string, any>): void {
+    const logContext = context
+      ? Object.entries(context)
+          .filter(([_, value]) => value !== undefined)
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+      : undefined;
 
-    this.logMessage(Type.INFO, combinedMessage);
+    const fullMessage = logContext
+      ? `${message} - ${JSON.stringify(logContext)}`
+      : message;
+
+    this.logMessage(Type.INFO, fullMessage);
   }
 
   public warn(message: string, context?: Record<string, any>): void {
@@ -204,8 +209,18 @@ export class Logger {
     }
   }
 
-  public log(message: any): void {
-    this.logMessage(Type.LOG, message);
+  public log(message: string, context?: Record<string, any>): void {
+    const logContext = context
+      ? Object.entries(context)
+          .filter(([_, value]) => value !== undefined)
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+      : undefined;
+
+    const fullMessage = logContext
+      ? `${message} - ${JSON.stringify(logContext)}`
+      : message;
+
+    this.logMessage(Type.LOG, fullMessage);
   }
 
   public verbose(message: any): void {
