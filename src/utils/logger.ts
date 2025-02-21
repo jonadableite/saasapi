@@ -46,9 +46,12 @@ interface ColorConfig {
 
 export class Logger {
   private context: string;
+  private isDebugEnabled: boolean;
 
   constructor(context = "Logger") {
     this.context = context;
+    // Lê a variável de ambiente DEBUG, padrão é false
+    this.isDebugEnabled = process.env.DEBUG === "true";
   }
 
   public setContext(value: string) {
@@ -188,7 +191,10 @@ export class Logger {
   }
 
   public debug(message: any) {
-    this.logMessage(Type.DEBUG, message);
+    // Só loga se debug estiver habilitado
+    if (this.isDebugEnabled) {
+      this.logMessage(Type.DEBUG, message);
+    }
   }
 }
 

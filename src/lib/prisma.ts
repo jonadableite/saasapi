@@ -1,4 +1,3 @@
-// src/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 import { logger } from "../utils/logger";
 
@@ -25,10 +24,13 @@ const prisma = new PrismaClient({
 
 // Configuração de logs personalizados para o Prisma
 prisma.$on("query", (e) => {
-  const prismaLogger = logger.setContext("PrismaQuery");
-  prismaLogger.debug(
-    `Query: ${e.query}, Params: ${e.params}, Duration: ${e.duration}ms`,
-  );
+  // Verifica se DEBUG está definido como true
+  if (process.env.DEBUG === "true") {
+    const prismaLogger = logger.setContext("PrismaQuery");
+    prismaLogger.debug(
+      `Query: ${e.query}, Params: ${e.params}, Duration: ${e.duration}ms`,
+    );
+  }
 });
 
 prisma.$on("info", (e) => {
