@@ -204,41 +204,54 @@ export class Logger {
     } else {
       console.log(formattedMessage);
     }
-
-    // Opcional: Log para arquivo ou serviço de monitoramento
-    this.logToMonitoringService(type, tracedMessage);
   }
 
-  // Método opcional para integração com serviços de monitoramento
-  private logToMonitoringService(type: Type, message: string): void {
-    // Implementação de envio para Sentry, CloudWatch, etc.
-    // Exemplo simplificado:
-    if (process.env.MONITORING_ENABLED === "true") {
-      try {
-        // Lógica de envio para serviço de monitoramento
-        // Por exemplo, usando Sentry
-        // Sentry.captureMessage(message, { level: type });
-      } catch (error) {
-        console.error(
-          "Erro ao enviar log para serviço de monitoramento",
-          error,
+  public log(
+    message: string,
+    context?: Record<string, any> | string | undefined,
+  ): void {
+    let logContext: Record<string, any> | undefined;
+
+    if (typeof context === "string") {
+      logContext = { value: context };
+    } else if (context !== undefined) {
+      logContext = Object.entries(context)
+        .filter(([_, value]) => value !== undefined)
+        .reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: this.sanitizeLogData(value),
+          }),
+          {},
         );
-      }
     }
+
+    const fullMessage = logContext
+      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
+      : message;
+
+    this.logMessage(Type.LOG, fullMessage);
   }
 
-  public info(message: string, context?: Record<string, any>): void {
-    const logContext = context
-      ? Object.entries(context)
-          .filter(([_, value]) => value !== undefined)
-          .reduce(
-            (acc, [key, value]) => ({
-              ...acc,
-              [key]: this.sanitizeLogData(value),
-            }),
-            {},
-          )
-      : undefined;
+  public info(
+    message: string,
+    context?: Record<string, any> | string | undefined,
+  ): void {
+    let logContext: Record<string, any> | undefined;
+
+    if (typeof context === "string") {
+      logContext = { value: context };
+    } else if (context !== undefined) {
+      logContext = Object.entries(context)
+        .filter(([_, value]) => value !== undefined)
+        .reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: this.sanitizeLogData(value),
+          }),
+          {},
+        );
+    }
 
     const fullMessage = logContext
       ? `${message} - ${JSON.stringify(logContext, null, 2)}`
@@ -247,18 +260,25 @@ export class Logger {
     this.logMessage(Type.INFO, fullMessage);
   }
 
-  public warn(message: string, context?: Record<string, any>): void {
-    const logContext = context
-      ? Object.entries(context)
-          .filter(([_, value]) => value !== undefined)
-          .reduce(
-            (acc, [key, value]) => ({
-              ...acc,
-              [key]: this.sanitizeLogData(value),
-            }),
-            {},
-          )
-      : undefined;
+  public warn(
+    message: string,
+    context?: Record<string, any> | string | undefined,
+  ): void {
+    let logContext: Record<string, any> | undefined;
+
+    if (typeof context === "string") {
+      logContext = { value: context };
+    } else if (context !== undefined) {
+      logContext = Object.entries(context)
+        .filter(([_, value]) => value !== undefined)
+        .reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: this.sanitizeLogData(value),
+          }),
+          {},
+        );
+    }
 
     const fullMessage = logContext
       ? `${message} - ${JSON.stringify(logContext, null, 2)}`
@@ -287,26 +307,6 @@ export class Logger {
     if (error instanceof Error && error.stack) {
       console.error(error.stack);
     }
-  }
-
-  public log(message: string, context?: Record<string, any>): void {
-    const logContext = context
-      ? Object.entries(context)
-          .filter(([_, value]) => value !== undefined)
-          .reduce(
-            (acc, [key, value]) => ({
-              ...acc,
-              [key]: this.sanitizeLogData(value),
-            }),
-            {},
-          )
-      : undefined;
-
-    const fullMessage = logContext
-      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
-      : message;
-
-    this.logMessage(Type.LOG, fullMessage);
   }
 
   public verbose(message: any): void {
