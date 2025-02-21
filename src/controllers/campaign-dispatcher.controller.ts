@@ -4,13 +4,20 @@ import { AppError, BadRequestError, NotFoundError } from "../errors/AppError";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
 import { campaignService } from "../services/campaign.service";
+import { logger } from "../utils/logger";
 
 export class CampaignDispatcherController {
   // Tratamento de erros centralizado
   private handleError(error: unknown, res: Response): void {
-    console.error(error);
+    const errorDisparosLogger = logger.setContext("ErrorDisparos");
 
+    // Verifica se o erro é uma instância de AppError
     if (error instanceof AppError) {
+      errorDisparosLogger.warn(`Erro de aplicação: ${error.message}`, {
+        statusCode: error.statusCode,
+        name: error.name,
+      });
+
       res.status(error.statusCode).json({
         success: false,
         message: error.message,
@@ -18,21 +25,57 @@ export class CampaignDispatcherController {
       return;
     }
 
+    // Verifica se o erro é uma instância de Error padrão
+    if (error instanceof Error) {
+      errorDisparosLogger.error("Erro não tratado", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+
+      res.status(500).json({
+        success: false,
+        message: "Erro interno do servidor",
+        error: error.message,
+      });
+      return;
+    }
+
+    // Para erros que não são instâncias de Error
+    if (typeof error === "string") {
+      errorDisparosLogger.error(`Erro de string: ${error}`);
+
+      res.status(500).json({
+        success: false,
+        message: "Erro interno do servidor",
+        error,
+      });
+      return;
+    }
+
+    // Caso genérico para qualquer outro tipo de erro
+    errorDisparosLogger.error("Erro desconhecido", { error });
+
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",
-      error: error instanceof Error ? error.message : "Erro desconhecido",
+      error: "Erro desconhecido",
     });
   }
 
   // Início da campanha
-  public startCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+  public startCampaign = async (
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
       const { instanceName, minDelay, maxDelay } = req.body;
 
-      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
-      if (!instanceName) throw new BadRequestError("Nome da instância não fornecido");
+      if (!campaignId)
+        throw new BadRequestError("ID da campanha é obrigatório");
+      if (!instanceName)
+        throw new BadRequestError("Nome da instância não fornecido");
       if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
       const userId = req.user.id;
@@ -45,7 +88,8 @@ export class CampaignDispatcherController {
         },
       });
 
-      if (!campaign) throw new NotFoundError("Campanha não encontrada ou sem permissão");
+      if (!campaign)
+        throw new NotFoundError("Campanha não encontrada ou sem permissão");
       if (!campaign.leads || campaign.leads.length === 0)
         throw new BadRequestError("Não há leads pendentes para envio");
 
@@ -92,7 +136,10 @@ export class CampaignDispatcherController {
   };
 
   // Pausa a campanha
-  public pauseCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+  public pauseCampaign = async (
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
 
@@ -127,13 +174,18 @@ export class CampaignDispatcherController {
   };
 
   // Retoma a campanha
-  public resumeCampaign = async (req: RequestWithUser, res: Response): Promise<void> => {
+  public resumeCampaign = async (
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
       const { instanceName } = req.body;
 
-      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
-      if (!instanceName) throw new BadRequestError("Nome da instância não fornecido");
+      if (!campaignId)
+        throw new BadRequestError("ID da campanha é obrigatório");
+      if (!instanceName)
+        throw new BadRequestError("Nome da instância não fornecido");
       if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
       const userId = req.user.id;
@@ -143,8 +195,10 @@ export class CampaignDispatcherController {
         where: { id: campaignId, userId },
       });
 
-      if (!campaign) throw new NotFoundError("Campanha não encontrada ou sem permissão");
-      if (campaign.status !== "paused") throw new BadRequestError("Campanha não está pausada");
+      if (!campaign)
+        throw new NotFoundError("Campanha não encontrada ou sem permissão");
+      if (campaign.status !== "paused")
+        throw new BadRequestError("Campanha não está pausada");
 
       const instance = await prisma.instance.findUnique({
         where: { instanceName },
@@ -195,10 +249,14 @@ export class CampaignDispatcherController {
   };
 
   // Retorna os históricos de disparos
-  public getDispatches = async (req: RequestWithUser, res: Response): Promise<void> => {
+  public getDispatches = async (
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> => {
     try {
       const campaignId = req.params.id;
-      if (!campaignId) throw new BadRequestError("ID da campanha é obrigatório");
+      if (!campaignId)
+        throw new BadRequestError("ID da campanha é obrigatório");
       if (!req.user?.id) throw new BadRequestError("Usuário não autenticado");
 
       const userId = req.user.id;
@@ -248,7 +306,10 @@ export class CampaignDispatcherController {
   }
 
   // Retorna o progresso da campanha
-  public getCampaignProgress = async (req: RequestWithUser, res: Response): Promise<void> => {
+  public getCampaignProgress = async (
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
 

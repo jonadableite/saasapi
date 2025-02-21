@@ -1,7 +1,7 @@
+// src/fsls/logpfsts
+// src/pathils/logpathr.ts
 // src/utils/logger.ts
-import dayjs from "dayjs";
-import fs from "fs";
-import path from "path";
+import dayjsss fromdayjsjsjs";
 
 const packageJsonPath = path.resolve(__dirname, "../../package.json");
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
@@ -165,7 +165,7 @@ export class Logger {
     }
   }
 
-  public warn(message: any) {
+  public warn(message: any, p0: { statusCode: number; name: string; }) {
     this.logMessage(Type.WARN, message);
   }
 

@@ -7,6 +7,7 @@ import type {
   MediaContent,
 } from "../interface";
 import { prisma } from "../lib/prisma";
+import { logger } from "../utils/logger";
 import { MessageLogService } from "./message-log.service";
 
 interface AxiosErrorResponse {
@@ -43,7 +44,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
     maxDelay: number;
   }): Promise<void> {
     try {
-      console.log("Iniciando processo de dispatch...");
+      const disparosLogger = logger.setContext("Disparos");
+      disparosLogger.info("Iniciando processo de dispatch...");
 
       // Buscar leads pendentes para envio
       const leads = await prisma.campaignLead.findMany({
@@ -58,7 +60,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         orderBy: { createdAt: "asc" },
       });
 
-      console.log(`Encontrados ${leads.length} leads para processamento`);
+      const leadsLogger = logger.setContext("Leads");
+      leadsLogger.info(`Encontrados ${leads.length} leads para processamento`);
 
       if (leads.length === 0) {
         throw new Error("Não há leads disponíveis para disparo nesta campanha");
@@ -69,12 +72,14 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
       for (const lead of leads) {
         if (this.stop) {
-          console.log("Processo interrompido manualmente");
+          const interrompidoLogger = logger.setContext("Interrompido");
+          interrompidoLogger.info("Processo interrompido manualmente");
           break;
         }
 
         try {
-          console.log(`Processando lead ${lead.id} (${lead.phone})`);
+          const leadLogger = logger.setContext("Lead");
+          leadLogger.info(`Processando lead ${lead.id} (${lead.phone})`);
 
           await prisma.campaignLead.update({
             where: { id: lead.id },
@@ -88,7 +93,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
           // **Enviar mídia primeiro, se houver**
           if (params.media) {
-            console.log("Enviando mídia...");
+            const mediaLogger = logger.setContext("Mídia");
+            mediaLogger.info("Enviando mídia...");
             response = await this.sendMedia(
               params.instanceName,
               lead.phone,
@@ -98,7 +104,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
           // **Enviar mensagem de texto, mesmo que não haja mídia**
           if (params.message && params.message.trim().length > 0) {
-            console.log("Enviando mensagem de texto...");
+            const textLogger = logger.setContext("Texto");
+            textLogger.info("Enviando mensagem de texto...");
             response = await this.sendText(
               params.instanceName,
               lead.phone,
@@ -138,10 +145,14 @@ export class MessageDispatcherService implements IMessageDispatcherService {
             Math.floor(
               Math.random() * (params.maxDelay - params.minDelay + 1),
             ) + params.minDelay;
-          console.log(`Aguardando ${delay} segundos antes do próximo envio...`);
+          const delayLogger = logger.setContext("Delay");
+          delayLogger.info(
+            `Aguardando ${delay} segundos antes do próximo envio...`,
+          );
           await new Promise((resolve) => setTimeout(resolve, delay * 1000));
         } catch (error) {
-          console.error(`Erro ao processar lead ${lead.id}:`, error);
+          const errorLeadLogger = logger.setContext("ErroLead");
+          errorLeadLogger.error(`Erro ao processar lead ${lead.id}:`, error);
 
           await prisma.campaignLead.update({
             where: { id: lead.id },
@@ -166,7 +177,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       });
     } catch (error) {
-      console.error("Erro no processo de dispatch:", error);
+      const disparoErrorLogger = logger.setContext("DisparoError");
+      disparoErrorLogger.error("Erro no processo de dispatch:", error);
       throw error;
     }
   }
@@ -187,7 +199,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
       });
 
       if (!lead) {
-        console.warn(`Lead não encontrado para messageId: ${messageId}`);
+        const leadWarnLogger = logger.setContext("LeadWarn");
+        leadWarnLogger.warn(`Lead não encontrado para messageId: ${messageId}`);
         return;
       }
 
@@ -214,7 +227,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         reason,
       });
     } catch (error) {
-      console.error("Erro ao atualizar status da mensagem:", error);
+      const updateStatusErrorLogger = logger.setContext("UpdateStatusError");
+      updateStatusErrorLogger.error(
+        "Erro ao atualizar status da mensagem:",
+        error,
+      );
       throw error;
     }
   }
@@ -244,7 +261,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
         // **Enviar mídia primeiro, se houver**
         if (params.media?.base64) {
-          console.log("Enviando mídia...");
+          const mediaLogger = logger.setContext("Media");
+          mediaLogger.info("Enviando mídia...");
           response = await this.sendMedia(
             params.instanceName,
             formattedNumber,
@@ -254,7 +272,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
         // **Enviar mensagem de texto, mesmo que não haja mídia**
         if (params.message && params.message.trim().length > 0) {
-          console.log("Enviando mensagem de texto...");
+          const messageLogger = logger.setContext("Message");
+          messageLogger.info("Enviando mensagem de texto...");
           response = await this.sendText(
             params.instanceName,
             formattedNumber,
@@ -274,9 +293,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         }
       } catch (error) {
         attempts++;
-        console.error(`Tentativa ${attempts} falhou:`, error);
+        const errorLogger = logger.setContext("Error");
+        errorLogger.error(`Tentativa ${attempts} falhou:`, error);
         if (attempts === maxRetries) {
-          console.error(
+          errorLogger.error(
             "Erro ao enviar mensagem após todas as tentativas:",
             error,
           );
@@ -308,7 +328,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       });
 
-      console.log(`Retomando envio para ${leads.length} leads`);
+      const leadsLogger = logger.setContext("Leads");
+      leadsLogger.info(`Retomando envio para ${leads.length} leads`);
 
       const campaign = await prisma.campaign.findUnique({
         where: { id: params.campaignId },
@@ -331,12 +352,14 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
       for (const lead of leads) {
         if (this.stop) {
-          console.log("Processo de retomada interrompido");
+          const retomadaLogger = logger.setContext("Retomada");
+          retomadaLogger.info("Processo de retomada interrompido");
           break;
         }
 
         try {
-          console.log(`Processando lead ${lead.id} (${lead.phone})`);
+          const leadLogger = logger.setContext("Lead");
+          leadLogger.info(`Processando lead ${lead.id} (${lead.phone})`);
 
           await prisma.campaignLead.update({
             where: { id: lead.id },
@@ -379,7 +402,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
           await this.delay(campaign.minDelay || 5, campaign.maxDelay || 30);
         } catch (error) {
-          console.error(`Erro ao processar lead ${lead.id}:`, error);
+          const LeadErrorLogger = logger.setContext("LeadError");
+          LeadErrorLogger.error(`Erro ao processar lead ${lead.id}:`, error);
 
           await prisma.campaignLead.update({
             where: { id: lead.id },
@@ -404,7 +428,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       });
     } catch (error) {
-      console.error("Erro na retomada do dispatch:", error);
+      const retomadaErrorLogger = logger.setContext("RetomadaError");
+      retomadaErrorLogger.error("Erro na retomada do dispatch:", error);
       throw error;
     }
   }
@@ -416,7 +441,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
   ): Promise<EvolutionApiResponse> {
     try {
       const formattedNumber = phone.startsWith("55") ? phone : `55${phone}`;
-      console.log(
+      const disparoLogger = logger.setContext("Disparo");
+      disparoLogger.info(
         `Enviando mensagem para ${formattedNumber} usando instância ${instanceName}`,
       );
 
@@ -430,7 +456,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       };
 
-      console.log("Payload do envio:", payload);
+      disparoLogger.info("Payload do envio:", payload);
 
       const response = await axios.post<EvolutionApiResponse>(
         `${URL_API}/message/sendText/${instanceName}`,
@@ -449,11 +475,13 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         );
       }
 
-      console.log("Resposta do envio:", response.data);
+      const disparoResponseLogger = logger.setContext("DisparoResponse");
+      disparoResponseLogger.info("Resposta do envio:", response.data);
       return response.data;
     } catch (error) {
       const axiosError = error as AxiosErrorResponse;
-      console.error("Erro ao enviar mensagem:", {
+      const disparoErrorLogger = logger.setContext("DisparoError");
+      disparoErrorLogger.error("Erro ao enviar mensagem:", {
         error: axiosError.response?.data || axiosError.message,
         instanceName,
         phone,
@@ -518,7 +546,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           break;
       }
 
-      console.log(
+      const disparoLogger = logger.setContext("Disparo");
+      disparoLogger.info(
         `Enviando ${media.type} para ${phone} usando instância ${instanceName}`,
       );
 
@@ -533,10 +562,15 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       );
 
-      console.log(`Resposta do envio de ${media.type}:`, response.data);
+      const disparoResponseLogger = logger.setContext("DisparoResponse");
+      disparoResponseLogger.info(
+        `Resposta do envio de ${media.type}:`,
+        response.data,
+      );
       return response.data;
     } catch (error) {
-      console.error(`Erro ao enviar ${media.type}:`, error);
+      const disparoErrorLogger = logger.setContext("DisparoError");
+      disparoErrorLogger.error(`Erro ao enviar ${media.type}:`, error);
       throw error;
     }
   }
@@ -580,7 +614,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
       return messageLog;
     } catch (error) {
-      console.error("Erro ao salvar resposta da Evolution:", error);
+      const disparoErrorLogger = logger.setContext("DisparoError");
+      disparoErrorLogger.error("Erro ao salvar resposta da Evolution:", error);
       throw error;
     }
   }
@@ -600,7 +635,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
   private async delay(min: number, max: number): Promise<void> {
     const delayTime = Math.floor(Math.random() * (max - min + 1)) + min;
-    console.log(`Aguardando ${delayTime} segundos antes do próximo envio...`);
+    const delayLogger = logger.setContext("Delay");
+    delayLogger.info(
+      `Aguardando ${delayTime} segundos antes do próximo envio...`,
+    );
     return new Promise((resolve) => setTimeout(resolve, delayTime * 1000));
   }
 
@@ -619,7 +657,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
   }
 
   stopDispatch(): void {
-    console.log("Chamando stopDispatch() - Interrompendo disparo");
+    const stopLogger = logger.setContext("Stop");
+    stopLogger.info("Chamando stopDispatch() - Interrompendo disparo");
     this.stop = true;
   }
 
