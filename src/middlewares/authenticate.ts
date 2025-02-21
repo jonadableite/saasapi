@@ -3,6 +3,7 @@ import type { NextFunction, Response } from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import type { RequestWithUser } from "../types";
+import { logger } from "../utils/logger";
 
 interface JwtPayload {
   userId?: string;
@@ -25,28 +26,31 @@ export const authMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
-  console.log("Iniciando middleware de autenticação");
+  const authLogger = logger.setContext("Authentication");
+
   try {
     if (isWebhookRoute(req.path)) {
-      console.log("Rota de webhook, ignorando autenticação");
       return next();
     }
 
     const authHeader = req.headers.authorization;
-    console.log("Auth Header:", authHeader);
 
     if (!authHeader) {
-      console.log("Token não fornecido");
+      authLogger.warn("Token não fornecido");
       return res.status(401).json({ error: "Token não fornecido" });
     }
 
     const [scheme, token] = authHeader.split(" ");
     if (!token || scheme.toLowerCase() !== "bearer") {
+      authLogger.warn("Token mal formatado");
       return res.status(401).json({ error: "Token mal formatado" });
     }
 
     const secret = process.env.JWT_SECRET;
     if (!secret) {
+      authLogger.error(
+        "Erro de configuração no servidor: JWT_SECRET não definido",
+      );
       return res
         .status(500)
         .json({ error: "Erro de configuração no servidor" });
@@ -55,16 +59,14 @@ export const authMiddleware = async (
     try {
       const decoded = jwt.verify(token, secret) as JwtPayload;
       const userIdFromToken = decoded.userId || decoded.id;
-      console.log("ID do usuário decodificado:", userIdFromToken);
 
       if (!userIdFromToken) {
-        console.log("Token inválido: ID não encontrado");
+        authLogger.warn("Token inválido: ID não encontrado");
         return res
           .status(401)
           .json({ error: "Token inválido: ID não encontrado" });
       }
 
-      console.log("Buscando usuário no banco de dados");
       const user = await prisma.user.findUnique({
         where: { id: userIdFromToken },
         select: {
@@ -84,10 +86,8 @@ export const authMiddleware = async (
         },
       });
 
-      console.log("Resultado da busca do usuário:", user);
-
       if (!user) {
-        console.log("Usuário não encontrado");
+        authLogger.warn(`Usuário não encontrado para ID: ${userIdFromToken}`);
         return res.status(401).json({ error: "Usuário não encontrado" });
       }
 
@@ -106,19 +106,23 @@ export const authMiddleware = async (
             }
           : undefined,
       };
-      console.log("Autenticação bem-sucedida");
+
       return next();
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
+        authLogger.warn("Tentativa de autenticação com token expirado");
         return res.status(401).json({ error: "Token expirado" });
       }
       if (error instanceof jwt.JsonWebTokenError) {
+        authLogger.warn("Tentativa de autenticação com token inválido");
         return res.status(401).json({ error: "Token inválido" });
       }
+
+      authLogger.error("Erro durante verificação do token", error);
       throw error;
     }
   } catch (error) {
-    console.error("Erro interno no servidor:", error);
+    authLogger.error("Erro interno no servidor durante autenticação", error);
     return res.status(500).json({ error: "Erro interno no servidor" });
   }
 };
@@ -128,14 +132,18 @@ export const requireCompanySetup = async (
   res: Response,
   next: NextFunction,
 ) => {
+  const companyLogger = logger.setContext("CompanySetup");
+
   try {
     const user = req.user;
 
     if (!user) {
+      companyLogger.warn("Tentativa de acesso sem usuário autenticado");
       return res.status(401).json({ error: "Usuário não autenticado" });
     }
 
     if (!user.company) {
+      companyLogger.warn(`Usuário ${user.id} sem empresa configurada`);
       return res.status(403).json({ error: "Empresa não configurada" });
     }
 
@@ -144,6 +152,7 @@ export const requireCompanySetup = async (
       user.company.name === `${user.name}'s Company`;
 
     if (isTemporaryCompany) {
+      companyLogger.warn(`Usuário ${user.id} com empresa temporária`);
       return res.status(403).json({
         error: "Configuração da empresa necessária",
         requiresSetup: true,
@@ -152,6 +161,11 @@ export const requireCompanySetup = async (
 
     return next();
   } catch (error) {
+    const companyLogger = logger.setContext("CompanySetup");
+    companyLogger.error(
+      "Erro interno ao validar configuração da empresa",
+      error,
+    );
     return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
