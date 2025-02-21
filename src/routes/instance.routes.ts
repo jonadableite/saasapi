@@ -2,6 +2,7 @@
 import { Router } from "express";
 import * as instanceController from "../controllers/instance.controller";
 import { deleteMediaStats } from "../controllers/instance.controller";
+import * as typebotController from "../controllers/typebot.controller";
 import { createTypebotController } from "../controllers/typebot.controller";
 import { authMiddleware } from "../middlewares/authenticate";
 import { checkPlanLimits } from "../middlewares/planLimits";
@@ -41,5 +42,6 @@ router.put(
   instanceController.updateTypebotConfigController,
 );
 router.delete("/instance/:id/typebot", instanceController.deleteTypebotConfig);
+router.get("/typebot/flows", typebotController.getTypebotFlows);
 
 export default router;

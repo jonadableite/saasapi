@@ -1,0 +1,63 @@
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Socket inicializado com sucesso[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/affiliates[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/payments[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/admin[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/chatbot[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/leads[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/users[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/instances[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/dashboard[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/warmup[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/upload[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/reports[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/scheduler[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/analytics[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/companies[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/dashboards[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/message-logs[39m
+2025-02-21 02:10:19:1019 [32minfo[39m: [32m[ServerInitialization] Lembretes de pagamento agendados[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Socket inicializado com sucesso[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/affiliates[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/payments[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/admin[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/chatbot[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/leads[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/users[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/instances[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/dashboard[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/warmup[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/upload[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/reports[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/campaigns[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/scheduler[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/analytics[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/companies[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/dashboards[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Rota protegida registrada: /api/message-logs[39m
+2025-02-21 02:11:06:116 [32minfo[39m: [32m[ServerInitialization] Lembretes de pagamento agendados[39m
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Socket inicializado com sucesso
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/affiliates
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/payments
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/admin
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/chatbot
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/leads
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/users
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/instances
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/dashboard
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/warmup
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/upload
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/campaigns
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/campaigns
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/reports
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/campaigns
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/scheduler
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/analytics
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/companies
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/dashboards
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Rota protegida registrada: /api/message-logs
+[WhatLead API] v1.0.0 98067 - Fri Feb 21 2025 02:21:40 INFO  [ServerInitialization] [[string]] Lembretes de pagamento agendados

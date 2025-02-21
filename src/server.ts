@@ -39,6 +39,10 @@ import userRoutes from "./routes/user.routes";
 import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { campaignService } from "./services/campaign.service";
+import { logger } from "./utils/logger";
+
+// Configurar logger para este contexto
+const serverLogger = logger.setContext("ServerInitialization");
 
 dotenv.config();
 
@@ -48,13 +52,19 @@ const PORT = process.env.PORT || 9000;
 
 let server: ReturnType<typeof app.listen>;
 
-initializeSocket(httpServer);
+// Inicialização do socket
+try {
+  initializeSocket(httpServer);
+  serverLogger.info("Socket inicializado com sucesso");
+} catch (error) {
+  serverLogger.error("Erro ao inicializar socket", error);
+}
 
 // Configurações de CORS
 const corsOptions = {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"], // Adicionado 'apikey'
+  allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"],
   credentials: true,
   optionsSuccessStatus: 200,
 };
@@ -66,6 +76,7 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "300mb" }));
 app.use(express.urlencoded({ limit: "300mb", extended: true }));
 
+// Documentação Swagger
 app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 
 // Rotas que precisam do body raw (antes dos parsers)
@@ -78,7 +89,7 @@ app.post(
 app.use("/api/stripe", stripeRoutes);
 
 // Rotas públicas (sem autenticação)
-app.use("/webhook", webhookRoutes); // Rotas de webhook da Evolution
+app.use("/webhook", webhookRoutes);
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
@@ -87,66 +98,96 @@ app.use("/api/users/register", createUsersController);
 app.use("/api", authMiddleware);
 
 // Rotas protegidas (com autenticação)
-app.use("/api/affiliates", affiliateRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/chatbot", chatbotRoutes);
-app.use("/api/leads", leadRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/instances", instanceRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/warmup", warmupRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/campaigns", campaignRoutes);
-app.use("/api/campaigns", campaignLeadRoutes);
-app.use("/api/reports", reportsRoutes);
-app.use("/api/campaigns", campaignDispatcherRoutes);
-app.use("/api/scheduler", campaignSchedulerRoutes);
-app.use("/api/analytics", analyticsRoutes);
-app.use("/api/companies", companyRoutes);
-app.use("/api/dashboards", dashboardsRoutes);
-app.use("/api/message-logs", messageLogRoutes);
+const protectedRoutes = [
+  { path: "/api/affiliates", route: affiliateRoutes },
+  { path: "/api/payments", route: paymentRoutes },
+  { path: "/api/admin", route: adminRoutes },
+  { path: "/api/chatbot", route: chatbotRoutes },
+  { path: "/api/leads", route: leadRoutes },
+  { path: "/api/users", route: userRoutes },
+  { path: "/api/instances", route: instanceRoutes },
+  { path: "/api/dashboard", route: dashboardRoutes },
+  { path: "/api/warmup", route: warmupRoutes },
+  { path: "/api/upload", route: uploadRoutes },
+  { path: "/api/campaigns", route: campaignRoutes },
+  { path: "/api/campaigns", route: campaignLeadRoutes },
+  { path: "/api/reports", route: reportsRoutes },
+  { path: "/api/campaigns", route: campaignDispatcherRoutes },
+  { path: "/api/scheduler", route: campaignSchedulerRoutes },
+  { path: "/api/analytics", route: analyticsRoutes },
+  { path: "/api/companies", route: companyRoutes },
+  { path: "/api/dashboards", route: dashboardsRoutes },
+  { path: "/api/message-logs", route: messageLogRoutes },
+];
+
+protectedRoutes.forEach(({ path, route }) => {
+  app.use(path, route);
+  serverLogger.log(`Rota protegida registrada: ${path}`);
+});
 
 // Middleware de erro deve ser o último
 app.use(errorHandler);
 
 // Cron jobs
-cron.schedule("0 0 * * *", () => updatePaymentStatuses(prisma));
-cron.schedule("0 * * * *", async () => {
-  console.log("Processando mensagens não lidas...");
-  await campaignService.processUnreadMessages();
-});
+try {
+  cron.schedule("0 0 * * *", () => {
+    serverLogger.info("Iniciando atualização de status de pagamento");
+    updatePaymentStatuses(prisma);
+  });
 
-cron.schedule("0 0 * * *", async () => {
-  console.log("Segmentando leads...");
-  await campaignService.segmentLeads();
-});
+  cron.schedule("0 * * * *", async () => {
+    serverLogger.info("Processando mensagens não lidas");
+    await campaignService.processUnreadMessages();
+  });
 
-// Agende os lembretes de pagamento
-schedulePaymentReminders();
+  cron.schedule("0 0 * * *", async () => {
+    serverLogger.info("Segmentando leads");
+    await campaignService.segmentLeads();
+  });
+
+  // Agende os lembretes de pagamento
+  schedulePaymentReminders();
+  serverLogger.log("Lembretes de pagamento agendados");
+} catch (error) {
+  serverLogger.error("Erro ao configurar cron jobs", error);
+}
 
 // Função de encerramento limpo
 async function gracefulShutdown() {
-  console.log("Encerrando servidor...");
-  await prisma.$disconnect();
-  if (server) {
-    server.close(() => {
-      console.log("Servidor encerrado.");
+  serverLogger.warn("Iniciando encerramento do servidor");
+  try {
+    await prisma.$disconnect();
+    serverLogger.info("Conexão com o banco de dados encerrada");
+
+    if (server) {
+      server.close(() => {
+        serverLogger.info("Servidor encerrado com sucesso");
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    });
-  } else {
-    process.exit(0);
+    }
+  } catch (error) {
+    serverLogger.error("Erro durante o encerramento", error);
+    process.exit(1);
   }
 }
 
+// Configuração de timezone
 process.env.TZ = "America/Sao_Paulo";
+serverLogger.info(`Timezone configurado para: ${process.env.TZ}`);
 
 // Inicia o servidor
-setupMinioBucket().then(() => {
-  server = app.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+setupMinioBucket()
+  .then(() => {
+    serverLogger.info("Bucket Minio configurado com sucesso");
+    server = app.listen(PORT, () => {
+      serverLogger.info(`Servidor rodando na porta ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    serverLogger.error("Erro ao configurar Minio Bucket", error);
   });
-});
 
 // Encerramento limpo
 process.on("SIGTERM", gracefulShutdown);
