@@ -1,4 +1,3 @@
-// src/utils/logger.ts
 import fs from "fs";
 import path from "path";
 import dayjs from "dayjs";
@@ -9,7 +8,8 @@ const getPackageVersion = (): string => {
     const packageJsonPath = path.resolve(__dirname, "../../package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
     return packageJson.version || "0.0.0";
-  } catch {
+  } catch (error) {
+    console.error("Erro ao ler package.json:", error);
     return "0.0.0";
   }
 };
@@ -73,6 +73,32 @@ export class Logger {
 
   public setContext(value: string): Logger {
     return new Logger(value);
+  }
+
+  // Método para limpar dados sensíveis antes de logar
+  private sanitizeLogData(data: any): any {
+    if (typeof data !== "object" || data === null) return data;
+
+    const sensitiveKeys = [
+      "password",
+      "token",
+      "secret",
+      "apiKey",
+      "credentials",
+      "Authorization",
+      "accessToken",
+      "refreshToken",
+    ];
+
+    const sanitizedData = { ...data };
+
+    sensitiveKeys.forEach((key) => {
+      if (sanitizedData.hasOwnProperty(key)) {
+        sanitizedData[key] = "***REDACTED***";
+      }
+    });
+
+    return sanitizedData;
   }
 
   private getColorConfig(type: Type): ColorConfig {
@@ -143,21 +169,33 @@ export class Logger {
 
     if (typeof message === "object") {
       try {
+        // Sanitiza dados antes de serializar
+        const sanitizedMessage = this.sanitizeLogData(message);
+
         // Tenta serializar com indentação para objetos complexos
-        return JSON.stringify(message, null, 2);
-      } catch {
-        return String(message);
+        return JSON.stringify(sanitizedMessage, null, 2);
+      } catch (error) {
+        return `Erro ao serializar: ${String(error)}`;
       }
     }
 
     return String(message);
   }
 
+  // Método para adicionar contexto de rastreamento
+  private addTraceContext(message: string): string {
+    const traceId = process.env.TRACE_ID || "N/A";
+    return `[TraceID: ${traceId}] ${message}`;
+  }
+
   private logMessage(type: Type, message: any, typeValue?: string): void {
     // Só loga debug se estiver habilitado
     if (type === Type.DEBUG && !this.isDebugEnabled) return;
 
-    const formattedMessage = this.formatMessage(type, message, typeValue);
+    // Adiciona contexto de rastreamento
+    const tracedMessage = this.addTraceContext(message);
+
+    const formattedMessage = this.formatMessage(type, tracedMessage, typeValue);
 
     // Colored console log
     if (process.env.ENABLECOLOREDLOGS === "true") {
@@ -166,17 +204,44 @@ export class Logger {
     } else {
       console.log(formattedMessage);
     }
+
+    // Opcional: Log para arquivo ou serviço de monitoramento
+    this.logToMonitoringService(type, tracedMessage);
+  }
+
+  // Método opcional para integração com serviços de monitoramento
+  private logToMonitoringService(type: Type, message: string): void {
+    // Implementação de envio para Sentry, CloudWatch, etc.
+    // Exemplo simplificado:
+    if (process.env.MONITORING_ENABLED === "true") {
+      try {
+        // Lógica de envio para serviço de monitoramento
+        // Por exemplo, usando Sentry
+        // Sentry.captureMessage(message, { level: type });
+      } catch (error) {
+        console.error(
+          "Erro ao enviar log para serviço de monitoramento",
+          error,
+        );
+      }
+    }
   }
 
   public info(message: string, context?: Record<string, any>): void {
     const logContext = context
       ? Object.entries(context)
           .filter(([_, value]) => value !== undefined)
-          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+          .reduce(
+            (acc, [key, value]) => ({
+              ...acc,
+              [key]: this.sanitizeLogData(value),
+            }),
+            {},
+          )
       : undefined;
 
     const fullMessage = logContext
-      ? `${message} - ${JSON.stringify(logContext)}`
+      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
       : message;
 
     this.logMessage(Type.INFO, fullMessage);
@@ -186,19 +251,34 @@ export class Logger {
     const logContext = context
       ? Object.entries(context)
           .filter(([_, value]) => value !== undefined)
-          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+          .reduce(
+            (acc, [key, value]) => ({
+              ...acc,
+              [key]: this.sanitizeLogData(value),
+            }),
+            {},
+          )
       : undefined;
 
     const fullMessage = logContext
-      ? `${message} - ${JSON.stringify(logContext)}`
+      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
       : message;
 
     this.logMessage(Type.WARN, fullMessage);
   }
 
   public error(message: string, error?: any): void {
-    const fullMessage = error
-      ? `${message} - ${error instanceof Error ? error.message : error}`
+    const errorContext =
+      error instanceof Error
+        ? {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+          }
+        : error;
+
+    const fullMessage = errorContext
+      ? `${message} - ${this.serializeMessage(errorContext)}`
       : message;
 
     this.logMessage(Type.ERROR, fullMessage);
@@ -213,11 +293,17 @@ export class Logger {
     const logContext = context
       ? Object.entries(context)
           .filter(([_, value]) => value !== undefined)
-          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+          .reduce(
+            (acc, [key, value]) => ({
+              ...acc,
+              [key]: this.sanitizeLogData(value),
+            }),
+            {},
+          )
       : undefined;
 
     const fullMessage = logContext
-      ? `${message} - ${JSON.stringify(logContext)}`
+      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
       : message;
 
     this.logMessage(Type.LOG, fullMessage);
@@ -229,12 +315,6 @@ export class Logger {
 
   public debug(message: any): void {
     this.logMessage(Type.DEBUG, message);
-  }
-
-  private combineMessageAndDetails(message: any, details: any): string {
-    return typeof details === "object"
-      ? `${message}: ${this.serializeMessage(details)}`
-      : `${message}: ${details}`;
   }
 }
 
