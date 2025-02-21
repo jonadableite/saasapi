@@ -1,4 +1,3 @@
-import { logger } from "@/utils/logger";
 import { Prisma } from "@prisma/client";
 import axios from "axios";
 // src/controllers/instance.controller.ts
@@ -14,6 +13,7 @@ import {
   updateInstance,
 } from "../services/instance.service";
 import type { RequestWithUser } from "../types";
+import { logger } from "../utils/logger";
 
 // Interface estendida para incluir os parâmetros e corpo da requisição
 interface TypebotRequest extends RequestWithUser {
