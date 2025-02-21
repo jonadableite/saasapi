@@ -2,6 +2,7 @@
 import { Router } from "express";
 import * as instanceController from "../controllers/instance.controller";
 import { deleteMediaStats } from "../controllers/instance.controller";
+import { createTypebotController } from "../controllers/typebot.controller";
 import { authMiddleware } from "../middlewares/authenticate";
 import { checkPlanLimits } from "../middlewares/planLimits";
 
@@ -10,20 +11,11 @@ const router = Router();
 router.use(authMiddleware);
 router.use(checkPlanLimits);
 
-// Rotas
+// Rotas de Instância
 router.post("/create", instanceController.createInstanceController);
 router.get("/", instanceController.listInstancesController);
 router.delete("/instance/:id", instanceController.deleteInstanceController);
-router.delete("/instances/:id/media-stats", deleteMediaStats);
 router.put("/instance/:id", instanceController.updateInstanceController);
-router.put(
-  "/instance/:id/typebot",
-  instanceController.updateTypebotConfigController,
-);
-router.put(
-  "/instance/:id/proxy",
-  instanceController.updateProxyConfigController,
-);
 router.put(
   "/update-statuses",
   instanceController.updateInstanceStatusesController,
@@ -31,6 +23,22 @@ router.put(
 router.put(
   "/instance/:id/connection-status",
   instanceController.updateInstanceStatusController,
+);
+
+// Rotas de Media Stats
+router.delete("/instances/:id/media-stats", deleteMediaStats);
+
+// Rotas de Proxy
+router.put(
+  "/instance/:id/proxy",
+  instanceController.updateProxyConfigController,
+);
+
+// Rotas de Typebot
+router.post("/instance/:id/typebot", createTypebotController);
+router.put(
+  "/instance/:id/typebot",
+  instanceController.updateTypebotConfigController,
 );
 router.delete("/instance/:id/typebot", instanceController.deleteTypebotConfig);
 

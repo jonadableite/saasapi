@@ -114,7 +114,6 @@ export const updateTypebotConfigController = async (
     const { id } = req.params;
     const { typebot } = req.body;
 
-    // Validar payload
     await typebotConfigSchema.validate({ typebot }, { abortEarly: false });
 
     if (!id || !req.user?.id) {
@@ -123,7 +122,6 @@ export const updateTypebotConfigController = async (
         .json({ error: "ID da instância ou usuário inválido" });
     }
 
-    // Buscar instância
     const instance = await prisma.instance.findFirst({
       where: { id, userId: req.user.id },
     });
@@ -133,7 +131,6 @@ export const updateTypebotConfigController = async (
     }
 
     try {
-      // Usar o novo serviço para atualizar o typebot
       const result = await TypebotService.updateTypebot(
         instance.instanceName,
         typebot,
@@ -529,7 +526,6 @@ export const deleteTypebotConfig = async (
     }
 
     try {
-      // Usar o novo serviço para deletar o typebot
       await TypebotService.deleteTypebot(instance.instanceName);
 
       const updatedInstance = await prisma.instance.update({
