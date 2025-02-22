@@ -14,6 +14,11 @@ import redisClient from "../lib/redis";
 import { messageDispatcherService } from "../services/campaign-dispatcher.service";
 import { CampaignService } from "../services/campaign.service";
 import type { CampaignStatus } from "../types/campaign.types";
+import { logger } from "../utils/logger";
+
+const campaignLogger = logger.createLogger("CampaignController");
+
+type Type = "success" | "info" | "warn" | "error";
 
 // Interface para requisições de criação
 interface CreateCampaignRequest extends BaseCampaignRequest {
@@ -29,6 +34,14 @@ export default class CampaignController {
 
   async createCampaign(req: RequestWithUser, res: Response): Promise<void> {
     try {
+      campaignLogger.info("📝 Iniciando criação de campanha", {
+        userId: req.user?.id,
+        payload: {
+          name: req.body.name,
+          type: req.body.type,
+        },
+      });
+
       const { name, description, type } = req.body;
       const userId = req.user?.id;
 
@@ -51,12 +64,22 @@ export default class CampaignController {
         },
       });
 
+      campaignLogger.success("✅ Campanha criada com sucesso", {
+        campaignId: campaign.id,
+        userId: req.user?.id,
+      });
+
       // Limpar o cache após a criação
       await redisClient.del(`campaigns:${userId}`);
 
       res.status(201).json(campaign);
     } catch (error) {
-      console.error("Erro ao criar campanha:", error);
+      campaignLogger.error("❌ Erro ao criar campanha", {
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+        userId: req.user?.id,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
       res.status(500).json({ error: "Erro ao criar campanha" });
     }
   }
@@ -689,98 +712,66 @@ export default class CampaignController {
     }
   }
 
-  public async startCampaign(
-    req: StartCampaignRequest,
-    res: Response,
-  ): Promise<void> {
+  async startCampaign(req: StartCampaignRequest, res: Response): Promise<void> {
+    const startLogger = logger.createLogger("StartCampaign");
+
     try {
-      const campaignId = req.params.id;
+      const { id: campaignId } = req.params;
       const { instanceName, message, media, minDelay, maxDelay } = req.body;
 
-      console.log("Recebendo requisição de start:", {
+      startLogger.info("🚀 Iniciando campanha", {
         campaignId,
         instanceName,
         hasMessage: !!message,
         hasMedia: !!media,
         mediaType: media?.type,
-        minDelay,
-        maxDelay,
+        delays: { min: minDelay, max: maxDelay },
       });
 
-      // Verificar se a instância existe e está conectada
+      // Verificar instância
       const instance = await prisma.instance.findUnique({
         where: { instanceName },
       });
 
       if (!instance) {
+        startLogger.warn("⚠️ Instância não encontrada", { instanceName });
         throw new BadRequestError("Instância não encontrada");
       }
 
       if (instance.connectionStatus !== "open") {
+        startLogger.warn("⚠️ Instância não conectada", {
+          instanceName,
+          status: instance.connectionStatus,
+        });
         throw new BadRequestError("Instância não está conectada");
       }
 
-      // Verificar se houver leads disponíveis
-      const availableLeadsCount = await prisma.campaignLead.count({
+      // Verificar leads disponíveis
+      const leads = await prisma.campaignLead.findMany({
         where: {
           campaignId,
           OR: [
-            { status: "pending" },
-            { status: "failed" },
+            { status: "PENDING" },
+            { status: "FAILED" },
             { status: { equals: undefined } },
+            { status: "SENT" },
+            { status: "READ" },
           ],
         },
+      });
+      logger.info("Leads disponíveis", leads);
+
+      const availableLeadsCount = leads.length;
+
+      startLogger.info("📊 Contagem de leads", {
+        campaignId,
+        availableLeads: availableLeadsCount,
       });
 
       if (availableLeadsCount === 0) {
-        throw new BadRequestError(
-          "Não há leads disponíveis para disparo nesta campanha",
-        );
+        startLogger.warn("⚠️ Sem leads disponíveis", { campaignId });
+        throw new BadRequestError("Não há leads disponíveis para disparo");
       }
-
-      // Verificar leads pendentes
-      const pendingLeadsCount = await prisma.campaignLead.count({
-        where: {
-          campaignId,
-          OR: [
-            { status: "pending" },
-            { status: "failed" },
-            {
-              AND: [{ status: "sent" }, { sentAt: null }],
-            },
-          ],
-        },
-      });
-
-      console.log("Leads pendentes encontrados:", pendingLeadsCount);
-
-      if (pendingLeadsCount === 0) {
-        // Se não houver leads pendentes, resetar o status dos leads existentes
-        const existingLeads = await prisma.campaignLead.findMany({
-          where: { campaignId },
-        });
-
-        if (existingLeads.length === 0) {
-          throw new BadRequestError("Campanha não possui leads");
-        }
-
-        // Resetar status dos leads existentes
-        await prisma.campaignLead.updateMany({
-          where: { campaignId },
-          data: {
-            status: "pending",
-            sentAt: null,
-            deliveredAt: null,
-            readAt: null,
-            failedAt: null,
-            failureReason: null,
-            messageId: null,
-          },
-        });
-
-        console.log("Status dos leads resetado");
-      }
-
       // Criar dispatch
       const dispatch = await prisma.campaignDispatch.create({
         data: {
@@ -789,6 +780,11 @@ export default class CampaignController {
           status: "running",
           startedAt: new Date(),
         },
+      });
+
+      startLogger.info("📬 Dispatch criado", {
+        dispatchId: dispatch.id,
+        campaignId,
       });
 
       // Atualizar status da campanha
@@ -801,7 +797,7 @@ export default class CampaignController {
         },
       });
 
-      // Iniciar o processo de envio
+      // Iniciar processos de envio
       await messageDispatcherService.startDispatch({
         campaignId,
         instanceName,
@@ -819,13 +815,23 @@ export default class CampaignController {
         maxDelay: Number(maxDelay) || 30,
       });
 
+      startLogger.success("✅ Campanha iniciada com sucesso", {
+        campaignId,
+        dispatchId: dispatch.id,
+      });
+
       res.json({
         success: true,
         message: "Campanha iniciada com sucesso",
         dispatch,
       });
     } catch (error) {
-      console.error("Erro ao iniciar campanha:", error);
+      startLogger.error("❌ Erro ao iniciar campanha", {
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+        campaignId: req.params.id,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
       res.status(error instanceof BadRequestError ? 400 : 500).json({
         success: false,
         error:

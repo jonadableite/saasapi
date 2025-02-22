@@ -27,6 +27,7 @@ enum Color {
   DEBUG_TEXT = "\x1b[36m", // Ciano
   VERBOSE_TEXT = "\x1b[37m", // Branco
   GOLD_TEXT = "\x1b[33m", // Amarelo dourado
+  SUCCESS_TEXT = "\x1b[32m", // Verde brilhante
 
   // Cores de fundo
   LOG_BG = "\x1b[42m", // Fundo verde
@@ -35,6 +36,17 @@ enum Color {
   ERROR_BG = "\x1b[41m", // Fundo vermelho
   DEBUG_BG = "\x1b[46m", // Fundo ciano
   VERBOSE_BG = "\x1b[47m", // Fundo branco
+  SUCCESS_BG = "\x1b[42m", // Fundo verde
+}
+
+enum LogEmoji {
+  LOG = "📝",
+  INFO = "ℹ️",
+  WARN = "⚠️",
+  ERROR = "❌",
+  DEBUG = "🔍",
+  VERBOSE = "📢",
+  SUCCESS = "✅",
 }
 
 enum Type {
@@ -44,6 +56,7 @@ enum Type {
   ERROR = "ERROR",
   DEBUG = "DEBUG",
   VERBOSE = "VERBOSE",
+  SUCCESS = "SUCCESS",
 }
 
 interface ColorConfig {
@@ -66,8 +79,6 @@ export class Logger {
   constructor(context = "Logger", options: LogOptions = {}) {
     this.context = context;
     this.version = getPackageVersion();
-
-    // Lê a variável de ambiente DEBUG, padrão é false
     this.isDebugEnabled = process.env.DEBUG === "true";
   }
 
@@ -75,7 +86,6 @@ export class Logger {
     return new Logger(value);
   }
 
-  // Método para limpar dados sensíveis antes de logar
   private sanitizeLogData(data: any): any {
     if (typeof data !== "object" || data === null) return data;
 
@@ -133,6 +143,11 @@ export class Logger {
         bg: Color.VERBOSE_BG,
         bright: Color.BRIGHT,
       },
+      [Type.SUCCESS]: {
+        text: Color.SUCCESS_TEXT,
+        bg: Color.SUCCESS_BG,
+        bright: Color.BRIGHT,
+      },
     };
 
     return colorMap[type] || colorMap[Type.LOG];
@@ -142,6 +157,7 @@ export class Logger {
     const timestamp = dayjs().format("ddd MMM DD YYYY HH:mm:ss");
     const pid = process.pid.toString();
     const colors = this.getColorConfig(type);
+    const emoji = LogEmoji[type];
 
     const typeValuePart = typeValue || "[string]";
     const messageStr = this.serializeMessage(message);
@@ -153,7 +169,7 @@ export class Logger {
       pid,
       `-`,
       timestamp,
-      ` ${colors.bg}${colors.bright} ${type} ${Color.RESET}`,
+      ` ${colors.bg}${colors.bright} ${emoji} ${type} ${Color.RESET}`,
       Color.GOLD_TEXT + Color.BRIGHT,
       `[${this.context}]`,
       Color.RESET,
@@ -169,10 +185,7 @@ export class Logger {
 
     if (typeof message === "object") {
       try {
-        // Sanitiza dados antes de serializar
         const sanitizedMessage = this.sanitizeLogData(message);
-
-        // Tenta serializar com indentação para objetos complexos
         return JSON.stringify(sanitizedMessage, null, 2);
       } catch (error) {
         return `Erro ao serializar: ${String(error)}`;
@@ -182,28 +195,51 @@ export class Logger {
     return String(message);
   }
 
-  // Método para adicionar contexto de rastreamento
   private addTraceContext(message: string): string {
     const traceId = process.env.TRACE_ID;
     return traceId ? `[TraceID: ${traceId}] ${message}` : message;
   }
 
   private logMessage(type: Type, message: any, typeValue?: string): void {
-    // Só loga debug se estiver habilitado
     if (type === Type.DEBUG && !this.isDebugEnabled) return;
 
-    // Adiciona contexto de rastreamento
     const tracedMessage = this.addTraceContext(message);
-
     const formattedMessage = this.formatMessage(type, tracedMessage, typeValue);
 
-    // Colored console log
     if (process.env.ENABLECOLOREDLOGS === "true") {
       const colors = this.getColorConfig(type);
       console.log(`${colors.text}${formattedMessage}${Color.RESET}`);
     } else {
       console.log(formattedMessage);
     }
+  }
+
+  // Novo método success
+  public success(
+    message: string,
+    context?: Record<string, any> | string | undefined,
+  ): void {
+    let logContext: Record<string, any> | undefined;
+
+    if (typeof context === "string") {
+      logContext = { value: context };
+    } else if (context !== undefined) {
+      logContext = Object.entries(context)
+        .filter(([_, value]) => value !== undefined)
+        .reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: this.sanitizeLogData(value),
+          }),
+          {},
+        );
+    }
+
+    const fullMessage = logContext
+      ? `${message} - ${JSON.stringify(logContext, null, 2)}`
+      : message;
+
+    this.logMessage(Type.SUCCESS, fullMessage);
   }
 
   public log(
@@ -303,7 +339,6 @@ export class Logger {
 
     this.logMessage(Type.ERROR, fullMessage);
 
-    // Log stack trace for Error objects
     if (error instanceof Error && error.stack) {
       console.error(error.stack);
     }
@@ -315,6 +350,11 @@ export class Logger {
 
   public debug(message: any): void {
     this.logMessage(Type.DEBUG, message);
+  }
+
+  // Método para criar um novo logger com contexto
+  public createLogger(context: string): Logger {
+    return new Logger(context);
   }
 }
 

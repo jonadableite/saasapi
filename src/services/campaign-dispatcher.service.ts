@@ -52,9 +52,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         where: {
           campaignId: params.campaignId,
           OR: [
-            { status: "pending" },
-            { status: "failed" },
+            { status: "PENDING" },
+            { status: "FAILED" },
             { status: { equals: undefined } },
+            { status: "SENT" },
+            { status: "READ" },
           ],
         },
         orderBy: { createdAt: "asc" },
@@ -62,6 +64,16 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
       const leadsLogger = logger.setContext("Leads");
       leadsLogger.info(`Encontrados ${leads.length} leads para processamento`);
+
+      // Log detalhado dos leads
+      leadsLogger.info(
+        "Detalhes dos leads:",
+        leads.map((lead) => ({
+          id: lead.id,
+          status: lead.status,
+          phone: lead.phone,
+        })),
+      );
 
       if (leads.length === 0) {
         throw new Error("Não há leads disponíveis para disparo nesta campanha");
@@ -175,6 +187,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
             ? Math.floor((processedCount / totalLeads) * 100)
             : 100,
         },
+      });
+
+      disparosLogger.success("✅ Campanha concluída com sucesso", {
+        campaignId: params.campaignId,
+        totalLeads: leads.length,
       });
     } catch (error) {
       const disparoErrorLogger = logger.setContext("DisparoError");
