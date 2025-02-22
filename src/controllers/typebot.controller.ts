@@ -1,5 +1,4 @@
 // src/controllers/typebot.controller.ts
-
 import { Prisma } from "@prisma/client";
 import type { Response } from "express";
 import * as yup from "yup";
@@ -7,6 +6,31 @@ import { prisma } from "../lib/prisma";
 import { TypebotService } from "../services/Chatbot/typebot.service";
 import type { RequestWithUser } from "../types";
 import { logger } from "../utils/logger";
+
+// Tipos para melhorar a tipagem
+type TypebotInstance = {
+  id: string;
+  instanceName: string;
+};
+
+type TypebotConfig = {
+  enabled: boolean;
+  description?: string;
+  url: string;
+  typebot: string;
+  triggerType: "all" | "keyword" | "advanced";
+  triggerOperator?: string;
+  triggerValue?: string;
+  expire: number;
+  keywordFinish: string;
+  delayMessage: number;
+  unknownMessage: string;
+  listeningFromMe: boolean;
+  stopBotFromMe: boolean;
+  keepOpen: boolean;
+  debounceTime: number;
+  ignoreJids?: string[];
+};
 
 // Schema de validação para o Typebot
 const typebotSchema = yup.object().shape({
@@ -56,6 +80,10 @@ export const createTypebotController = async (
   const typebotLogger = logger.setContext("TypebotController");
 
   try {
+    // Log dos dados recebidos
+    typebotLogger.log("Dados recebidos:", req.body);
+    typebotLogger.log("Parâmetros da instância:", req.params);
+
     const userId = req.user?.id;
     if (!userId) {
       typebotLogger.error("Usuário não autenticado");
@@ -66,7 +94,7 @@ export const createTypebotController = async (
     }
 
     const { instanceId } = req.params;
-    const typebotData = req.body;
+    const { typebot: typebotData } = req.body;
 
     // Validar os dados do typebot
     try {
@@ -166,9 +194,14 @@ export const createTypebotController = async (
 
       // Atualizar a instância com as configurações do typebot
       const updatedInstance = await prisma.instance.update({
-        where: { id: instanceId },
+        where: {
+          id: instanceId,
+        },
         data: {
-          typebot: typebotData,
+          typebot: {
+            ...typebotData,
+            instanceId: instanceId,
+          },
         },
       });
 
@@ -202,7 +235,6 @@ export const createTypebotController = async (
     }
   } catch (error) {
     typebotLogger.error("Erro inesperado ao criar typebot", error);
-
     return res.status(500).json({
       success: false,
       error: "Erro ao criar typebot",
@@ -211,35 +243,148 @@ export const createTypebotController = async (
   }
 };
 
-// Nova função para buscar fluxos do Typebot
-export const getTypebotFlows = async (req: RequestWithUser, res: Response) => {
+export const syncTypebotFlowsController = async (
+  req: RequestWithUser,
+  res: Response,
+) => {
+  const typebotLogger = logger.setContext("TypebotSyncController");
+
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      typebotLogger.error("Usuário não autenticado");
+      return res.status(401).json({
+        success: false,
+        error: "Usuário não autenticado",
+      });
+    }
+
+    // Buscar todas as instâncias do usuário
+    const instances: TypebotInstance[] = await prisma.instance.findMany({
+      where: {
+        userId,
+        NOT: { connectionStatus: "connecting" },
+      },
+      select: {
+        id: true,
+        instanceName: true,
+      },
+    });
+
+    // Array para armazenar resultados de sincronização
+    const syncResults = [];
+
+    // Sincronizar fluxos para cada instância
+    for (const instance of instances) {
+      try {
+        // Buscar fluxos na API externa
+        const externalFlows = await TypebotService.syncTypebotFlows(
+          instance.instanceName,
+        );
+
+        syncResults.push({
+          instanceId: instance.id,
+          instanceName: instance.instanceName,
+          flowsFound: externalFlows?.length || 0,
+          status: "success",
+        });
+      } catch (instanceSyncError) {
+        typebotLogger.error(
+          `Erro ao sincronizar instância ${instance.instanceName}`,
+          instanceSyncError,
+        );
+
+        syncResults.push({
+          instanceId: instance.id,
+          instanceName: instance.instanceName,
+          flowsFound: 0,
+          status: "error",
+          error:
+            instanceSyncError instanceof Error
+              ? instanceSyncError.message
+              : "Erro desconhecido",
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Sincronização de fluxos concluída",
+      data: syncResults,
+    });
+  } catch (error) {
+    typebotLogger.error("Erro durante sincronização de fluxos", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erro durante sincronização de fluxos",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
+};
+
+export const listTypebotFlows = async (req: RequestWithUser, res: Response) => {
   const typebotLogger = logger.setContext("TypebotFlowsController");
 
   try {
     const userId = req.user?.id;
+    const instanceId = req.params.id;
 
-    if (!userId) {
-      typebotLogger.error("Usuário não autenticado");
-      return res.status(401).json({ error: "Usuário não autenticado" });
+    if (!userId || !instanceId) {
+      typebotLogger.error("Usuário ou ID da instância não fornecido");
+      return res.status(401).json({
+        success: false,
+        error: "Usuário ou ID da instância não fornecido",
+      });
     }
 
-    typebotLogger.info(`Buscando fluxos para usuário: ${userId}`);
-    const flows = await prisma.chatbotFlow.findMany({
-      where: { userId: userId },
+    typebotLogger.info(`Buscando fluxos para instância: ${instanceId}`);
+    const instance = await prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        userId,
+      },
       select: {
-        id: true,
-        name: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
+        typebot: true,
+        instanceName: true,
       },
     });
 
-    typebotLogger.log(`Encontrados ${flows.length} fluxos para o usuário`);
-    res.json({ flows });
+    if (!instance) {
+      typebotLogger.error(`Instância não encontrada: ${instanceId}`);
+      return res.status(404).json({
+        success: false,
+        error: "Instância não encontrada",
+      });
+    }
+
+    // Buscar fluxos na API externa se necessário
+    let externalFlows = [];
+    try {
+      externalFlows = await TypebotService.syncTypebotFlows(
+        instance.instanceName,
+      );
+    } catch (error) {
+      typebotLogger.warn(
+        `Erro ao buscar fluxos externos para ${instance.instanceName}`,
+        error,
+      );
+    }
+
+    const flows = instance.typebot ? [instance.typebot] : externalFlows;
+
+    typebotLogger.log(`Encontrados ${flows.length} fluxos para a instância`);
+    res.json({
+      success: true,
+      flows,
+      instanceName: instance.instanceName,
+    });
   } catch (error) {
     typebotLogger.error("Erro ao buscar fluxos do Typebot", error);
-    res.status(500).json({ error: "Erro ao buscar fluxos do Typebot" });
+    res.status(500).json({
+      success: false,
+      error: "Erro ao buscar fluxos do Typebot",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
   }
 };
 
@@ -250,7 +395,7 @@ export interface TypebotResponse {
   error?: string;
   details?: string | string[];
   data?: {
-    instance: any;
-    typebotConfig: any;
+    instance: Record<string, unknown>;
+    typebotConfig: Record<string, unknown>;
   };
 }

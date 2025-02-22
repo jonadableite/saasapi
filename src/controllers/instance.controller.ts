@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import axios from "axios";
 // src/controllers/instance.controller.ts
 import type { Request, Response } from "express";
@@ -524,46 +523,76 @@ export const deleteTypebotConfig = async (
   req: RequestWithUser,
   res: Response,
 ) => {
+  const instanceLogger = logger.setContext("TypebotDeletion");
+
   try {
-    const { id } = req.params;
+    const { id, flowId } = req.params;
     const userId = req.user?.id;
 
     if (!userId) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Usuário não autenticado" });
+      return res.status(401).json({
+        success: false,
+        error: "Usuário não autenticado",
+      });
     }
 
+    // Buscar a instância para verificar a propriedade do usuário
     const instance = await prisma.instance.findFirst({
-      where: { id, userId },
+      where: {
+        id,
+        userId,
+      },
+      select: {
+        instanceName: true,
+        typebot: true,
+      },
     });
 
     if (!instance) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Instância não encontrada" });
+      instanceLogger.error(`Instância não encontrada: ${id}`);
+      return res.status(404).json({
+        success: false,
+        error: "Instância não encontrada",
+      });
+    }
+
+    // Verificar se o typebot existe
+    const currentTypebot = instance.typebot;
+    if (!currentTypebot) {
+      instanceLogger.warn(
+        `Nenhum Typebot configurado para a instância: ${instance.instanceName}`,
+      );
+      return res.status(404).json({
+        success: false,
+        error: "Nenhum Typebot configurado para esta instância",
+      });
     }
 
     try {
-      await TypebotService.deleteTypebot(instance.instanceName);
+      // Tentar deletar o typebot na API externa
+      const result = await TypebotService.deleteTypebot(
+        instance.instanceName,
+        flowId,
+      );
 
-      const updatedInstance = await prisma.instance.update({
-        where: { id },
-        data: { typebot: Prisma.JsonNull },
+      return res.json({
+        success: true,
+        message: "Typebot removido com sucesso",
+        data: result,
       });
-
-      return res.json({ success: true, instance: updatedInstance });
     } catch (error) {
-      const instanceLogger = logger.setContext("TypebotDeletion");
       instanceLogger.error("Erro ao deletar typebot:", error);
+
       return res.status(500).json({
         success: false,
         error: "Erro ao deletar configuração na API Evolution",
+        details: error instanceof Error ? error.message : "Erro desconhecido",
       });
     }
   } catch (error) {
     const instanceLogger = logger.setContext("TypebotDeletion");
     instanceLogger.error("Erro ao remover configurações do Typebot:", error);
+
     return res.status(500).json({
       success: false,
       error: "Erro ao remover configurações do Typebot",

@@ -2,85 +2,203 @@
 import { Prisma } from "@prisma/client";
 import axios from "axios";
 import { prisma } from "../../lib/prisma";
+import { logger } from "../../utils/logger";
 import { retryRequest } from "../../utils/retryRequest";
 
-const API_URL = "https://evo.whatlead.com.br";
-const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
+type TypebotConfig = {
+  url: string;
+  typebot: string;
+  triggerType: string;
+  enabled: boolean;
+  triggerOperator: string;
+  triggerValue: string;
+  expire: number;
+  keywordFinish: string;
+  delayMessage: number;
+  unknownMessage: string;
+  listeningFromMe: boolean;
+  stopBotFromMe: boolean;
+  keepOpen: boolean;
+  debounceTime: number;
+  ignoreJids: string[];
+  id?: string; // Adicionando ID opcional
+};
 
-export class TypebotService {
-  private static async makeRequest(
-    method: string,
+// Função de serviço em vez de classe
+export const TypebotService = {
+  apiUrl: "https://evo.whatlead.com.br",
+  apiKey: "429683C4C977415CAAFCCE10F7D57E11",
+
+  async makeRequest(
+    method: "get" | "post" | "put" | "delete",
     endpoint: string,
-    data?: any,
+    data?: unknown,
   ) {
     return retryRequest(async () => {
       const response = await axios({
         method,
-        url: `${API_URL}${endpoint}`,
+        url: `${this.apiUrl}${endpoint}`,
         data,
         headers: {
-          apikey: API_KEY,
+          apikey: this.apiKey,
           "Content-Type": "application/json",
         },
       });
       return response.data;
     });
-  }
+  },
 
-  static async createTypebot(instanceName: string, typebotConfig: any) {
+  async createTypebot(instanceName: string, typebotConfig: TypebotConfig) {
     try {
       const result = await this.makeRequest(
         "post",
         `/typebot/create/${instanceName}`,
         typebotConfig,
       );
+
+      // Atualiza o banco de dados interno
       await prisma.instance.update({
         where: { instanceName },
-        data: { typebot: typebotConfig },
+        data: {
+          typebot: typebotConfig as Prisma.InputJsonValue,
+        },
       });
+
       return result;
     } catch (error) {
       console.error(`Erro ao criar typebot para ${instanceName}:`, error);
       throw error;
     }
-  }
+  },
 
-  static async updateTypebot(instanceName: string, typebotConfig: any) {
+  async syncTypebotFlows(instanceName: string) {
+    try {
+      // Buscar fluxos na API externa
+      const response = await this.makeRequest(
+        "get",
+        `/typebot/find/${instanceName}`,
+      );
+
+      // Se encontrar fluxos, atualiza o banco de dados interno
+      if (response && response.length > 0) {
+        await prisma.instance.update({
+          where: { instanceName },
+          data: {
+            typebot: response[0] as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      return response;
+    } catch (error) {
+      console.error(
+        `Erro ao sincronizar fluxos do Typebot para ${instanceName}:`,
+        error,
+      );
+      throw error;
+    }
+  },
+
+  async updateTypebot(instanceName: string, typebotConfig: TypebotConfig) {
     try {
       const result = await this.makeRequest(
         "put",
         `/typebot/update/${instanceName}`,
         typebotConfig,
       );
+
+      // Atualiza o banco de dados interno
       await prisma.instance.update({
         where: { instanceName },
-        data: { typebot: typebotConfig },
+        data: {
+          typebot: typebotConfig as Prisma.InputJsonValue,
+        },
       });
+
       return result;
     } catch (error) {
       console.error(`Erro ao atualizar typebot para ${instanceName}:`, error);
       throw error;
     }
-  }
+  },
 
-  static async deleteTypebot(instanceName: string) {
+  async deleteTypebot(instanceName: string, flowId?: string) {
+    const typebotLogger = logger.setContext("TypebotDeletion");
+
     try {
-      const result = await this.makeRequest(
-        "delete",
-        `/typebot/delete/${instanceName}`,
-      );
-      await prisma.instance.update({
+      // Primeiro, buscar a configuração atual do Typebot
+      const instance = await prisma.instance.findUnique({
         where: { instanceName },
-        data: { typebot: Prisma.JsonNull },
+        select: {
+          typebot: true,
+          id: true,
+          instanceName: true,
+        },
       });
-      return result;
+
+      if (!instance || !instance.typebot) {
+        typebotLogger.warn(
+          `Nenhum Typebot configurado para a instância: ${instanceName}`,
+        );
+        return null;
+      }
+
+      // Se flowId não for fornecido, usar o ID do typebot na instância
+      const botId = flowId || (instance.typebot as any)?.id;
+
+      if (!botId) {
+        typebotLogger.error(`Nenhum ID de Typebot encontrado para exclusão`);
+        throw new Error("ID do Typebot não encontrado");
+      }
+
+      typebotLogger.log(`Tentando deletar Typebot com ID: ${botId}`);
+
+      // Fazer a requisição para a API externa
+      const endpoint = `/typebot/delete/${botId}`;
+      try {
+        const result = await this.makeRequest("delete", endpoint);
+
+        // Atualizar banco de dados
+        await prisma.instance.update({
+          where: { instanceName },
+          data: {
+            typebot: Prisma.JsonNull,
+          },
+        });
+
+        typebotLogger.log(`Typebot deletado com sucesso para ${instanceName}`);
+        return result;
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 404) {
+            typebotLogger.warn(`Typebot ${botId} não encontrado`);
+            // Se o Typebot não for encontrado, atualizar o banco de dados mesmo assim
+            await prisma.instance.update({
+              where: { instanceName },
+              data: {
+                typebot: Prisma.JsonNull,
+              },
+            });
+            return null;
+          } else {
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
-      console.error(`Erro ao deletar typebot para ${instanceName}:`, error);
+      const typebotLogger = logger.setContext("TypebotDeletion");
+      typebotLogger.error(
+        `Erro ao deletar Typebot para ${instanceName}:`,
+        error,
+      );
+
       throw error;
     }
-  }
+  },
 
-  static async getTypebotConfig(instanceName: string) {
+  async getTypebotConfig(instanceName: string) {
     try {
       return await this.makeRequest("get", `/typebot/fetch/${instanceName}`);
     } catch (error) {
@@ -90,5 +208,5 @@ export class TypebotService {
       );
       throw error;
     }
-  }
-}
+  },
+};
