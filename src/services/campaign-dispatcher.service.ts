@@ -47,7 +47,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
       const disparosLogger = logger.setContext("Disparos");
       disparosLogger.info("Iniciando processo de dispatch...");
 
-      // Buscar leads para envio
+      // Buscar todos os leads da campanha, independentemente do status
       const leads = await prisma.campaignLead.findMany({
         where: {
           campaignId: params.campaignId,

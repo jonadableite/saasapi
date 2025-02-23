@@ -747,31 +747,22 @@ export default class CampaignController {
       }
 
       // Verificar leads disponíveis
-      const leads = await prisma.campaignLead.findMany({
+      const leadsCount = await prisma.campaignLead.count({
         where: {
           campaignId,
-          OR: [
-            { status: "PENDING" },
-            { status: "FAILED" },
-            { status: { equals: undefined } },
-            { status: "SENT" },
-            { status: "READ" },
-          ],
         },
       });
-      logger.info("Leads disponíveis", leads);
-
-      const availableLeadsCount = leads.length;
 
       startLogger.info("📊 Contagem de leads", {
         campaignId,
-        availableLeads: availableLeadsCount,
+        totalLeads: leadsCount,
       });
 
-      if (availableLeadsCount === 0) {
+      if (leadsCount === 0) {
         startLogger.warn("⚠️ Sem leads disponíveis", { campaignId });
         throw new BadRequestError("Não há leads disponíveis para disparo");
       }
+
       // Criar dispatch
       const dispatch = await prisma.campaignDispatch.create({
         data: {
