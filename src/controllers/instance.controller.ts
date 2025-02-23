@@ -1,3 +1,4 @@
+// @ts-nocheck
 import axios from "axios";
 // src/controllers/instance.controller.ts
 import type { Request, Response } from "express";

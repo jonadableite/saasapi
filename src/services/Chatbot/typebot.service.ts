@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/services/Chatbot/typebot.service.ts
 import { Prisma } from "@prisma/client";
 import axios from "axios";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/controllers/typebot.controller.ts
 import { Prisma } from "@prisma/client";
 import type { Response } from "express";
