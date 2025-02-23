@@ -44,13 +44,25 @@ export class MessageDispatcherService implements IMessageDispatcherService {
     maxDelay: number;
   }): Promise<void> {
     try {
-      const disparosLogger = logger.setContext("Disparos");
-      disparosLogger.info("Iniciando processo de dispatch...");
+      // Resetar o status de todos os leads da campanha para PENDING
+      await prisma.campaignLead.updateMany({
+        where: { campaignId: params.campaignId },
+        data: {
+          status: "PENDING",
+          sentAt: null,
+          deliveredAt: null,
+          readAt: null,
+          failedAt: null,
+          failureReason: null,
+          messageId: null,
+        },
+      });
 
       // Buscar leads para envio
       const leads = await prisma.campaignLead.findMany({
         where: {
           campaignId: params.campaignId,
+          status: "PENDING",
         },
         orderBy: { createdAt: "asc" },
       });
@@ -125,6 +137,15 @@ export class MessageDispatcherService implements IMessageDispatcherService {
               params.campaignId,
               lead.id,
             );
+
+            // Atualizar status para SENT
+            await prisma.campaignLead.update({
+              where: { id: lead.id },
+              data: {
+                status: "SENT",
+                sentAt: new Date(),
+              },
+            });
           }
 
           processedCount++;
@@ -160,11 +181,11 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           const errorLeadLogger = logger.setContext("ErroLead");
           errorLeadLogger.error(`Erro ao processar lead ${lead.id}:`, error);
 
-          // Atualizar status para falha, mas continuar o processo
+          // Atualizar status para FAILED
           await prisma.campaignLead.update({
             where: { id: lead.id },
             data: {
-              status: "failed",
+              status: "FAILED",
               failedAt: new Date(),
               failureReason:
                 error instanceof Error ? error.message : "Erro desconhecido",
