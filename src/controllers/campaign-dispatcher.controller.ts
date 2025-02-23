@@ -84,14 +84,14 @@ export class CampaignDispatcherController {
       const campaign = await prisma.campaign.findFirst({
         where: { id: campaignId, userId },
         include: {
-          leads: { where: { status: "pending" } },
+          leads: {}, // Aqui buscamos todos os leads, independentemente do status
         },
       });
 
       if (!campaign)
         throw new NotFoundError("Campanha não encontrada ou sem permissão");
       if (!campaign.leads || campaign.leads.length === 0)
-        throw new BadRequestError("Não há leads pendentes para envio");
+        throw new BadRequestError("Não há leads disponíveis para envio");
 
       // Criar dispatch no banco
       const dispatch = await prisma.campaignDispatch.create({
