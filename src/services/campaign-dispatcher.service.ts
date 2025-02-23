@@ -47,10 +47,17 @@ export class MessageDispatcherService implements IMessageDispatcherService {
       const disparosLogger = logger.setContext("Disparos");
       disparosLogger.info("Iniciando processo de dispatch...");
 
-      // Buscar todos os leads da campanha, independentemente do status
+      // Buscar leads pendentes para envio
       const leads = await prisma.campaignLead.findMany({
         where: {
           campaignId: params.campaignId,
+          OR: [
+            { status: "PENDING" },
+            { status: "FAILED" },
+            { status: { equals: undefined } },
+            { status: "SENT" },
+            { status: "READ" },
+          ],
         },
         orderBy: { createdAt: "asc" },
       });
@@ -86,7 +93,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           const leadLogger = logger.setContext("Lead");
           leadLogger.info(`Processando lead ${lead.id} (${lead.phone})`);
 
-          // Atualizar status para processando
           await prisma.campaignLead.update({
             where: { id: lead.id },
             data: {
@@ -99,7 +105,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
           // **Enviar mídia primeiro, se houver**
           if (params.media) {
-            const mediaLogger = logger.setContext("Mídia");
+            const mediaLogger = logger.setContext("Mídia");
             mediaLogger.info("Enviando mídia...");
             response = await this.sendMedia(
               params.instanceName,
@@ -160,7 +166,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           const errorLeadLogger = logger.setContext("ErroLead");
           errorLeadLogger.error(`Erro ao processar lead ${lead.id}:`, error);
 
-          // Atualizar status para falha, mas continuar o processo
           await prisma.campaignLead.update({
             where: { id: lead.id },
             data: {
@@ -173,7 +178,6 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         }
       }
 
-      // Atualizar status da campanha
       await prisma.campaign.update({
         where: { id: params.campaignId },
         data: {
