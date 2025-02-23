@@ -3,7 +3,8 @@ import { type Campaign, PrismaClient } from "@prisma/client";
 import { endOfDay, startOfDay } from "date-fns";
 import type { CampaignParams, ImportLeadsResult, Lead } from "../interface";
 import { prisma } from "../lib/prisma";
-import { getFromCache, setToCache } from "../lib/redis";
+import { getFromCache } from "../lib/redis";
+import { logger } from "../utils/logger";
 import { messageDispatcherService } from "./campaign-dispatcher.service";
 import { leadSegmentationService } from "./lead-segmentation.service";
 import { unreadMessageHandler } from "./unread-message-handler.service";
@@ -27,7 +28,7 @@ export class CampaignService {
 
     return leads.filter((lead) => {
       if (!lead || !lead.phone) {
-        console.warn("Lead inválido ignorado:", lead);
+        logger.warn("Lead inválido ignorado:", lead);
         return false;
       }
 
@@ -70,7 +71,7 @@ export class CampaignService {
 
       return campaigns;
     } catch (error) {
-      console.error("Erro ao listar campanhas:", error);
+      logger.error("Erro ao listar campanhas:", error);
       // Em caso de erro no Redis, retornar dados do banco
       return this.prisma.campaign.findMany({
         where: { userId },
@@ -124,7 +125,7 @@ export class CampaignService {
       // Filtrar apenas os leads que não existem na campanha atual
       const newLeads = leads.filter((lead) => !existingPhones.has(lead.phone));
 
-      console.log("Leads novos a serem importados:", newLeads);
+      logger.log("Leads novos a serem importados:", newLeads);
 
       // Atualizar leads existentes
       await prisma.campaignLead.updateMany({
@@ -143,6 +144,7 @@ export class CampaignService {
         },
       });
 
+      // biome-ignore lint/suspicious/noImplicitAnyLet: <explanation>
       let createResult;
       if (newLeads.length > 0) {
         createResult = await prisma.campaignLead.createMany({
@@ -204,7 +206,8 @@ export class CampaignService {
       // Se o número não começar com "55", adiciona o código do país
       return cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
     } catch (error) {
-      console.error("Erro ao formatar telefone:", phone, error);
+      const importLeadsLogger = new Logger("importLeadsService");
+      importLeadsLogger.error("Erro ao formatar telefone:", phone, error);
       return null;
     }
   }
@@ -331,7 +334,7 @@ export class CampaignService {
       });
 
       if (!lead) {
-        console.warn(`Lead não encontrado para telefone: ${phone}`);
+        logger.warn(`Lead não encontrado para telefone: ${phone}`);
         return;
       }
 
@@ -361,7 +364,7 @@ export class CampaignService {
         },
       });
     } catch (error) {
-      console.error("Erro ao atualizar ou criar mensagem log:", error);
+      logger.error("Erro ao atualizar ou criar mensagem log:", error);
       throw error;
     }
   }
@@ -393,7 +396,8 @@ export class CampaignService {
         {} as Record<string, number>,
       );
     } catch (error) {
-      console.error("Erro ao obter estatísticas diárias:", error);
+      const statisticsLogger = new Logger("statisticsLogger");
+      statisticsLogger.error("Erro ao obter estatísticas diárias:", error);
       throw new Error("Erro ao calcular estatísticas diárias");
     }
   }
@@ -433,7 +437,7 @@ export class CampaignService {
         },
       });
     } catch (error) {
-      console.error("Erro ao gerar relatório detalhado:", error);
+      logger.error("Erro ao gerar relatório detalhado:", error);
       throw new Error("Erro ao gerar relatório");
     }
   }

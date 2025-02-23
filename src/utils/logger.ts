@@ -1,6 +1,6 @@
+import dayjs from "dayjs";
 import fs from "fs";
 import path from "path";
-import dayjs from "dayjs";
 
 // Função para ler o package.json de forma segura
 const getPackageVersion = (): string => {
@@ -323,7 +323,11 @@ export class Logger {
     this.logMessage(Type.WARN, fullMessage);
   }
 
-  public error(message: string, error?: any): void {
+  public error(
+    message: string,
+    error?: any,
+    additionalContext?: unknown,
+  ): void {
     const errorContext =
       error instanceof Error
         ? {
@@ -341,6 +345,11 @@ export class Logger {
 
     if (error instanceof Error && error.stack) {
       console.error(error.stack);
+    }
+
+    // Suporte para contexto adicional
+    if (additionalContext) {
+      console.error("Additional Context:", additionalContext);
     }
   }
 
