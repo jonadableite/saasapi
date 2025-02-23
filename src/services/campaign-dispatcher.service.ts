@@ -335,14 +335,14 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         where: {
           campaignId: params.campaignId,
           OR: [
-            { status: "pending" },
-            { status: "processing" },
-            { status: "failed" },
+            { status: "PENDING" },
+            { status: "FAILED" },
+            { status: { equals: undefined } },
+            { status: "SENT" },
+            { status: "READ" },
           ],
         },
-        orderBy: {
-          createdAt: "asc",
-        },
+        orderBy: { createdAt: "asc" },
       });
 
       const leadsLogger = logger.setContext("Leads");
