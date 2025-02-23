@@ -264,21 +264,19 @@ export class CampaignService {
       throw new Error(`Instância ${params.instanceName} não está conectada`);
     }
 
-    // Verificar se há leads disponíveis antes de iniciar o dispatch
-    const availableLeadsCount = await this.prisma.campaignLead.count({
-      where: {
-        campaignId: params.campaignId,
-        OR: [
-          { status: "pending" },
-          { status: "failed" },
-          { status: { equals: undefined } },
-        ],
+    // Resetar o status de todos os leads da campanha para PENDING
+    await this.prisma.campaignLead.updateMany({
+      where: { campaignId: params.campaignId },
+      data: {
+        status: "PENDING",
+        sentAt: null,
+        deliveredAt: null,
+        readAt: null,
+        failedAt: null,
+        failureReason: null,
+        messageId: null,
       },
     });
-
-    if (availableLeadsCount === 0) {
-      throw new Error("Não há leads disponíveis para disparo nesta campanha");
-    }
 
     // Usar o messageDispatcherService existente
     return messageDispatcherService.startDispatch({

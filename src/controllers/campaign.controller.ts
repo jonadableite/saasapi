@@ -728,6 +728,20 @@ export default class CampaignController {
         delays: { min: minDelay, max: maxDelay },
       });
 
+      // Resetar o status de todos os leads da campanha para PENDING
+      await prisma.campaignLead.updateMany({
+        where: { campaignId },
+        data: {
+          status: "PENDING",
+          sentAt: null,
+          deliveredAt: null,
+          readAt: null,
+          failedAt: null,
+          failureReason: null,
+          messageId: null,
+        },
+      });
+
       // Verificar instância
       const instance = await prisma.instance.findUnique({
         where: { instanceName },
