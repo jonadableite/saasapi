@@ -159,11 +159,37 @@ export class Logger {
     const colors = this.getColorConfig(type);
     const emoji = LogEmoji[type];
 
-    const typeValuePart = typeValue || "[string]";
+    // Captura o nome do arquivo e linha de onde o log foi chamado
+    const getCallerInfo = (): string => {
+      const originalPrepareStackTrace = Error.prepareStackTrace;
+      Error.prepareStackTrace = (_, stack) => stack;
+
+      const error = new Error();
+      const stack = error.stack as NodeJS.CallSite[];
+      Error.prepareStackTrace = originalPrepareStackTrace;
+
+      // Pula os frames internos do logger
+      for (let i = 0; i < stack.length; i++) {
+        const filename = stack[i].getFileName();
+        if (filename && !filename.includes("logger.ts")) {
+          // Extrai apenas o nome do arquivo
+          const fullPath = filename;
+          const pathParts = fullPath.split(/[/\\]/);
+          const fileNameWithExt = pathParts[pathParts.length - 1];
+
+          // Remove a extensão do arquivo
+          return fileNameWithExt.replace(/\.[^/.]+$/, "");
+        }
+      }
+
+      return "[unknown]";
+    };
+
+    const typeValuePart = typeValue || getCallerInfo();
     const messageStr = this.serializeMessage(message);
 
     return [
-      Color.BRIGHT,
+      colors.text + Color.BRIGHT,
       `[WhatLead API]`,
       `v${this.version}`,
       pid,
