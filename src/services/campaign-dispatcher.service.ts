@@ -206,6 +206,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
         },
       });
 
+      const disparosLogger = logger.setContext("Disparos");
       disparosLogger.success("✅ Campanha concluída com sucesso", {
         campaignId: params.campaignId,
         totalLeads: leads.length,
