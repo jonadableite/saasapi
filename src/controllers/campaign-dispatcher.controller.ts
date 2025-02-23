@@ -84,7 +84,14 @@ export class CampaignDispatcherController {
       const campaign = await prisma.campaign.findFirst({
         where: { id: campaignId, userId },
         include: {
-          leads: {}, // Aqui buscamos todos os leads, independentemente do status
+          leads: {
+            where: { status: "PENDING" },
+            select: {
+              id: true,
+              phone: true,
+              status: true,
+            },
+          },
         },
       });
 
