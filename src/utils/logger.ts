@@ -165,7 +165,7 @@ export class Logger {
       Error.prepareStackTrace = (_, stack) => stack;
 
       const error = new Error();
-      const stack = error.stack as NodeJS.CallSite[];
+      const stack = error.stack as unknown as NodeJS.CallSite[];
       Error.prepareStackTrace = originalPrepareStackTrace;
 
       // Pula os frames internos do logger
