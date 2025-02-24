@@ -752,11 +752,11 @@ export default class CampaignController {
         where: {
           campaignId,
           OR: [
-            { status: "PENDING" },
-            { status: "FAILED" },
+            { status: "pending" },
+            { status: "failed" },
             { status: { equals: undefined } },
-            { status: "SENT" },
-            { status: "READ" },
+            { status: "sent" },
+            { status: "read" },
           ],
         },
       });
