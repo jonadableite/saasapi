@@ -22,7 +22,7 @@ export class CampaignProgressService {
 
 			const totalLeads = leads.length;
 			const processedLeads = leads.filter(
-				(lead) => lead.status !== "pending" && lead.status !== "processing",
+				(lead) => lead.status !== "PENDING" && lead.status !== "processing",
 			).length;
 
 			const progress = Math.floor((processedLeads / totalLeads) * 100);
