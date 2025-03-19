@@ -97,8 +97,15 @@ export class CampaignDispatcherController {
 
       if (!campaign)
         throw new NotFoundError("Campanha não encontrada ou sem permissão");
-      if (!campaign.leads || campaign.leads.length === 0)
+
+      // Verificar contagem de leads antes de iniciar
+      const leadCount = await prisma.campaignLead.count({
+        where: { campaignId, status: "PENDING" }
+      });
+
+      if (leadCount === 0) {
         throw new BadRequestError("Não há leads disponíveis para envio");
+      }
 
       // Criar dispatch no banco
       const dispatch = await prisma.campaignDispatch.create({
