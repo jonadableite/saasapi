@@ -46,28 +46,24 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		try {
 			const campaignLogger = logger.setContext("Campaign");
 
-			// 1. Primeiro, verificar se existem leads na campanha
+			// 1. Verificar todos os leads da campanha
 			const totalLeads = await prisma.campaignLead.count({
 				where: {
 					campaignId: params.campaignId,
-					phone: { not: null },
 				},
 			});
+
+			campaignLogger.info(`Total de leads na campanha: ${totalLeads}`);
 
 			if (totalLeads === 0) {
 				throw new Error("Campanha não possui leads cadastrados");
 			}
 
-			campaignLogger.info(`Total de leads na campanha: ${totalLeads}`);
-
 			// 2. Resetar status dos leads para PENDING
-			await prisma.campaignLead.updateMany({
+			const resetResult = await prisma.campaignLead.updateMany({
 				where: {
 					campaignId: params.campaignId,
-					OR: [
-						{ status: { in: ["FAILED", "SENT", "READ", null] } },
-						{ status: { equals: undefined } },
-					],
+					NOT: { status: "PENDING" },
 				},
 				data: {
 					status: "PENDING",
@@ -79,6 +75,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 					messageId: null,
 				},
 			});
+
+			campaignLogger.info(`Leads resetados para PENDING: ${resetResult.count}`);
 
 			// 3. Verificar leads disponíveis após o reset
 			const availableLeads = await prisma.campaignLead.findMany({

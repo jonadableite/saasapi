@@ -714,39 +714,11 @@ export default class CampaignController {
 	}
 
 	async startCampaign(req: StartCampaignRequest, res: Response): Promise<void> {
+		const startLogger = logger.createLogger("StartCampaign");
+
 		try {
 			const { id: campaignId } = req.params;
 			const { instanceName, message, media, minDelay, maxDelay } = req.body;
-
-			// Verificar e resetar status dos leads antes de iniciar
-			await prisma.campaignLead.updateMany({
-				where: {
-					campaignId,
-					status: {
-						in: ["failed", "sent", "read", null, undefined],
-					},
-				},
-				data: {
-					status: "PENDING",
-					sentAt: null,
-					deliveredAt: null,
-					readAt: null,
-					failedAt: null,
-					messageId: null,
-				},
-			});
-
-			// Verificar quantidade de leads disponíveis
-			const availableLeads = await prisma.campaignLead.count({
-				where: {
-					campaignId,
-					status: "PENDING",
-				},
-			});
-
-			if (availableLeads === 0) {
-				throw new BadRequestError("Não há leads disponíveis para disparo");
-			}
 
 			startLogger.info("🚀 Iniciando campanha", {
 				campaignId,
@@ -757,50 +729,69 @@ export default class CampaignController {
 				delays: { min: minDelay, max: maxDelay },
 			});
 
+			// Verificar leads antes de iniciar
+			const leadsCount = await prisma.campaignLead.count({
+				where: { campaignId },
+			});
+
+			startLogger.info(`Contagem de leads na campanha: ${leadsCount}`);
+
+			if (leadsCount === 0) {
+				throw new BadRequestError("Campanha não possui leads cadastrados");
+			}
+
+			// Resetar status dos leads para PENDING
+			const resetResult = await prisma.campaignLead.updateMany({
+				where: {
+					campaignId,
+					NOT: { status: "PENDING" },
+				},
+				data: {
+					status: "PENDING",
+					sentAt: null,
+					deliveredAt: null,
+					readAt: null,
+					failedAt: null,
+					failureReason: null,
+					messageId: null,
+				},
+			});
+
+			startLogger.info(`Leads resetados para PENDING: ${resetResult.count}`);
+
+			// Verificar leads disponíveis após o reset
+			const availableLeads = await prisma.campaignLead.findMany({
+				where: {
+					campaignId,
+					status: "PENDING",
+					phone: { not: null },
+				},
+				orderBy: { createdAt: "asc" },
+			});
+
+			if (availableLeads.length === 0) {
+				throw new BadRequestError(
+					"Não há leads disponíveis para disparo após reset de status",
+				);
+			}
+
+			startLogger.info(
+				`Leads disponíveis para disparo: ${availableLeads.length}`,
+			);
+
 			// Verificar instância
 			const instance = await prisma.instance.findUnique({
 				where: { instanceName },
 			});
 
 			if (!instance) {
-				startLogger.warn("⚠️ Instância não encontrada", { instanceName });
 				throw new BadRequestError("Instância não encontrada");
 			}
 
 			if (instance.connectionStatus !== "open") {
-				startLogger.warn("⚠️ Instância não conectada", {
-					instanceName,
-					status: instance.connectionStatus,
-				});
 				throw new BadRequestError("Instância não está conectada");
 			}
 
-			// Verificar leads disponíveis
-			const leads = await prisma.campaignLead.findMany({
-				where: {
-					campaignId,
-					OR: [
-						{ status: "pending" },
-						{ status: "failed" },
-						{ status: { equals: undefined } },
-						{ status: "sent" },
-						{ status: "read" },
-					],
-				},
-			});
-			logger.info("Leads disponíveis", leads);
-
-			const availableLeadsCount = leads.length;
-
-			startLogger.info("📊 Contagem de leads", {
-				campaignId,
-				availableLeads: availableLeadsCount,
-			});
-
-			if (availableLeadsCount === 0) {
-				startLogger.warn("⚠️ Sem leads disponíveis", { campaignId });
-				throw new BadRequestError("Não há leads disponíveis para disparo");
-			}
 			// Criar dispatch
 			const dispatch = await prisma.campaignDispatch.create({
 				data: {
