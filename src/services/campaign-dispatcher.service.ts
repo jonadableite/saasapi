@@ -44,12 +44,31 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 		maxDelay: number;
 	}): Promise<void> {
 		try {
-			// Resetar o status de todos os leads da campanha para PENDING
-			logger.info(
-				`Atualizando status dos leads para PENDING (CampaignId: ${params.campaignId})`,
-			);
+			const campaignLogger = logger.setContext("Campaign");
+
+			// 1. Primeiro, verificar se existem leads na campanha
+			const totalLeads = await prisma.campaignLead.count({
+				where: {
+					campaignId: params.campaignId,
+					phone: { not: null },
+				},
+			});
+
+			if (totalLeads === 0) {
+				throw new Error("Campanha não possui leads cadastrados");
+			}
+
+			campaignLogger.info(`Total de leads na campanha: ${totalLeads}`);
+
+			// 2. Resetar status dos leads para PENDING
 			await prisma.campaignLead.updateMany({
-				where: { campaignId: params.campaignId },
+				where: {
+					campaignId: params.campaignId,
+					OR: [
+						{ status: { in: ["FAILED", "SENT", "READ", null] } },
+						{ status: { equals: undefined } },
+					],
+				},
 				data: {
 					status: "PENDING",
 					sentAt: null,
@@ -60,36 +79,32 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 					messageId: null,
 				},
 			});
-			logger.info(`Atualização concluída (CampaignId: ${params.campaignId})`);
 
-			// Verifique se a atualização foi bem-sucedida
-			const updatedLeadsCount = await prisma.campaignLead.count({
-				where: { campaignId: params.campaignId, status: "PENDING" },
-			});
-			logger.info(
-				`Número de leads atualizados para PENDING: ${updatedLeadsCount}`,
-			);
-
-			// Buscar leads para envio
-			const leads = await prisma.campaignLead.findMany({
+			// 3. Verificar leads disponíveis após o reset
+			const availableLeads = await prisma.campaignLead.findMany({
 				where: {
 					campaignId: params.campaignId,
 					status: "PENDING",
+					phone: { not: null },
 				},
 				orderBy: { createdAt: "asc" },
 			});
 
-			const leadsLogger = logger.setContext("Leads");
-			leadsLogger.info(`Encontrados ${leads.length} leads para processamento`);
-
-			if (leads.length === 0) {
-				throw new Error("Não há leads disponíveis para disparo nesta campanha");
+			if (availableLeads.length === 0) {
+				throw new Error(
+					"Não há leads disponíveis para disparo após reset de status",
+				);
 			}
 
-			let processedCount = 0;
-			const totalLeads = leads.length;
+			campaignLogger.info(
+				`Leads disponíveis para disparo: ${availableLeads.length}`,
+			);
 
-			for (const lead of leads) {
+			// 4. Iniciar processamento dos leads
+			let processedCount = 0;
+			const totalLeadsToProcess = availableLeads.length;
+
+			for (const lead of availableLeads) {
 				if (this.stop) {
 					const interrompidoLogger = logger.setContext("Interrompido");
 					interrompidoLogger.info("Processo interrompido manualmente");
