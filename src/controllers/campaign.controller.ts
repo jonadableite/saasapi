@@ -764,7 +764,9 @@ export default class CampaignController {
 				where: {
 					campaignId,
 					status: "PENDING",
-					phone: { not: null },
+					phone: {
+						not: "",
+					},
 				},
 				orderBy: { createdAt: "asc" },
 			});
