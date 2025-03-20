@@ -83,8 +83,18 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				where: {
 					campaignId: params.campaignId,
 					status: "PENDING",
-					// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-					phone: { not: null as any },
+					AND: [
+						{
+							phone: {
+								not: "",
+							},
+						},
+						{
+							phone: {
+								not: undefined,
+							},
+						},
+					],
 				},
 				orderBy: { createdAt: "asc" },
 			});
