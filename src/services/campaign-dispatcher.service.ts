@@ -83,7 +83,8 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 				where: {
 					campaignId: params.campaignId,
 					status: "PENDING",
-					phone: { not: null },
+					// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+					phone: { not: null as any },
 				},
 				orderBy: { createdAt: "asc" },
 			});
@@ -165,7 +166,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
 					processedCount++;
 
-					const progress = Math.floor((processedCount / totalLeads) * 100);
+					const progress = Math.floor(
+						(processedCount / totalLeadsToProcess) * 100,
+					);
+
 					await prisma.campaign.update({
 						where: { id: params.campaignId },
 						data: { progress },
@@ -224,7 +228,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 			const disparosLogger = logger.setContext("Disparos");
 			disparosLogger.success("✅ Campanha concluída com sucesso", {
 				campaignId: params.campaignId,
-				totalLeads: leads.length,
+				totalLeads: availableLeads.length,
 			});
 		} catch (error) {
 			const disparoErrorLogger = logger.setContext("DisparoError");
