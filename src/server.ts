@@ -105,6 +105,7 @@ const protectedRoutes = [
   { path: "/api/admin", route: adminRoutes },
   { path: "/api/leads", route: leadRoutes },
   { path: "/api/user", route: userRoutes },
+  { path: "/api/users", route: userRoutes },
   { path: "/api/instances", route: instanceRoutes },
   { path: "/api/dashboard", route: dashboardRoutes },
   { path: "/api/warmup", route: warmupRoutes },
