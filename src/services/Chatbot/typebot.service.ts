@@ -22,10 +22,10 @@ type TypebotConfig = {
   keepOpen: boolean;
   debounceTime: number;
   ignoreJids: string[];
-  id?: string; // Adicionando ID opcional
+  id?: string;
 };
 
-// Função de serviço em vez de classe
+// Função de serviço
 export const TypebotService = {
   apiUrl: "https://evo.whatlead.com.br",
   apiKey: "429683C4C977415CAAFCCE10F7D57E11",

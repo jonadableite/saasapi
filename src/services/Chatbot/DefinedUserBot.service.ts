@@ -13,11 +13,9 @@ const DefinedUserBotService = async (
   let user;
 
   const baseWhere: Prisma.UserWhereInput = {
-    active: true, // Substituindo 'isOnline' por 'active'
+    active: true,
     profile: "user",
     whatleadCompanyId: tenantId.toString(),
-    // Note: Não há relação direta entre User e Queue no schema atual.
-    // Você pode precisar ajustar esta lógica dependendo de como as filas são gerenciadas.
   };
 
   if (method === "R") {
@@ -29,13 +27,10 @@ const DefinedUserBotService = async (
       },
     });
   } else if (method === "B") {
-    // Balanced selection (user with least tickets)
-    // Note: Não há relação direta entre User e Ticket no schema atual.
-    // Esta lógica precisará ser ajustada baseada em como você está rastreando tickets por usuário.
     user = await prisma.user.findFirst({
       where: baseWhere,
       orderBy: {
-        id: "asc", // Substituído por uma ordenação simples, já que não temos tickets relacionados diretamente
+        id: "asc",
       },
     });
   }
@@ -46,8 +41,6 @@ const DefinedUserBotService = async (
       data: { userId: user.id },
     });
 
-    // Note: Não existe um modelo 'ticketLog' no schema fornecido.
-    // Se você precisa registrar esta ação, considere criar um modelo para isso ou usar outro método de logging.
     console.log(`Ticket ${ticket.id} assigned to user ${user.id}`);
   }
 };

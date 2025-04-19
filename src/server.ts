@@ -15,7 +15,7 @@ import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
-import { chatbotRoutes } from "./routes/Chatbot/chatbot.routes";
+import { botRoutes } from "./routes/Chatbot/bot.routes";
 import adminRoutes from "./routes/admin.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
 import { analyticsRoutes } from "./routes/analytics.routes";
@@ -102,7 +102,6 @@ const protectedRoutes = [
   { path: "/api/affiliates", route: affiliateRoutes },
   { path: "/api/payments", route: paymentRoutes },
   { path: "/api/admin", route: adminRoutes },
-  { path: "/api/chatbot", route: chatbotRoutes },
   { path: "/api/leads", route: leadRoutes },
   { path: "/api/users", route: userRoutes },
   { path: "/api/instances", route: instanceRoutes },
@@ -118,6 +117,7 @@ const protectedRoutes = [
   { path: "/api/companies", route: companyRoutes },
   { path: "/api/dashboards", route: dashboardsRoutes },
   { path: "/api/message-logs", route: messageLogRoutes },
+  { path: "/api/bot", route: botRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {

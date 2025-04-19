@@ -1,11 +1,11 @@
+import { Readable } from "stream";
 import { PrismaClient } from "@prisma/client";
 import csv from "csv-parser";
-import { Readable } from "stream";
-// src/services/lead.service.ts
 import type { SegmentationRule } from "../interface";
 import { fetchUserPlan } from "./user.service";
 
 const prisma = new PrismaClient();
+
 
 export async function segmentLeads({
   userId,
@@ -201,4 +201,45 @@ export const getLeadById = async (leadId: string) => {
     where: { id: leadId },
   });
 };
+
+export const fetchLeadsBySegment = async (
+  userId: string,
+  segment?: string,
+  page = 1,
+  limit = 20,
+) => {
+  const skip = (page - 1) * limit;
+  const where = {
+    userId,
+    ...(segment ? { segment } : {}),
+  };
+
+  const [leads, total] = await Promise.all([
+    prisma.campaignLead.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        campaign: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+    prisma.campaignLead.count({ where }),
+  ]);
+
+  return {
+    leads: leads.map((lead) => ({
+      ...lead,
+      campaignName: lead.campaign.name,
+    })),
+    total,
+    page,
+    pageCount: Math.ceil(total / limit),
+  };
+};
+
 export { fetchUserPlan };

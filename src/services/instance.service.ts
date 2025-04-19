@@ -1,3 +1,4 @@
+import type { InstanceStatus } from "@/interface";
 // src/services/instance.service.ts
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
@@ -194,7 +195,8 @@ export const listInstances = async (userId: string) => {
     return instances.map((instance) => ({
       instanceId: instance.id,
       instanceName: instance.instanceName,
-      connectionStatus: instance.connectionStatus,
+      connectionStatus:
+        instance.connectionStatus.toUpperCase() as InstanceStatus,
       phoneNumber: instance.number,
       integration: instance.integration,
       typebot: instance.typebot,
@@ -372,11 +374,17 @@ export const syncInstancesWithExternalApi = async (
         (instance) => instance.name && userInstanceNames.has(instance.name),
       )
       .map(async (instance) => {
+        const connectionStatus = ["OPEN", "CLOSE", "CONNECTING"].includes(
+          instance.connectionStatus.toUpperCase(),
+        )
+          ? instance.connectionStatus.toUpperCase()
+          : "CLOSE";
+
         const syncData = {
           ownerJid: instance.ownerJid,
           profileName: instance.profileName,
           profilePicUrl: instance.profilePicUrl,
-          connectionStatus: instance.connectionStatus || "disconnected",
+          connectionStatus: connectionStatus as InstanceStatus,
           token: instance.token,
           number: instance.number,
           clientName: instance.clientName,
@@ -387,7 +395,11 @@ export const syncInstancesWithExternalApi = async (
             instanceName: instance.name,
             userId: userId,
           },
-          data: syncData,
+          data: {
+            ...syncData,
+            connectionStatus:
+              instance.connectionStatus.toUpperCase() as InstanceStatus,
+          },
         });
       });
 

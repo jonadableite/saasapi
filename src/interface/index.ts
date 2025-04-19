@@ -178,6 +178,12 @@ export interface SegmentationRule {
   value: string;
 }
 
+export type InstanceStatus =
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "CONNECTING"
+  | "OFFLINE"
+  | "ERROR";
 export interface Dispatch {
   id: string;
   campaignId: string;
@@ -292,6 +298,12 @@ export interface MessageContent {
   mimetype?: string;
   caption?: string;
   preview?: string;
+}
+
+export interface CampaignRequestWithSegment extends CampaignRequestWithId {
+  params: CampaignRequestWithId["params"] & {
+    segment?: string;
+  };
 }
 
 export interface UpdateCampaignStatusRequest extends CampaignRequestWithId {
