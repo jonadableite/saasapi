@@ -68,8 +68,8 @@ export class TaggingService {
 
       taggingLogger.verbose(
         `Tags adicionadas à conversa ${conversationId}: ${uniqueNewTags.join(
-          ", "
-        )}`
+          ", ",
+        )}`,
       );
       return updatedConversation;
     } catch (error) {
@@ -110,7 +110,7 @@ export class TaggingService {
       });
 
       taggingLogger.verbose(
-        `Tags removidas da conversa ${conversationId}: ${tags.join(", ")}`
+        `Tags removidas da conversa ${conversationId}: ${tags.join(", ")}`,
       );
       return updatedConversation;
     } catch (error) {
@@ -136,7 +136,7 @@ export class TaggingService {
       });
 
       taggingLogger.verbose(
-        `Tags definidas para conversa ${conversationId}: ${tags.join(", ")}`
+        `Tags definidas para conversa ${conversationId}: ${tags.join(", ")}`,
       );
       return updatedConversation;
     } catch (error) {
@@ -169,7 +169,7 @@ export class TaggingService {
       }
 
       // Construir o filtro com base na opção matchAll
-      let filter: any = { userId };
+      const filter: any = { userId };
 
       if (matchAll) {
         // Com matchAll, todas as tags devem estar presentes
@@ -220,7 +220,7 @@ export class TaggingService {
       }));
 
       taggingLogger.verbose(
-        `Busca por tags: encontradas ${conversations.length} conversas`
+        `Busca por tags: encontradas ${conversations.length} conversas`,
       );
 
       return {

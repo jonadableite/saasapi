@@ -56,7 +56,7 @@ export class CRMNotesService {
       });
 
       notesLogger.info(
-        `Nota adicionada com sucesso para contato ${contactPhone}`
+        `Nota adicionada com sucesso para contato ${contactPhone}`,
       );
       return { success: true, noteId: contactNote.id };
     } catch (error) {
@@ -125,7 +125,7 @@ export class CRMNotesService {
       });
 
       notesLogger.info(
-        `${notes.length} notas encontradas para contato ${contactPhone}`
+        `${notes.length} notas encontradas para contato ${contactPhone}`,
       );
       return { success: true, notes };
     } catch (error) {

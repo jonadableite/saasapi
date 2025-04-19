@@ -14,48 +14,48 @@ router.use(checkPlanLimits);
 router.get("/conversations", conversationsController.getConversations);
 router.get(
   "/conversations/:conversationId/messages",
-  conversationsController.getConversationMessages
+  conversationsController.getConversationMessages,
 );
 router.put(
   "/conversations/:conversationId/tags",
-  conversationsController.updateConversationTags
+  conversationsController.updateConversationTags,
 );
 router.post(
   "/conversations/:conversationId/messages",
-  conversationsController.sendMessage
+  conversationsController.sendMessage,
 );
 router.put(
   "/conversations/:conversationId/status",
-  conversationsController.updateConversationStatus
+  conversationsController.updateConversationStatus,
 );
 
 // Novas rotas para reações e anexos
 router.post(
   "/messages/:messageId/reactions",
-  conversationsController.addMessageReaction
+  conversationsController.addMessageReaction,
 );
 router.get(
   "/messages/:messageId/reactions",
-  conversationsController.getMessageReactions
+  conversationsController.getMessageReactions,
 );
 router.delete(
   "/messages/:messageId/reactions/:reactionId",
-  conversationsController.removeMessageReaction
+  conversationsController.removeMessageReaction,
 );
 
 // Rotas para anexos
 router.post(
   "/messages/:messageId/attachments",
-  conversationsController.addMessageAttachment
+  conversationsController.addMessageAttachment,
 );
 router.get(
   "/messages/:messageId/attachments",
-  conversationsController.getMessageAttachments
+  conversationsController.getMessageAttachments,
 );
 router.get("/attachments/:attachmentId", conversationsController.getAttachment);
 router.delete(
   "/attachments/:attachmentId",
-  conversationsController.removeAttachment
+  conversationsController.removeAttachment,
 );
 
 // Exportar router

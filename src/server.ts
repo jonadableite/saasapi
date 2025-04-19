@@ -16,6 +16,7 @@ import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
+import { crmRoutes } from "./routes/CRM/crm.routes";
 import { botRoutes } from "./routes/Chatbot/bot.routes";
 import adminRoutes from "./routes/admin.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
@@ -41,7 +42,6 @@ import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { campaignService } from "./services/campaign.service";
 import { logger } from "./utils/logger";
-import { crmRoutes } from "./routes/CRM/crm.routes";
 
 // Configurar logger para este contexto
 const serverLogger = logger.setContext("ServerInitialization");
@@ -85,7 +85,7 @@ app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook
+  handleWebhook,
 );
 
 app.use("/api/stripe", stripeRoutes);

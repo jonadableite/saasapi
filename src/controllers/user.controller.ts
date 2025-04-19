@@ -227,7 +227,17 @@ export const createUsersController = async (
       abortEarly: false,
     });
 
-    const { user, companyId, token } = await createUser(validatedData);
+    const { name, email, password } = validatedData;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Dados obrigatórios ausentes" });
+    }
+
+    const { user, companyId, token } = await createUser({
+      name,
+      email,
+      password,
+    });
 
     return res.status(201).json({
       user,
@@ -237,10 +247,9 @@ export const createUsersController = async (
   } catch (error) {
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ errors: error.errors });
-    } else {
-      console.error("Erro ao criar usuário:", error);
-      return res.status(500).json({ error: "Erro interno do servidor" });
     }
+    console.error("Erro ao criar usuário:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
 
@@ -373,12 +382,12 @@ export const updateUserController = async (
   } catch (error) {
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ errors: error.errors });
-    } else if (isPrismaError(error) && error.code === "P2025") {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    } else {
-      console.error("Erro ao atualizar usuário:", error);
-      return res.status(500).json({ error: "Erro interno do servidor" });
     }
+    if (isPrismaError(error) && error.code === "P2025") {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    console.error("Erro ao atualizar usuário:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
 
@@ -394,10 +403,9 @@ export const deleteUserController = async (
   } catch (error) {
     if (isPrismaError(error) && error.code === "P2025") {
       return res.status(404).json({ error: "Usuário não encontrado" });
-    } else {
-      console.error("Erro ao deletar usuário:", error);
-      return res.status(500).json({ error: "Erro interno do servidor" });
     }
+    console.error("Erro ao deletar usuário:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
 

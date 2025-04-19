@@ -9,16 +9,16 @@ const analyticsController = new AnalyticsController();
 router.all("*", authMiddleware);
 
 router.get(
-	"/campaigns/:campaignId/stats",
-	analyticsController.getCampaignStats,
+  "/campaigns/:campaignId/stats",
+  analyticsController.getCampaignStats,
 );
 router.get(
-	"/campaigns/:campaignId/daily-stats",
-	analyticsController.getDailyStats,
+  "/campaigns/:campaignId/daily-stats",
+  analyticsController.getDailyStats,
 );
 router.get(
-	"/campaigns/:campaignId/engagement",
-	analyticsController.getLeadEngagement,
+  "/campaigns/:campaignId/engagement",
+  analyticsController.getLeadEngagement,
 );
 
 export { router as analyticsRoutes };

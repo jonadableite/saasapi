@@ -8,40 +8,40 @@ const router = Router();
 router.use(authMiddleware);
 
 router.post(
-	"/:campaignId/schedule",
-	campaignSchedulerController.scheduleCampaign.bind(
-		campaignSchedulerController,
-	),
+  "/:campaignId/schedule",
+  campaignSchedulerController.scheduleCampaign.bind(
+    campaignSchedulerController,
+  ),
 );
 
 router.get(
-	"/scheduled",
-	authMiddleware,
-	campaignSchedulerController.getScheduledCampaigns.bind(
-		campaignSchedulerController,
-	),
+  "/scheduled",
+  authMiddleware,
+  campaignSchedulerController.getScheduledCampaigns.bind(
+    campaignSchedulerController,
+  ),
 );
 
 router.delete(
-	"/schedules/:scheduleId",
-	campaignSchedulerController.cancelSchedule.bind(campaignSchedulerController),
+  "/schedules/:scheduleId",
+  campaignSchedulerController.cancelSchedule.bind(campaignSchedulerController),
 );
 
 router.post(
-	"/:campaignId/pause",
-	campaignSchedulerController.pauseCampaign.bind(campaignSchedulerController),
+  "/:campaignId/pause",
+  campaignSchedulerController.pauseCampaign.bind(campaignSchedulerController),
 );
 
 router.post(
-	"/:campaignId/resume",
-	campaignSchedulerController.resumeCampaign.bind(campaignSchedulerController),
+  "/:campaignId/resume",
+  campaignSchedulerController.resumeCampaign.bind(campaignSchedulerController),
 );
 
 router.get(
-	"/:campaignId/progress",
-	campaignSchedulerController.getCampaignProgress.bind(
-		campaignSchedulerController,
-	),
+  "/:campaignId/progress",
+  campaignSchedulerController.getCampaignProgress.bind(
+    campaignSchedulerController,
+  ),
 );
 
 export { router as campaignSchedulerRoutes };

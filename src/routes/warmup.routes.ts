@@ -2,11 +2,11 @@
 import express from "express";
 import { mediaController } from "../controllers/media.controller";
 import {
-	configureWarmup,
-	getWarmupStats,
-	getWarmupStatus,
-	stopAllWarmups,
-	stopWarmup,
+  configureWarmup,
+  getWarmupStats,
+  getWarmupStatus,
+  stopAllWarmups,
+  stopWarmup,
 } from "../controllers/warmup.controller";
 import { authMiddleware } from "../middlewares/authenticate";
 

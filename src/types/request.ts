@@ -23,4 +23,4 @@ export type AuthMiddleware = (
   req: RequestWithUser,
   res: Response,
   next: NextFunction,
-) => Promise<void | Response>;
+) => Promise<undefined | Response>;

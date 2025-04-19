@@ -1,6 +1,6 @@
-import multer from "multer";
 import fs from "node:fs";
 import { extname, resolve } from "node:path";
+import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { BadRequestError } from "../errors/AppError";
 
@@ -199,7 +199,7 @@ export const uploadConfig = multer({
     } else {
       cb(
         new BadRequestError(
-          `Formato não suportado. Use arquivos .csv, .xlsx ou .txt`,
+          "Formato não suportado. Use arquivos .csv, .xlsx ou .txt",
         ) as any,
       );
     }

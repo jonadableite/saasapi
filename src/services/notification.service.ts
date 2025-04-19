@@ -59,11 +59,10 @@ export class NotificationService {
         );
       }
 
-      if (response.data && response.data.key && response.data.key.id) {
+      if (response.data?.key?.id) {
         return { messageId: response.data.key.id };
-      } else {
-        throw new Error("Falha ao obter messageId da resposta da Evolution");
       }
+      throw new Error("Falha ao obter messageId da resposta da Evolution");
     } catch (error: any) {
       console.error("Erro ao enviar notificação WhatsApp:", error);
       if (error instanceof Error) {

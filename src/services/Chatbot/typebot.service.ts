@@ -148,7 +148,7 @@ export const TypebotService = {
       const botId = flowId || (instance.typebot as any)?.id;
 
       if (!botId) {
-        typebotLogger.error(`Nenhum ID de Typebot encontrado para exclusão`);
+        typebotLogger.error("Nenhum ID de Typebot encontrado para exclusão");
         throw new Error("ID do Typebot não encontrado");
       }
 
@@ -181,12 +181,10 @@ export const TypebotService = {
               },
             });
             return null;
-          } else {
-            throw error;
           }
-        } else {
           throw error;
         }
+        throw error;
       }
     } catch (error) {
       const typebotLogger = logger.setContext("TypebotDeletion");

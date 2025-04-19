@@ -12,24 +12,24 @@ router.use(authMiddleware);
 
 // disparar campanha
 router.post("/campaigns/:id/start", (req: Request, res: Response) =>
-	controller.startCampaign(req as RequestWithUser, res),
+  controller.startCampaign(req as RequestWithUser, res),
 );
 
 router.post("/campaigns/:id/pause", (req: Request, res: Response) =>
-	controller.pauseCampaign(req as RequestWithUser, res),
+  controller.pauseCampaign(req as RequestWithUser, res),
 );
 
 router.post("/campaigns/:id/resume", (req: Request, res: Response) =>
-	controller.resumeCampaign(req as RequestWithUser, res),
+  controller.resumeCampaign(req as RequestWithUser, res),
 );
 
 router.get("/campaigns/:id/progress", (req: Request, res: Response) =>
-	controller.getCampaignProgress(req as RequestWithUser, res),
+  controller.getCampaignProgress(req as RequestWithUser, res),
 );
 
 // buscar históricos de disparos
 router.get("/campaigns/:id/dispatches", (req: Request, res: Response) =>
-	controller.getDispatches(req as RequestWithUser, res),
+  controller.getDispatches(req as RequestWithUser, res),
 );
 
 export { router as campaignDispatcherRoutes };

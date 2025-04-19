@@ -9,15 +9,15 @@ const uploadRoutes = Router();
 const upload = multer(multerConfig);
 
 uploadRoutes.post(
-	"/",
-	authMiddleware, // Substituímos o ensureAuthenticated pelo authMiddleware
-	upload.fields([
-		{ name: "file", maxCount: 1 },
-		{ name: "audio", maxCount: 1 },
-		{ name: "video", maxCount: 1 },
-		{ name: "thumbnail", maxCount: 1 },
-	]),
-	uploadFileController,
+  "/",
+  authMiddleware, // Substituímos o ensureAuthenticated pelo authMiddleware
+  upload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "audio", maxCount: 1 },
+    { name: "video", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  uploadFileController,
 );
 
 export default uploadRoutes;

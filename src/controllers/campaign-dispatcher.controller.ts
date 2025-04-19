@@ -66,7 +66,7 @@ export class CampaignDispatcherController {
   // Início da campanha
   public startCampaign = async (
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -152,7 +152,7 @@ export class CampaignDispatcherController {
   // Pausa a campanha
   public pauseCampaign = async (
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -190,7 +190,7 @@ export class CampaignDispatcherController {
   // Retoma a campanha
   public resumeCampaign = async (
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -265,7 +265,7 @@ export class CampaignDispatcherController {
   // Retorna os históricos de disparos
   public getDispatches = async (
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const campaignId = req.params.id;
@@ -322,7 +322,7 @@ export class CampaignDispatcherController {
   // Retorna o progresso da campanha
   public getCampaignProgress = async (
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;

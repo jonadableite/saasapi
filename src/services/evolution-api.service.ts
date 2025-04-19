@@ -59,7 +59,7 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
@@ -67,17 +67,14 @@ export class EvolutionApiService {
           success: true,
           messageId: response.data.key?.id || response.data.response?.key?.id,
         };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar mensagem para ${to}: ${JSON.stringify(
-            response.data
-          )}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar mensagem para ${to}: ${JSON.stringify(response.data)}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       // Tipando como any para resolver o problema do 'unknown'
       apiLogger.error("Erro ao enviar mensagem:", error);
@@ -125,7 +122,7 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
@@ -133,17 +130,16 @@ export class EvolutionApiService {
           success: true,
           messageId: response.data.key?.id || response.data.response?.key?.id,
         };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar mídia para ${contactPhone}: ${JSON.stringify(
-            response.data
-          )}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar mídia para ${contactPhone}: ${JSON.stringify(
+          response.data,
+        )}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       apiLogger.error("Erro ao enviar mídia:", error);
       return {
@@ -187,7 +183,7 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
@@ -195,15 +191,14 @@ export class EvolutionApiService {
           success: true,
           messageId: response.data.key?.id || response.data.response?.key?.id,
         };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar contato para ${to}: ${JSON.stringify(response.data)}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar contato para ${to}: ${JSON.stringify(response.data)}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       apiLogger.error("Erro ao enviar contato:", error);
       return {
@@ -257,7 +252,7 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
@@ -265,15 +260,14 @@ export class EvolutionApiService {
           success: true,
           messageId: response.data.key?.id || response.data.response?.key?.id,
         };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar botões para ${to}: ${JSON.stringify(response.data)}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar botões para ${to}: ${JSON.stringify(response.data)}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       apiLogger.error("Erro ao enviar botões:", error);
       return {
@@ -338,7 +332,7 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
@@ -346,15 +340,14 @@ export class EvolutionApiService {
           success: true,
           messageId: response.data.key?.id || response.data.response?.key?.id,
         };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar lista para ${to}: ${JSON.stringify(response.data)}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar lista para ${to}: ${JSON.stringify(response.data)}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       apiLogger.error("Erro ao enviar lista:", error);
       return {
@@ -396,20 +389,19 @@ export class EvolutionApiService {
             "Content-Type": "application/json",
             apikey: this.apiKey,
           },
-        }
+        },
       );
 
       if (response.data.status === "success") {
         return { success: true };
-      } else {
-        apiLogger.warn(
-          `Falha ao enviar reação para ${to}: ${JSON.stringify(response.data)}`
-        );
-        return {
-          success: false,
-          error: response.data.message || "Erro desconhecido",
-        };
       }
+      apiLogger.warn(
+        `Falha ao enviar reação para ${to}: ${JSON.stringify(response.data)}`,
+      );
+      return {
+        success: false,
+        error: response.data.message || "Erro desconhecido",
+      };
     } catch (error: any) {
       apiLogger.error("Erro ao enviar reação:", error);
       return {

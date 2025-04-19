@@ -27,7 +27,7 @@ const connectWithRetry = async () => {
     await redisClient.connect();
   } catch (err) {
     console.error(
-      "Falha ao conectar ao Redis. Tentando novamente em 5 segundos..."
+      "Falha ao conectar ao Redis. Tentando novamente em 5 segundos...",
     );
     setTimeout(connectWithRetry, 5000);
   }
@@ -77,7 +77,7 @@ export const clearCache = async (pattern: string) => {
   try {
     if (!redisClient.isOpen) {
       console.warn(
-        "Redis não está conectado. Ignorando operação de limpeza de cache."
+        "Redis não está conectado. Ignorando operação de limpeza de cache.",
       );
       return;
     }

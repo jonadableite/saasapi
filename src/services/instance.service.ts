@@ -1,8 +1,8 @@
-import redisClient from "../lib/redis";
-import { logger } from "../utils/logger";
 // src/services/instance.service.ts
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
+import redisClient from "../lib/redis";
+import { logger } from "../utils/logger";
 
 import { InstanceStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
@@ -86,7 +86,7 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
       try {
         const response = await axios.get<InstanceResponse>(
           `${API_URL}/instance/connectionState/${instance.instanceName}`,
-          { headers: { apikey: API_KEY } }
+          { headers: { apikey: API_KEY } },
         );
 
         if (response.status === 200 && response.data.instance) {
@@ -102,14 +102,14 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
             });
 
             instanceLogger.info(
-              `Status da instância ${instance.instanceName} atualizado para ${mappedStatus}`
+              `Status da instância ${instance.instanceName} atualizado para ${mappedStatus}`,
             );
           }
         }
       } catch (error: any) {
         instanceLogger.error(
           `Erro ao verificar status da instância ${instance.instanceName}`,
-          error
+          error,
         );
       }
     }
@@ -128,7 +128,7 @@ export const createInstance = async (userId: string, instanceName: string) => {
 
     if (existingInstance) {
       instanceLogger.warn(
-        `Tentativa de criar instância duplicada: ${instanceName}`
+        `Tentativa de criar instância duplicada: ${instanceName}`,
       );
       return { error: "Uma instância com esse nome já existe." };
     }
@@ -159,7 +159,7 @@ export const createInstance = async (userId: string, instanceName: string) => {
           "Content-Type": "application/json",
           apikey: API_KEY,
         },
-      }
+      },
     );
 
     const data = evoResponse.data as {
@@ -182,8 +182,8 @@ export const createInstance = async (userId: string, instanceName: string) => {
       instanceData.status?.toUpperCase() === "OPEN"
         ? InstanceStatus.OPEN
         : instanceData.status?.toUpperCase() === "CONNECTING"
-        ? InstanceStatus.CONNECTING
-        : InstanceStatus.CLOSED;
+          ? InstanceStatus.CONNECTING
+          : InstanceStatus.CLOSED;
 
     const newInstance = await prisma.instance.create({
       data: {
@@ -231,7 +231,7 @@ export const listInstances = async (userId: string) => {
     });
 
     instanceLogger.log(
-      `Listando ${instances.length} instâncias para usuário ${userId}`
+      `Listando ${instances.length} instâncias para usuário ${userId}`,
     );
 
     return instances.map((instance) => ({
@@ -260,7 +260,7 @@ export const deleteInstance = async (userId: string, instanceId: string) => {
 
       if (!instance) {
         instanceLogger.warn(
-          `Tentativa de deletar instância não encontrada: ${instanceId}`
+          `Tentativa de deletar instância não encontrada: ${instanceId}`,
         );
         throw new Error("Instância não encontrada ou não pertence ao usuário");
       }
@@ -297,7 +297,7 @@ export const deleteInstance = async (userId: string, instanceId: string) => {
 export const updateInstance = async (
   instanceId: string,
   userId: string,
-  updateData: Partial<{ instanceName: string; connectionStatus: string }>
+  updateData: Partial<{ instanceName: string; connectionStatus: string }>,
 ) => {
   const instanceLogger = logger.setContext("InstanceUpdate");
 
@@ -311,7 +311,7 @@ export const updateInstance = async (
 
     if (!instance) {
       instanceLogger.warn(
-        `Tentativa de atualizar instância não encontrada: ${instanceId}`
+        `Tentativa de atualizar instância não encontrada: ${instanceId}`,
       );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
@@ -322,7 +322,7 @@ export const updateInstance = async (
     // Se connectionStatus estiver presente, converta para o enum
     if (updateData.connectionStatus) {
       prismaUpdateData.connectionStatus = mapToInstanceStatus(
-        updateData.connectionStatus
+        updateData.connectionStatus,
       );
     }
 
@@ -342,7 +342,7 @@ export const updateInstance = async (
 export const updateInstanceConnectionStatus = async (
   instanceId: string,
   userId: string,
-  connectionStatus: string
+  connectionStatus: string,
 ) => {
   const instanceLogger = logger.setContext("InstanceConnectionStatusUpdate");
 
@@ -358,7 +358,7 @@ export const updateInstanceConnectionStatus = async (
 
     if (!instance) {
       instanceLogger.warn(
-        `Instância não encontrada para atualização de status: ${instanceId}`
+        `Instância não encontrada para atualização de status: ${instanceId}`,
       );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
@@ -373,7 +373,7 @@ export const updateInstanceConnectionStatus = async (
       },
     });
     instanceLogger.log(
-      `Status atualizado para: ${updatedInstance.connectionStatus}`
+      `Status atualizado para: ${updatedInstance.connectionStatus}`,
     );
     return updatedInstance;
   } catch (error) {
@@ -383,14 +383,14 @@ export const updateInstanceConnectionStatus = async (
 };
 
 export const syncInstancesWithExternalApi = async (
-  userId: string
+  userId: string,
 ): Promise<void> => {
   const instanceLogger = logger.setContext("InstanceSync");
   const cacheKey = `user:${userId}:external_instances`;
 
   try {
     instanceLogger.info(
-      "Iniciando sincronização de instâncias com API externa"
+      "Iniciando sincronização de instâncias com API externa",
     );
 
     const cachedData = await redisClient.get(cacheKey);
@@ -405,14 +405,14 @@ export const syncInstancesWithExternalApi = async (
     });
 
     const userInstanceNames = new Set(
-      userInstances.map((inst) => inst.instanceName)
+      userInstances.map((inst) => inst.instanceName),
     );
 
     const externalResponse = await axios.get<ExternalInstance[]>(
       `${API_URL}/instance/fetchInstances`,
       {
         headers: { apikey: API_KEY },
-      }
+      },
     );
 
     if (externalResponse.status !== 200) {
@@ -424,7 +424,7 @@ export const syncInstancesWithExternalApi = async (
 
     const updatePromises = externalInstances
       .filter(
-        (instance) => instance.name && userInstanceNames.has(instance.name)
+        (instance) => instance.name && userInstanceNames.has(instance.name),
       )
       .map(async (instance) => {
         // Corrija aqui: use instance.connectionStatus em vez de connectionStatus
@@ -473,7 +473,7 @@ export const syncInstancesWithExternalApi = async (
   } catch (error: any) {
     instanceLogger.error(
       "Erro ao sincronizar instâncias com a API externa",
-      error
+      error,
     );
     throw new Error("Erro ao sincronizar instâncias com a API externa.");
   }

@@ -101,9 +101,8 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
   } catch (error) {
     if (error instanceof yup.ValidationError) {
       return res.status(400).json({ errors: error.errors });
-    } else {
-      console.error("Erro ao fazer login:", error);
-      return res.status(500).json({ error: "Erro ao fazer login" });
     }
+    console.error("Erro ao fazer login:", error);
+    return res.status(500).json({ error: "Erro ao fazer login" });
   }
 };

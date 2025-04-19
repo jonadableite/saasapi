@@ -26,7 +26,7 @@ export class LeadController {
         Number(page),
         Number(limit),
         filter as string,
-        userId
+        userId,
       );
 
       res.json({
@@ -190,7 +190,7 @@ export class LeadController {
 
   public async segmentLeads(
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -238,7 +238,7 @@ export class LeadController {
 
   public async getLeadsBySegment(
     req: RequestWithUser,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -252,7 +252,7 @@ export class LeadController {
         userId,
         segment as string,
         Number(page),
-        Number(limit)
+        Number(limit),
       );
 
       res.json({

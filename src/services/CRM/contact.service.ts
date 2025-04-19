@@ -12,7 +12,7 @@ export class ContactService {
   async findOrCreateContact(
     phone: string,
     userId: string,
-    name?: string
+    name?: string,
   ): Promise<any> {
     try {
       // Limpar o número de telefone
@@ -58,7 +58,7 @@ export class ContactService {
       });
 
       contactLogger.verbose(
-        `Contato criado: ${newContact.phone} - ${newContact.name}`
+        `Contato criado: ${newContact.phone} - ${newContact.name}`,
       );
       return newContact;
     } catch (error) {
@@ -80,7 +80,7 @@ export class ContactService {
       tags?: string[];
       metadata?: any;
       userId?: string;
-    }
+    },
   ): Promise<any> {
     try {
       // Limpar o número de telefone
@@ -97,10 +97,10 @@ export class ContactService {
       const updateData: any = { ...data };
 
       // Remover userId da atualização (deve ser usado apenas para busca)
-      if (updateData.userId) delete updateData.userId;
+      if (updateData.userId) updateData.userId = undefined;
 
       // Remover campos inexistentes no schema
-      if ("updatedAt" in updateData) delete updateData.updatedAt; // Removido para o Prisma atualizar automaticamente
+      if ("updatedAt" in updateData) updateData.updatedAt = undefined; // Removido para o Prisma atualizar automaticamente
 
       // Atualizar o contato
       const updatedContact = await prisma.contact.upsert({
@@ -200,7 +200,7 @@ export class ContactService {
       ]);
 
       contactLogger.verbose(
-        `Busca de contatos: encontrados ${contacts.length} de ${total}`
+        `Busca de contatos: encontrados ${contacts.length} de ${total}`,
       );
       return {
         contacts,
@@ -226,7 +226,7 @@ export class ContactService {
       notes?: string;
       tags?: string[];
       userId: string;
-    }>
+    }>,
   ): Promise<{ success: number; failed: number; errors: any[] }> {
     const results = {
       success: 0,
@@ -296,7 +296,7 @@ export class ContactService {
       }
 
       contactLogger.info(
-        `Importação concluída: ${results.success} sucesso, ${results.failed} falhas`
+        `Importação concluída: ${results.success} sucesso, ${results.failed} falhas`,
       );
       return results;
     } catch (error) {
@@ -403,7 +403,7 @@ export class ContactService {
       }
 
       contactLogger.info(
-        `Sincronização de leads concluída para campanha ${campaignId}: ${created} criados, ${updated} atualizados`
+        `Sincronização de leads concluída para campanha ${campaignId}: ${created} criados, ${updated} atualizados`,
       );
       return {
         created,
@@ -413,7 +413,7 @@ export class ContactService {
     } catch (error) {
       contactLogger.error(
         `Erro ao sincronizar leads da campanha ${campaignId}:`,
-        error
+        error,
       );
       throw error;
     }
@@ -449,7 +449,7 @@ export class ContactService {
         const result = await this.syncCampaignLeadsAsContacts(campaign.id);
         totalImported += result.created + result.updated;
         contactLogger.info(
-          `Campanha ${campaign.name} (${campaign.id}): ${result.created} novos contatos, ${result.updated} atualizados`
+          `Campanha ${campaign.name} (${campaign.id}): ${result.created} novos contatos, ${result.updated} atualizados`,
         );
       }
 
@@ -460,7 +460,7 @@ export class ContactService {
     } catch (error) {
       contactLogger.error(
         `Erro ao importar leads de campanhas para o usuário ${userId}:`,
-        error
+        error,
       );
       throw error;
     }
@@ -472,7 +472,7 @@ export class ContactService {
   public async scheduleSyncCampaignLeads(): Promise<void> {
     try {
       contactLogger.info(
-        "Iniciando sincronização programada de leads para contatos"
+        "Iniciando sincronização programada de leads para contatos",
       );
 
       // Buscar leads não sincronizados agrupados por usuário
@@ -492,19 +492,19 @@ export class ContactService {
       }
 
       contactLogger.info(
-        `Encontrados ${leadsGroups.length} usuários com leads pendentes`
+        `Encontrados ${leadsGroups.length} usuários com leads pendentes`,
       );
 
       for (const group of leadsGroups) {
         try {
           const result = await this.importLeadsFromCampaigns(group.userId);
           contactLogger.info(
-            `Usuário ${group.userId}: ${result.imported} contatos importados de ${result.campaigns} campanhas`
+            `Usuário ${group.userId}: ${result.imported} contatos importados de ${result.campaigns} campanhas`,
           );
         } catch (error) {
           contactLogger.error(
             `Erro na sincronização para o usuário ${group.userId}:`,
-            error
+            error,
           );
           // Continuar com próximo usuário mesmo em caso de erro
         }

@@ -55,13 +55,12 @@ export class PaymentReminderService {
       console.log("Iniciando processo de envio de lembretes...");
 
       // Verifica o status da instância WhatLeads na Evolution
-      const isWhatLeadsConnected = await this.checkInstanceStatusInEvolution(
-        "WhatLeads"
-      );
+      const isWhatLeadsConnected =
+        await this.checkInstanceStatusInEvolution("WhatLeads");
 
       if (!isWhatLeadsConnected) {
         throw new Error(
-          "Instância WhatLeads não está conectada ou não existe na API da Evolution"
+          "Instância WhatLeads não está conectada ou não existe na API da Evolution",
         );
       }
 
@@ -69,7 +68,7 @@ export class PaymentReminderService {
       twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
 
       console.log(
-        `Buscando pagamentos com vencimento em: ${twoDaysFromNow.toISOString()}`
+        `Buscando pagamentos com vencimento em: ${twoDaysFromNow.toISOString()}`,
       );
 
       const usersWithDuePayments = await prisma.user.findMany({
@@ -103,7 +102,7 @@ export class PaymentReminderService {
       });
 
       console.log(
-        `Encontrados ${usersWithDuePayments.length} usuários com pagamentos pendentes`
+        `Encontrados ${usersWithDuePayments.length} usuários com pagamentos pendentes`,
       );
 
       for (const user of usersWithDuePayments) {
@@ -120,17 +119,17 @@ export class PaymentReminderService {
             await this.sendWhatsAppReminder(
               user,
               "WhatLeads",
-              activeInstance.instanceName
+              activeInstance.instanceName,
             );
           } else {
             console.log(
-              `Usuário ${user.email} não tem uma instância ativa para receber a notificação por WhatsApp.`
+              `Usuário ${user.email} não tem uma instância ativa para receber a notificação por WhatsApp.`,
             );
           }
         } catch (error) {
           console.error(
             `Erro ao processar lembretes para ${user.email}:`,
-            error
+            error,
           );
         }
       }
@@ -143,7 +142,7 @@ export class PaymentReminderService {
   }
 
   private async checkInstanceStatusInEvolution(
-    instanceName: string
+    instanceName: string,
   ): Promise<boolean> {
     try {
       const response = await axios.get<EvolutionApiResponse>(
@@ -153,12 +152,12 @@ export class PaymentReminderService {
             "Content-Type": "application/json",
             apikey: process.env.EVO_API_KEY,
           },
-        }
+        },
       );
 
       console.log(
         `Status da instância ${instanceName} na Evolution:`,
-        response.data
+        response.data,
       );
 
       // Verifica se a instância existe e se o estado é 'open'
@@ -169,7 +168,7 @@ export class PaymentReminderService {
       } else {
         console.error(
           `Erro ao verificar status da instância ${instanceName} na Evolution:`,
-          error
+          error,
         );
       }
       return false;
@@ -208,10 +207,10 @@ export class PaymentReminderService {
         <div style="background-color: #f0f4f8; border-left: 4px solid #3278fa; padding: 15px; margin: 20px 0; border-radius: 5px;">
           <h3 style="color: #2c3e50; margin-bottom: 10px;">Detalhes do Pagamento</h3>
           <p style="margin: 5px 0;"><strong>Valor:</strong> R$ ${paymentAmount.toFixed(
-            2
+            2,
           )}</p>
           <p style="margin: 5px 0;"><strong>Data de Vencimento:</strong> ${new Date(
-            user.payments[0].dueDate
+            user.payments[0].dueDate,
           ).toLocaleDateString("pt-BR")}</p>
         </div>
 
@@ -254,10 +253,10 @@ export class PaymentReminderService {
   private async sendWhatsAppReminder(
     user: any,
     senderInstanceName: string,
-    receiverPhone: string
+    receiverPhone: string,
   ) {
     console.log(
-      `Preparando mensagem WhatsApp de ${senderInstanceName} para: ${receiverPhone}`
+      `Preparando mensagem WhatsApp de ${senderInstanceName} para: ${receiverPhone}`,
     );
 
     const paymentAmount = user.payments[0].amount;
@@ -265,14 +264,14 @@ export class PaymentReminderService {
     const message = `*Lembrete de Pagamento - WhatLead*\n\nOlá ${
       user.name
     },\n\nEste é um lembrete sobre seu pagamento que vence em dois dias:\n\n*Valor:* R$ ${paymentAmount.toFixed(
-      2
+      2,
     )}\n*Vencimento:* ${new Date(user.payments[0].dueDate).toLocaleDateString(
-      "pt-BR"
+      "pt-BR",
     )}\n\nPor favor, certifique-se de efetuar o pagamento para evitar qualquer interrupção no serviço.\n\nSe já realizou o pagamento, por favor, desconsidere este aviso.\n\nAtenciosamente,\nEquipe WhatLead`;
 
     try {
       console.log(
-        `Enviando mensagem WhatsApp de ${senderInstanceName} para ${receiverPhone}`
+        `Enviando mensagem WhatsApp de ${senderInstanceName} para ${receiverPhone}`,
       );
       console.log("Mensagem:", message);
 

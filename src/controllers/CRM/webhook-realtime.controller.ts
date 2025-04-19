@@ -1,9 +1,9 @@
+import { InstanceStatus, MessageStatus, Prisma } from "@prisma/client";
 // src/controllers/CRM/webhook-realtime.controller.ts
 import type { Request, Response } from "express";
-import { InstanceStatus, MessageStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
-import { logger } from "../../utils/logger";
 import { pubsub } from "../../lib/pubsub";
+import { logger } from "../../utils/logger";
 
 // Logger específico para o contexto
 const webhookLogger = logger.setContext("EvolutionWebhook");
@@ -60,7 +60,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
         event,
         instance,
         dataSnippet: JSON.stringify(data).slice(0, 200),
-      })}`
+      })}`,
     );
 
     switch (event) {
@@ -214,7 +214,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Mensagem ${key.id} processada para conversa ${conversation.id}`
+      `Mensagem ${key.id} processada para conversa ${conversation.id}`,
     );
   } catch (error) {
     webhookLogger.error("Erro ao processar nova mensagem:", error);
@@ -244,7 +244,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Status da mensagem ${keyId} atualizado para ${mappedStatus}`
+      `Status da mensagem ${keyId} atualizado para ${mappedStatus}`,
     );
 
     // Se a mensagem foi encontrada, emitir evento
@@ -291,7 +291,7 @@ const handleConnectionUpdate = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Status da instância ${instanceName} atualizado para ${mappedStatus}`
+      `Status da instância ${instanceName} atualizado para ${mappedStatus}`,
     );
 
     // Emitir evento de atualização de status
@@ -332,7 +332,7 @@ const handleQrCodeUpdate = async (instanceName: string, data: any) => {
 
     if (!instance) {
       webhookLogger.warn(
-        `Instância não encontrada para QR code: ${instanceName}`
+        `Instância não encontrada para QR code: ${instanceName}`,
       );
       return;
     }
@@ -370,7 +370,7 @@ const handleGroupUpdate = async (instanceName: string, data: any) => {
 
     if (!instance) {
       webhookLogger.warn(
-        `Instância não encontrada para grupo: ${instanceName}`
+        `Instância não encontrada para grupo: ${instanceName}`,
       );
       return;
     }

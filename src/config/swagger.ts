@@ -1,7 +1,7 @@
+import path from "node:path";
 // src/config/swagger.ts
 import dotenv from "dotenv";
 import swaggerJsdoc from "swagger-jsdoc";
-import path from "path";
 
 dotenv.config(); // Certifique-se de que as variáveis de ambiente estão carregadas
 
@@ -29,27 +29,27 @@ const options = {
   components: {
     schemas: {
       ChatbotFlow: {
-        type: 'object',
+        type: "object",
         properties: {
-          id: { type: 'string' },
-          name: { type: 'string' },
-          description: { type: 'string' },
+          id: { type: "string" },
+          name: { type: "string" },
+          description: { type: "string" },
           nodes: {
-            type: 'array',
-            items: { type: 'object' }
+            type: "array",
+            items: { type: "object" },
           },
           // Adicione outras propriedades conforme necessário
-        }
+        },
       },
       // Adicione outros schemas conforme necessário
     },
     securitySchemes: {
       bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      }
-    }
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      },
+    },
   },
 };
 

@@ -11,25 +11,25 @@ const campaignLeadController = new CampaignLeadController();
 router.all("*", authMiddleware);
 
 router.post(
-	"/:id/leads/import",
-	uploadConfig.single("file"),
-	async (req, res, next) => {
-		try {
-			await campaignLeadController.importLeads(req, res);
-		} catch (err) {
-			console.error("Erro no upload:", err);
-			next(err);
-		}
-	},
+  "/:id/leads/import",
+  uploadConfig.single("file"),
+  async (req, res, next) => {
+    try {
+      await campaignLeadController.importLeads(req, res);
+    } catch (err) {
+      console.error("Erro no upload:", err);
+      next(err);
+    }
+  },
 );
 
 router.get("/:id/leads", async (req, res, next) => {
-	try {
-		await campaignLeadController.getLeads(req, res);
-	} catch (err) {
-		console.error("Erro ao buscar leads:", err);
-		next(err);
-	}
+  try {
+    await campaignLeadController.getLeads(req, res);
+  } catch (err) {
+    console.error("Erro ao buscar leads:", err);
+    next(err);
+  }
 });
 
 export { router as campaignLeadRoutes };

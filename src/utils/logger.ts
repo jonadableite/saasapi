@@ -1,6 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
 import dayjs from "dayjs";
-import fs from "fs";
-import path from "path";
 
 // Função para ler o package.json de forma segura
 const getPackageVersion = (): string => {
@@ -190,10 +190,10 @@ export class Logger {
 
     return [
       colors.text + Color.BRIGHT,
-      `[WhatLead API]`,
+      "[WhatLead API]",
       `v${this.version}`,
       pid,
-      `-`,
+      "-",
       timestamp,
       ` ${colors.bg}${colors.bright} ${emoji} ${type} ${Color.RESET}`,
       Color.GOLD_TEXT + Color.BRIGHT,

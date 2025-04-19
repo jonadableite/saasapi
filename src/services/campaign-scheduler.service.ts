@@ -75,7 +75,7 @@ export class CampaignSchedulerService {
    */
   private async handleScheduleError(
     scheduleId: string,
-    error: unknown
+    error: unknown,
   ): Promise<void> {
     try {
       await prisma.campaignSchedule.update({
@@ -150,7 +150,7 @@ export class CampaignSchedulerService {
 
       this.scheduledJobs.set(schedule.id, job);
     } catch (error) {
-      console.error(`Erro ao agendar job:`, error);
+      console.error("Erro ao agendar job:", error);
       throw new BadRequestError("Erro ao agendar campanha");
     }
   }
@@ -337,7 +337,7 @@ export class CampaignSchedulerService {
     });
 
     const scheduledJobs = Array.from(this.scheduledJobs.entries()).filter(
-      ([_, job]) => job.name === campaignId
+      ([_, job]) => job.name === campaignId,
     );
 
     scheduledJobs.forEach(([id, job]) => {
@@ -362,7 +362,7 @@ export class CampaignSchedulerService {
    */
   public async resumeCampaign(
     campaignId: string,
-    instanceName: string
+    instanceName: string,
   ): Promise<void> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },

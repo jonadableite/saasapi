@@ -1,15 +1,15 @@
 import {
-	type NextFunction,
-	type Request,
-	type Response,
-	Router,
+  type NextFunction,
+  type Request,
+  type Response,
+  Router,
 } from "express";
 import {
-	cancelSubscription,
-	createCheckoutSession,
-	createPaymentIntent,
-	getSubscriptionStatus,
-	updateSubscription,
+  cancelSubscription,
+  createCheckoutSession,
+  createPaymentIntent,
+  getSubscriptionStatus,
+  updateSubscription,
 } from "../controllers/stripe.controller";
 import { authMiddleware } from "../middlewares/authenticate";
 
@@ -17,10 +17,10 @@ const router = Router();
 
 // Middleware de log para depuração
 const logMiddleware = (req: Request, res: Response, next: NextFunction) => {
-	console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
-	console.log("Headers:", req.headers);
-	console.log("Body:", req.body);
-	next();
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  console.log("Headers:", req.headers);
+  console.log("Body:", req.body);
+  next();
 };
 
 // Aplique o middleware de log em todas as rotas
