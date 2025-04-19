@@ -1,3 +1,4 @@
+// src/services/lead.service.ts
 import { Readable } from "stream";
 import { PrismaClient } from "@prisma/client";
 import csv from "csv-parser";
@@ -5,7 +6,6 @@ import type { SegmentationRule } from "../interface";
 import { fetchUserPlan } from "./user.service";
 
 const prisma = new PrismaClient();
-
 
 export async function segmentLeads({
   userId,
@@ -56,7 +56,7 @@ export async function segmentLeads({
 export const importLeads = async (
   file: Express.Multer.File,
   userId: string,
-  campaignId: string,
+  campaignId: string
 ) => {
   const leads: any[] = [];
 
@@ -109,7 +109,7 @@ export const fetchLeads = async (
   page: number,
   limit: number,
   filter?: string,
-  userId?: string,
+  userId?: string
 ) => {
   const skip = (page - 1) * limit;
   const where = {
@@ -155,7 +155,7 @@ export const fetchLeads = async (
 
 export const updateLead = async (
   leadId: string,
-  data: { name?: string; phone?: string; status?: string },
+  data: { name?: string; phone?: string; status?: string }
 ) => {
   const updateData = {
     name: data.name,
@@ -173,7 +173,7 @@ export const updateLead = async (
 export const deleteLead = async (leadId: string) => {
   try {
     console.log(
-      `Iniciando exclusão do lead ${leadId} e seus registros relacionados...`,
+      `Iniciando exclusão do lead ${leadId} e seus registros relacionados...`
     );
 
     // Excluir logs de mensagens relacionados ao lead
@@ -206,7 +206,7 @@ export const fetchLeadsBySegment = async (
   userId: string,
   segment?: string,
   page = 1,
-  limit = 20,
+  limit = 20
 ) => {
   const skip = (page - 1) * limit;
   const where = {

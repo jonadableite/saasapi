@@ -1,0 +1,12 @@
+declare module 'minio' {
+  // Defina aqui as interfaces básicas que você usa
+  export class Client {
+    constructor(options: any);
+    // Declare os métodos que você usa
+    putObject(bucketName: string, objectName: string, stream: any, size?: number, metaData?: any): Promise<any>;
+    getObject(bucketName: string, objectName: string): Promise<any>;
+    // Adicione outros métodos conforme necessário
+  }
+  
+  // Outras classes/interfaces conforme necessidade
+}

@@ -1,18 +1,30 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["es2018", "dom"],
+    "module": "CommonJS", // Garante maiúscula para evitar ambiguidades
+    "moduleResolution": "node", // Adicionado: especifica a estratégia de resolução de módulos
+    "lib": ["ES2020", "DOM"], // Atualizado para corresponder ao target
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true, // Adicionado: permite importar arquivos JSON
     "typeRoots": ["./node_modules/@types", "./src/@types"],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
+    },
+    "allowSyntheticDefaultImports": true, // Adicionado: facilita importações de bibliotecas
+    "sourceMap": true // Adicionado: útil para debugging
+  },
+  "ts-node": {
+    // Configuração específica para ts-node
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "CommonJS"
     }
   },
   "include": ["src/**/*"],

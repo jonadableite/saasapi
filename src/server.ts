@@ -41,6 +41,7 @@ import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { campaignService } from "./services/campaign.service";
 import { logger } from "./utils/logger";
+import { crmRoutes } from "./routes/CRM/crm.routes";
 
 // Configurar logger para este contexto
 const serverLogger = logger.setContext("ServerInitialization");
@@ -120,6 +121,7 @@ const protectedRoutes = [
   { path: "/api/dashboards", route: dashboardsRoutes },
   { path: "/api/message-logs", route: messageLogRoutes },
   { path: "/api/bot", route: botRoutes },
+  { path: "/api/crm", route: crmRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {

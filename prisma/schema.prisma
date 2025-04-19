@@ -69,11 +69,12 @@ model User {
   referredBy               String?
   affiliate                User?          @relation("AffiliateReferral", fields: [referredBy], references: [id])
   role                     String         @default("user") // Valores: "admin", "affiliate", "manager", "user"
-
   // Relação para o campo affiliate
-  affiliates   User[]         @relation("AffiliateReferral")
-  Message      Message[]
-  Conversation Conversation[]
+  affiliates               User[]         @relation("AffiliateReferral")
+  Message                  Message[]
+  Conversation             Conversation[]
+  contacts                 Contact[]
+  contactNotes             ContactNote[]
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
@@ -189,16 +190,11 @@ model Instance {
 
   // Relações
   user               User               @relation(fields: [userId], references: [id])
-  campaigns          Campaign[]         @relation("InstanceCampaigns")
-  campaignSchedules  CampaignSchedule[] @relation("InstanceCampaignSchedules")
-  campaignDispatches CampaignDispatch[] @relation("InstanceCampaignDispatches")
-  warmupStats        WarmupStats[]      @relation("InstanceWarmupStats")
-  mediaStats         MediaStats[]       @relation("InstanceMediaStats")
-  CampaignSchedule   CampaignSchedule[]
-  Campaign           Campaign[]
-  CampaignDispatch   CampaignDispatch[]
-  WarmupStats        WarmupStats[]
-  MediaStats         MediaStats[]
+  campaigns          Campaign[]
+  campaignSchedules  CampaignSchedule[]
+  campaignDispatches CampaignDispatch[]
+  warmupStats        WarmupStats[]
+  mediaStats         MediaStats[]
 
   @@index([userId])
 }
@@ -223,61 +219,61 @@ model MediaStats {
   instance            Instance      @relation(fields: [instanceName], references: [instanceName])
   warmupStatsReceived WarmupStats[] @relation("WarmupStatsToMediaStatsReceived")
   warmupStatsSent     WarmupStats[] @relation("WarmupStatsToMediaStatsSent")
-  Instance            Instance[]    @relation("InstanceMediaStats")
 
   @@index([instanceName])
   @@index([date])
 }
 
 model WarmupStats {
-  id               String      @id @default(uuid())
-  instanceName     String      @unique
-  status           String      @default("paused")
-  messagesSent     Int         @default(0)
-  messagesReceived Int         @default(0)
-  warmupTime       Int         @default(0)
-  lastActive       DateTime    @default(now())
+  id               String    @id @default(uuid())
+  instanceName     String    @unique
+  status           String    @default("paused")
+  messagesSent     Int       @default(0)
+  messagesReceived Int       @default(0)
+  warmupTime       Int       @default(0)
+  lastActive       DateTime  @default(now())
   startTime        DateTime?
   pauseTime        DateTime?
-  progress         Int         @default(0)
+  progress         Int       @default(0)
   userId           String
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now())
   mediaStatsId     String?
   mediaReceivedId  String?
-  instance         Instance    @relation(fields: [instanceName], references: [instanceName])
-  mediaReceived    MediaStats? @relation("WarmupStatsToMediaStatsReceived", fields: [mediaReceivedId], references: [id])
-  mediaStats       MediaStats? @relation("WarmupStatsToMediaStatsSent", fields: [mediaStatsId], references: [id])
-  user             User        @relation(fields: [userId], references: [id])
-  Instance         Instance[]  @relation("InstanceWarmupStats")
+
+  instance      Instance    @relation(fields: [instanceName], references: [instanceName])
+  mediaReceived MediaStats? @relation("WarmupStatsToMediaStatsReceived", fields: [mediaReceivedId], references: [id])
+  mediaStats    MediaStats? @relation("WarmupStatsToMediaStatsSent", fields: [mediaStatsId], references: [id])
+  user          User        @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([instanceName])
 }
 
 model Campaign {
-  id               String              @id @default(uuid())
-  name             String
-  description      String?
-  status           String              @default("draft")
-  type             String
-  message          String?
-  mediaUrl         String?
-  mediaType        String?
-  mediaCaption     String?
-  scheduledDate    DateTime?
-  scheduledStatus  String?             @default("pending")
-  startedAt        DateTime?
-  completedAt      DateTime?
-  pausedAt         DateTime?
-  progress         Int                 @default(0)
-  minDelay         Int                 @default(5)
-  maxDelay         Int                 @default(30)
-  userId           String
-  instanceId       String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  isAiResponder    Json?
+  id              String    @id @default(uuid())
+  name            String
+  description     String?
+  status          String    @default("draft")
+  type            String
+  message         String?
+  mediaUrl        String?
+  mediaType       String?
+  mediaCaption    String?
+  scheduledDate   DateTime?
+  scheduledStatus String?   @default("pending")
+  startedAt       DateTime?
+  completedAt     DateTime?
+  pausedAt        DateTime?
+  progress        Int       @default(0)
+  minDelay        Int       @default(5)
+  maxDelay        Int       @default(30)
+  userId          String
+  instanceId      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  isAiResponder   Json?
+
   MessageLog       MessageLog[]
   leads            CampaignLead[]
   messages         CampaignMessage[]
@@ -288,7 +284,7 @@ model Campaign {
   CampaignErrorLog CampaignErrorLog[]
   CampaignSchedule CampaignSchedule[]
   MessageAnalytics MessageAnalytics[]
-  Instance         Instance[]          @relation("InstanceCampaigns")
+  contacts         Contact[]           @relation("ContactCampaigns")
 
   @@index([userId])
   @@index([instanceId])
@@ -303,12 +299,11 @@ model CampaignDispatch {
   status       String    @default("pending")
   startedAt    DateTime?
   completedAt  DateTime?
-  campaign     Campaign  @relation(fields: [campaignId], references: [id])
-  instance     Instance  @relation(fields: [instanceName], references: [instanceName])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @default(now())
 
-  Instance Instance[] @relation("InstanceCampaignDispatches")
+  campaign  Campaign @relation(fields: [campaignId], references: [id])
+  instance  Instance @relation(fields: [instanceName], references: [instanceName])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
 }
 
 model CampaignMessage {
@@ -343,6 +338,8 @@ model CampaignLead {
   messageLogs   MessageLog[]
   segment       String?
   engagement    String?
+  syncedWithCRM Boolean      @default(false)
+  syncedAt      DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now())
   campaign      Campaign     @relation(fields: [campaignId], references: [id])
@@ -355,24 +352,24 @@ model CampaignLead {
 }
 
 model CampaignSchedule {
-  id            String     @id @default(uuid())
+  id            String    @id @default(uuid())
   campaignId    String
   instanceName  String
   scheduledDate DateTime
-  status        String     @default("pending")
+  status        String    @default("pending")
   message       String?
   mediaType     String?
   mediaUrl      String?
   mediaCaption  String?
-  minDelay      Int        @default(5)
-  maxDelay      Int        @default(30)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  minDelay      Int       @default(5)
+  maxDelay      Int       @default(30)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   startedAt     DateTime?
   completedAt   DateTime?
-  campaign      Campaign   @relation(fields: [campaignId], references: [id])
-  instance      Instance   @relation(fields: [instanceName], references: [instanceName])
-  Instance      Instance[] @relation("InstanceCampaignSchedules")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  instance Instance @relation(fields: [instanceName], references: [instanceName])
 
   @@index([campaignId])
   @@index([instanceName])
@@ -435,10 +432,30 @@ model MessageAnalytics {
   readCount      Int      @default(0)
   respondedCount Int      @default(0)
   failedCount    Int      @default(0)
-
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  campaign       Campaign @relation(fields: [campaignId], references: [id])
 
   @@unique([campaignId, date])
+}
+
+model Contact {
+  id                String         @id @default(uuid())
+  phone             String
+  name              String?
+  email             String?
+  company           String?
+  notes             String?
+  tags              String[]       @default([])
+  userId            String
+  user              User           @relation(fields: [userId], references: [id])
+  lastInteractionAt DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  source            String?
+  campaigns         Campaign[]     @relation("ContactCampaigns")
+  conversations     Conversation[]
+  contactNotes      ContactNote[]
+
+  @@unique([phone, userId])
 }
 
 model Conversation {
@@ -447,37 +464,61 @@ model Conversation {
   contactPhone  String
   contactName   String?
   contactAvatar String?
-  lastMessageAt DateTime?
+  lastMessageAt DateTime  @default(now())
+  status        String    @default("OPEN")
+  tags          Json      @default("{}")
   isActive      Boolean   @default(true)
   messages      Message[]
+  contactId     String?
+  contact       Contact?  @relation(fields: [contactId], references: [id])
   userId        String
   user          User      @relation(fields: [userId], references: [id])
+  isGroup       Boolean   @default(false)
+  groupMetadata Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@unique([instanceName, contactPhone])
   @@index([userId, lastMessageAt])
+  MessageReaction MessageReaction[]
 }
 
 model Message {
-  id             String        @id @default(uuid())
+  id             String              @id @default(uuid())
   conversationId String
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  messageId      String
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String              @unique
   content        String
-  type           String // text, image, audio, video, document
-  sender         String // fromMe or contact phone
-  status         MessageStatus @default(PENDING)
+  type           String              @default("text") // text, image, audio, video, document
+  sender         String // fromMe ou contact phone
+  status         MessageStatus       @default(PENDING)
   timestamp      DateTime
   mediaUrl       String?
   mediaType      String?
   replyTo        Json?
   userId         String
-  user           User          @relation(fields: [userId], references: [id])
-  createdAt      DateTime      @default(now())
+  user           User                @relation(fields: [userId], references: [id])
+  failureReason  String?
+  createdAt      DateTime            @default(now())
+  attachments    MessageAttachment[]
 
   @@index([conversationId, timestamp])
   @@index([userId, timestamp])
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  type      String // image, video, audio, document
+  url       String
+  name      String?
+  mimeType  String?
+  filename  String?
+  size      Int?
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
 }
 
 model CampaignErrorLog {
@@ -487,4 +528,28 @@ model CampaignErrorLog {
   errorDetails Json?
   createdAt    DateTime @default(now())
   campaign     Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model ContactNote {
+  id        String   @id @default(uuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model MessageReaction {
+  id             String      @id @default(uuid())
+  messageId      String      
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reaction       String      // emoji usado como reação
+  userId         String      // ID do usuário que reagiu
+  createdAt      DateTime    @default(now())
+  
+  @@index([messageId])
+  @@index([conversationId])
 }
