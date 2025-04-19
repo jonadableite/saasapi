@@ -16,6 +16,27 @@ export class CRMMessagingService {
   }
 
   /**
+   * Processa uma mensagem recebida
+   */
+  async processMessage(payload: any): Promise<boolean> {
+    try {
+      messagingLogger.info("Processando mensagem recebida");
+
+      // Verifica se a payload tem o formato esperado
+      if (!payload || !payload.key || !payload.instanceName) {
+        messagingLogger.error("Payload de mensagem inválida:", payload);
+        return false;
+      }
+
+      // Delegar o processamento para o método apropriado
+      return this.processIncomingMessage(payload);
+    } catch (error) {
+      messagingLogger.error("Erro ao processar mensagem:", error);
+      return false;
+    }
+  }
+
+  /**
    * Envia uma mensagem de texto para um contato
    */
   async sendTextMessage(params: {
@@ -28,7 +49,7 @@ export class CRMMessagingService {
 
     try {
       messagingLogger.info(
-        `Enviando mensagem para ${contactPhone} via instância ${instanceName}`,
+        `Enviando mensagem para ${contactPhone} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -106,7 +127,7 @@ export class CRMMessagingService {
       });
 
       messagingLogger.info(
-        `Mensagem enviada com sucesso, ID: ${response.messageId}`,
+        `Mensagem enviada com sucesso, ID: ${response.messageId}`
       );
       return { success: true, messageId: response.messageId };
     } catch (error) {
@@ -142,7 +163,7 @@ export class CRMMessagingService {
 
     try {
       messagingLogger.info(
-        `Enviando ${mediaType} para ${contactPhone} via instância ${instanceName}`,
+        `Enviando ${mediaType} para ${contactPhone} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -242,7 +263,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Mídia enviada com sucesso, ID: ${
           response.messageId || pendingMessage.messageId
-        }`,
+        }`
       );
       return {
         success: true,
@@ -270,7 +291,7 @@ export class CRMMessagingService {
     const { instanceName, contactPhone, vcard, fullName, userId } = params;
     try {
       messagingLogger.info(
-        `Enviando contato para ${contactPhone} via instância ${instanceName}`,
+        `Enviando contato para ${contactPhone} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -352,7 +373,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Contato enviado com sucesso, ID: ${
           response.messageId || pendingMessage.messageId
-        }`,
+        }`
       );
       return {
         success: true,
@@ -379,11 +400,11 @@ export class CRMMessagingService {
       mimeType: string;
       filename: string;
       size?: number;
-    },
+    }
   ): Promise<string> {
     try {
       messagingLogger.info(
-        `Adicionando anexo do tipo ${attachmentData.type} à mensagem ${messageId}`,
+        `Adicionando anexo do tipo ${attachmentData.type} à mensagem ${messageId}`
       );
 
       const attachment = await prisma.messageAttachment.create({
@@ -402,12 +423,12 @@ export class CRMMessagingService {
     } catch (error) {
       messagingLogger.error(
         `Erro ao adicionar anexo à mensagem ${messageId}:`,
-        error,
+        error
       );
       throw new Error(
         `Falha ao adicionar anexo: ${
           error instanceof Error ? error.message : "Erro desconhecido"
-        }`,
+        }`
       );
     }
   }
@@ -425,7 +446,7 @@ export class CRMMessagingService {
 
     try {
       messagingLogger.info(
-        `Adicionando reação "${reaction}" à mensagem ${messageId}`,
+        `Adicionando reação "${reaction}" à mensagem ${messageId}`
       );
 
       // Verificar se a mensagem existe
@@ -482,7 +503,7 @@ export class CRMMessagingService {
     } catch (error) {
       messagingLogger.error(
         `Erro ao adicionar reação à mensagem ${messageId}:`,
-        error,
+        error
       );
       return {
         success: false,
@@ -514,7 +535,7 @@ export class CRMMessagingService {
     } = params;
     try {
       messagingLogger.info(
-        `Enviando botões para ${contactPhone} via instância ${instanceName}`,
+        `Enviando botões para ${contactPhone} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -610,7 +631,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Botões enviados com sucesso, ID: ${
           response.messageId || pendingMessage.messageId
-        }`,
+        }`
       );
       return {
         success: true,
@@ -657,7 +678,7 @@ export class CRMMessagingService {
     } = params;
     try {
       messagingLogger.info(
-        `Enviando lista para ${contactPhone} via instância ${instanceName}`,
+        `Enviando lista para ${contactPhone} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -749,7 +770,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Lista enviada com sucesso, ID: ${
           response.messageId || pendingMessage.messageId
-        }`,
+        }`
       );
       return {
         success: true,
@@ -777,7 +798,7 @@ export class CRMMessagingService {
     const { instanceName, contactPhone, messageId, emoji, userId } = params;
     try {
       messagingLogger.info(
-        `Enviando reação para mensagem ${messageId} via instância ${instanceName}`,
+        `Enviando reação para mensagem ${messageId} via instância ${instanceName}`
       );
 
       // Validar o número de telefone
@@ -842,7 +863,7 @@ export class CRMMessagingService {
       });
 
       messagingLogger.info(
-        `Reação enviada com sucesso para mensagem ${messageId}`,
+        `Reação enviada com sucesso para mensagem ${messageId}`
       );
       return { success: true };
     } catch (error) {
@@ -985,7 +1006,7 @@ export class CRMMessagingService {
 
       if (!conversation) {
         messagingLogger.warn(
-          `Não foi possível encontrar ou criar conversa para ${contactPhone}`,
+          `Não foi possível encontrar ou criar conversa para ${contactPhone}`
         );
         return false;
       }
@@ -1003,7 +1024,7 @@ export class CRMMessagingService {
             data: { status: this.mapStatusToEnum(status) },
           });
           messagingLogger.verbose(
-            `Status atualizado para mensagem ${key.id}: ${status}`,
+            `Status atualizado para mensagem ${key.id}: ${status}`
           );
         }
         return true; // Mensagem já processada
@@ -1058,7 +1079,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Mensagem ${msgType} ${
           isSentByMe ? "enviada" : "recebida"
-        } processada: ${key.id}`,
+        } processada: ${key.id}`
       );
 
       // Enviar notificação se for uma mensagem recebida
@@ -1215,7 +1236,7 @@ export class CRMMessagingService {
   private async processAttachment(
     messageId: string,
     messageObj: any,
-    type: string,
+    type: string
   ): Promise<void> {
     try {
       let attachmentData = null;
@@ -1296,7 +1317,7 @@ export class CRMMessagingService {
     } catch (error) {
       messagingLogger.error(
         `Erro ao processar anexo para mensagem ${messageId}:`,
-        error,
+        error
       );
     }
   }
@@ -1327,12 +1348,12 @@ export class CRMMessagingService {
    */
   private sendNotificationToUser(
     user: any,
-    notification: { title: string; body: string; data: any },
+    notification: { title: string; body: string; data: any }
   ): void {
     try {
       // Placeholder - aqui você conectaria com seu serviço de notificações push
       messagingLogger.verbose(
-        `Notificação para usuário ${user.id}: ${notification.title} - ${notification.body}`,
+        `Notificação para usuário ${user.id}: ${notification.title} - ${notification.body}`
       );
     } catch (error) {
       messagingLogger.error("Erro ao enviar notificação:", error);

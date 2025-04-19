@@ -465,6 +465,8 @@ model Conversation {
   contactName   String?
   contactAvatar String?
   lastMessageAt DateTime  @default(now())
+  lastMessage   String?
+  unreadCount   Int       @default(0)
   status        String    @default("OPEN")
   tags          Json      @default("{}")
   isActive      Boolean   @default(true)
