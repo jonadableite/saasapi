@@ -71,7 +71,7 @@ const typebotConfigSchema = yup.object().shape({
 
 export const updateProxyConfigController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -111,7 +111,7 @@ export const updateProxyConfigController = async (
 
 export const updateTypebotConfigController = async (
   req: TypebotRequest,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   try {
     const { id } = req.params;
@@ -136,7 +136,7 @@ export const updateTypebotConfigController = async (
     try {
       const result = await TypebotService.updateTypebot(
         instance.instanceName,
-        typebot,
+        typebot
       );
 
       return res.status(200).json({
@@ -182,7 +182,7 @@ const updateInstanceSchema = yup.object().shape({
       "pending",
       "connected",
       "disconnected",
-      "open",
+      "OPEN",
       "connecting",
       "close",
     ]),
@@ -191,7 +191,7 @@ const updateInstanceSchema = yup.object().shape({
 // Controlador para buscar e atualizar os status das instâncias
 export const updateInstanceStatusesController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   try {
     await fetchAndUpdateInstanceStatuses();
@@ -209,7 +209,7 @@ export const updateInstanceStatusesController = async (
 // Controlador para criar uma nova instância
 export const createInstanceController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const instanceLogger = logger.setContext("InstanceCreation");
 
@@ -226,7 +226,7 @@ export const createInstanceController = async (
     // Log do QR Code com contexto e detalhes
     instanceLogger.info(
       `QR Code gerado para instância ${instanceName}`,
-      result.qrcode,
+      result.qrcode
     );
 
     return res.status(201).json({
@@ -247,7 +247,7 @@ export const createInstanceController = async (
 // Controlador para listar todas as instâncias
 export const listInstancesController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -317,12 +317,12 @@ export const listInstancesController = async (
 
     const remainingSlots = user.maxInstances - processedInstances.length;
     const recommendedCount = processedInstances.filter(
-      (instance) => instance.warmupStatus.isRecommended,
+      (instance) => instance.warmupStatus.isRecommended
     ).length;
     const averageProgress =
       processedInstances.reduce(
         (acc, curr) => acc + curr.warmupStatus.progress,
-        0,
+        0
       ) / (processedInstances.length || 1);
 
     const responseData = {
@@ -368,7 +368,7 @@ export const deleteMediaStats = async (req: Request, res: Response) => {
 // Controlador para deletar uma instância
 export const deleteInstanceController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -398,11 +398,11 @@ export const deleteInstanceController = async (
           `${API_URL}/instance/delete/${instance.instanceName}`,
           {
             headers: { apikey: API_KEY },
-          },
+          }
         );
         const instanceLogger = logger.setContext("InstanceDeletion");
         instanceLogger.info(
-          `Instância ${instance.instanceName} deletada na API externa`,
+          `Instância ${instance.instanceName} deletada na API externa`
         );
       } catch (externalError) {
         const instanceLogger = logger.setContext("InstanceDeletion");
@@ -437,7 +437,7 @@ export const deleteInstanceController = async (
     });
     const instanceLogger = logger.setContext("InstanceDeletion");
     instanceLogger.info(
-      `Instância ${result} e todos os registros relacionados foram deletados com sucesso.`,
+      `Instância ${result} e todos os registros relacionados foram deletados com sucesso.`
     );
     return res.status(200).json({
       message: "Instância e registros relacionados deletados com sucesso",
@@ -461,7 +461,7 @@ export const deleteInstanceController = async (
 // Controlador para atualizar uma instância
 export const updateInstanceController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -475,7 +475,7 @@ export const updateInstanceController = async (
     const updatedInstance = await updateInstance(
       instanceId,
       userId,
-      updateData,
+      updateData
     );
     return res.status(200).json(updatedInstance);
   } catch (error) {
@@ -491,7 +491,7 @@ export const updateInstanceController = async (
 
 export const updateInstanceStatusController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const userId = req.user?.id;
   if (!userId) {
@@ -522,7 +522,7 @@ export const updateInstanceStatusController = async (
 
 export const deleteTypebotConfig = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   const instanceLogger = logger.setContext("TypebotDeletion");
 
@@ -561,7 +561,7 @@ export const deleteTypebotConfig = async (
     const currentTypebot = instance.typebot;
     if (!currentTypebot) {
       instanceLogger.warn(
-        `Nenhum Typebot configurado para a instância: ${instance.instanceName}`,
+        `Nenhum Typebot configurado para a instância: ${instance.instanceName}`
       );
       return res.status(404).json({
         success: false,
@@ -573,7 +573,7 @@ export const deleteTypebotConfig = async (
       // Tentar deletar o typebot na API externa
       const result = await TypebotService.deleteTypebot(
         instance.instanceName,
-        flowId,
+        flowId
       );
 
       return res.json({

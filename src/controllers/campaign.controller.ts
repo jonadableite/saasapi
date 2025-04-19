@@ -200,7 +200,7 @@ export default class CampaignController {
 
   async getCampaignStats(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
@@ -251,7 +251,7 @@ export default class CampaignController {
         JSON.stringify(campaignStats),
         {
           EX: 300, // Cache por 5 minutos
-        },
+        }
       );
 
       res.json(campaignStats);
@@ -265,7 +265,7 @@ export default class CampaignController {
 
   async updateCampaign(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
@@ -307,7 +307,7 @@ export default class CampaignController {
 
   async deleteCampaign(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
@@ -403,7 +403,7 @@ export default class CampaignController {
 
   public async removeCampaignLead(
     req: CampaignRequestWithId & { params: { leadId: string } },
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id: campaignId } = req.params;
@@ -463,7 +463,7 @@ export default class CampaignController {
       const result = await this.campaignService.importLeads(
         file,
         userId,
-        campaignId,
+        campaignId
       );
 
       res.status(201).json({
@@ -534,7 +534,7 @@ export default class CampaignController {
 
   public async getCampaignLeads(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id: campaignId } = req.params;
@@ -545,7 +545,7 @@ export default class CampaignController {
         campaignId,
         userId,
         Number(page),
-        Number(limit),
+        Number(limit)
       );
 
       res.json({
@@ -565,7 +565,7 @@ export default class CampaignController {
         segmentation?: string;
       };
     },
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id: campaignId } = req.params;
@@ -584,11 +584,11 @@ export default class CampaignController {
 
       const count = await this.campaignService.getLeadCountBySegmentation(
         campaignId,
-        segmentation,
+        segmentation
       );
 
       logger.log(
-        `Contagem de leads para campanha ${campaignId}, segmentação ${segmentation}: ${count}`,
+        `Contagem de leads para campanha ${campaignId}, segmentação ${segmentation}: ${count}`
       );
 
       res.json({
@@ -616,7 +616,7 @@ export default class CampaignController {
 
   public async getScheduledCampaigns(
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -709,7 +709,7 @@ export default class CampaignController {
 
   public async updateCampaignStatus(
     req: UpdateCampaignStatusRequest,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
@@ -829,12 +829,12 @@ export default class CampaignController {
 
       if (availableLeads.length === 0) {
         throw new BadRequestError(
-          "Não há leads disponíveis para disparo após reset de status",
+          "Não há leads disponíveis para disparo após reset de status"
         );
       }
 
       startLogger.info(
-        `Leads disponíveis para disparo: ${availableLeads.length}`,
+        `Leads disponíveis para disparo: ${availableLeads.length}`
       );
 
       // Verificar instância
@@ -846,7 +846,7 @@ export default class CampaignController {
         throw new BadRequestError("Instância não encontrada");
       }
 
-      if (instance.connectionStatus !== "open") {
+      if (instance.connectionStatus !== "OPEN") {
         throw new BadRequestError("Instância não está conectada");
       }
 
@@ -920,7 +920,7 @@ export default class CampaignController {
 
   public async getCampaignProgress(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
@@ -975,7 +975,7 @@ export default class CampaignController {
 
   public async pauseCampaign(
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id: campaignId } = req.params;
@@ -1014,7 +1014,7 @@ export default class CampaignController {
 
   public async resumeCampaign(
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id: campaignIdFromParams } = req.params;
@@ -1028,13 +1028,13 @@ export default class CampaignController {
       const instance = await prisma.instance.findFirst({
         where: {
           instanceName,
-          connectionStatus: "open",
+          connectionStatus: "OPEN",
         },
       });
 
       if (!instance) {
         throw new BadRequestError(
-          "Instância não encontrada ou não está conectada",
+          "Instância não encontrada ou não está conectada"
         );
       }
 
@@ -1055,7 +1055,7 @@ export default class CampaignController {
 
       if (!campaign) {
         throw new BadRequestError(
-          "Campanha não encontrada ou não está pausada",
+          "Campanha não encontrada ou não está pausada"
         );
       }
 
@@ -1102,7 +1102,7 @@ export default class CampaignController {
 
   public async stopCampaign(
     req: CampaignRequestWithId,
-    res: Response,
+    res: Response
   ): Promise<void> {
     try {
       const { id } = req.params;
