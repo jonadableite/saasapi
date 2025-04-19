@@ -15,6 +15,7 @@ enum InstanceStatus {
   CONNECTING
   OFFLINE
   ERROR
+  RECEIVED
 }
 
 enum MessageStatus {

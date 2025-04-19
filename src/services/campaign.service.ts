@@ -104,7 +104,7 @@ export class CampaignService {
   async importLeads(
     file: Express.Multer.File,
     userId: string,
-    campaignId: string,
+    campaignId: string
   ): Promise<ImportLeadsResult> {
     try {
       const leads = await this.processFile(file);
@@ -186,7 +186,7 @@ export class CampaignService {
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "P2002") {
         throw new Error(
-          "Alguns números já existem nesta campanha. Não é permitido importar números duplicados na mesma campanha.",
+          "Alguns números já existem nesta campanha. Não é permitido importar números duplicados na mesma campanha."
         );
       }
       throw error;
@@ -216,7 +216,7 @@ export class CampaignService {
     campaignId: string,
     userId: string | undefined,
     page: number,
-    limit: number,
+    limit: number
   ) {
     const where = {
       campaignId,
@@ -263,7 +263,7 @@ export class CampaignService {
       throw new Error(`Instância ${params.instanceName} não encontrada`);
     }
 
-    if (instance.connectionStatus !== "open") {
+    if (instance.connectionStatus !== "OPEN") {
       throw new Error(`Instância ${params.instanceName} não está conectada`);
     }
 
@@ -325,7 +325,7 @@ export class CampaignService {
     phone: string,
     messageType: string,
     content: string,
-    reason?: string,
+    reason?: string
   ): Promise<void> {
     try {
       const lead = await prisma.campaignLead.findFirst({
@@ -371,7 +371,7 @@ export class CampaignService {
 
   public async getDailyStats(
     campaignId: string,
-    date: Date,
+    date: Date
   ): Promise<Record<string, number>> {
     try {
       const stats = await this.prisma.messageLog.groupBy({
@@ -393,7 +393,7 @@ export class CampaignService {
           ...acc,
           [curr.status]: curr._count.status,
         }),
-        {} as Record<string, number>,
+        {} as Record<string, number>
       );
     } catch (error) {
       const statisticsLogger = new Logger("statisticsLogger");
@@ -405,7 +405,7 @@ export class CampaignService {
   public async getDetailedReport(
     campaignId: string,
     startDate: Date,
-    endDate: Date,
+    endDate: Date
   ) {
     try {
       return await this.prisma.messageLog.findMany({
@@ -452,7 +452,7 @@ export class CampaignService {
 
   public async getLeadCountBySegmentation(
     campaignId: string,
-    segmentation: string,
+    segmentation: string
   ): Promise<number> {
     try {
       const count = await prisma.campaignLead.count({

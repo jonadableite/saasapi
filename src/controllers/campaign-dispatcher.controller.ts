@@ -66,7 +66,7 @@ export class CampaignDispatcherController {
   // Início da campanha
   public startCampaign = async (
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -100,7 +100,7 @@ export class CampaignDispatcherController {
 
       // Verificar contagem de leads antes de iniciar
       const leadCount = await prisma.campaignLead.count({
-        where: { campaignId, status: "PENDING" }
+        where: { campaignId, status: "PENDING" },
       });
 
       if (leadCount === 0) {
@@ -152,7 +152,7 @@ export class CampaignDispatcherController {
   // Pausa a campanha
   public pauseCampaign = async (
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -190,7 +190,7 @@ export class CampaignDispatcherController {
   // Retoma a campanha
   public resumeCampaign = async (
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;
@@ -219,7 +219,7 @@ export class CampaignDispatcherController {
       });
 
       if (!instance) throw new BadRequestError("Instância não encontrada");
-      if (instance.connectionStatus !== "open")
+      if (instance.connectionStatus !== "OPEN")
         throw new BadRequestError("Instância não está conectada");
 
       // Criar novo dispatch
@@ -265,7 +265,7 @@ export class CampaignDispatcherController {
   // Retorna os históricos de disparos
   public getDispatches = async (
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> => {
     try {
       const campaignId = req.params.id;
@@ -322,7 +322,7 @@ export class CampaignDispatcherController {
   // Retorna o progresso da campanha
   public getCampaignProgress = async (
     req: RequestWithUser,
-    res: Response,
+    res: Response
   ): Promise<void> => {
     try {
       const { id: campaignId } = req.params;

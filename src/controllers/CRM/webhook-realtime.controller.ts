@@ -1,29 +1,37 @@
 // src/controllers/CRM/webhook-realtime.controller.ts
 import type { Request, Response } from "express";
-import type { InstanceStatus, MessageStatus } from "../../interface";
+import { InstanceStatus, MessageStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 
-// Funções de mapeamento de status
+// Funções de mapeamento atualizadas para usar os valores exatos dos enums
 function mapInstanceStatus(state: string): InstanceStatus {
-  const statusMap: Record<string, InstanceStatus> = {
-    open: "CONNECTED",
-    close: "DISCONNECTED",
-    connecting: "CONNECTING",
-  };
-
-  return statusMap[state] || "OFFLINE";
+  switch (state.toLowerCase()) {
+    case "open":
+      return InstanceStatus.CONNECTED;
+    case "close":
+      return InstanceStatus.DISCONNECTED;
+    case "connecting":
+      return InstanceStatus.CONNECTING;
+    default:
+      return InstanceStatus.OFFLINE;
+  }
 }
 
 function mapMessageStatus(rawStatus: string): MessageStatus {
-  const statusMap: Record<string, MessageStatus> = {
-    pending: "PENDING",
-    sent: "SENT",
-    delivered: "DELIVERED",
-    read: "READ",
-    failed: "FAILED",
-  };
-
-  return statusMap[rawStatus.toLowerCase()] || "PENDING";
+  switch (rawStatus.toLowerCase()) {
+    case "pending":
+      return MessageStatus.PENDING;
+    case "sent":
+      return MessageStatus.SENT;
+    case "delivered":
+      return MessageStatus.DELIVERED;
+    case "read":
+      return MessageStatus.READ;
+    case "failed":
+      return MessageStatus.FAILED;
+    default:
+      return MessageStatus.PENDING;
+  }
 }
 
 export const handleEvolutionWebhook = async (req: Request, res: Response) => {
@@ -87,7 +95,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     },
   });
 
-  // Criar Mensagem
+  // Upsert Message
   await prisma.message.create({
     data: {
       conversationId: conversation.id,
@@ -99,7 +107,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
         "Mídia não suportada",
       type: messageType,
       sender: key.fromMe ? "me" : contactPhone,
-      status: "received",
+      status: MessageStatus.DELIVERED,
       timestamp,
       mediaUrl: message?.audioMessage?.url || message?.imageMessage?.url,
       mediaType:
@@ -110,7 +118,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
 };
 
 const handleMessageUpdate = async (instanceName: string, data: any) => {
-  // Atualizar status da mensagem
+  // Atualizar status da mensagem usando o mapeamento
   await prisma.message.updateMany({
     where: { messageId: data.keyId },
     data: {

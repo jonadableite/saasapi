@@ -1,28 +1,25 @@
 // src/controllers/CRM/conversations.controller.ts
 import { prisma } from "@/lib/prisma";
 import type { RequestWithUser } from "@/types";
-import type { Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, MessageStatus } from "@prisma/client";
+import type { Response } from "express";
 
-// Tipos personalizados para melhor tipagem
+// Tipo personalizado corrigido para usar MessageStatus enum em vez de string
 type ConversationWithMessages = Prisma.ConversationGetPayload<{
   include: {
     _count: {
-      select: { messages: { where: { status: string } } }
-    },
+      select: { messages: { where: { status: MessageStatus } } };
+    };
     messages: {
       take: number;
-      orderBy: { timestamp: 'desc' }
-    }
-  }
+      orderBy: { timestamp: "desc" };
+    };
+  };
 }>;
 
 type MessageWithDetails = Prisma.MessageGetPayload<{}>;
 
-export const getConversations = async (
-  req: RequestWithUser,
-  res: Response
-) => {
+export const getConversations = async (req: RequestWithUser, res: Response) => {
   try {
     const userId = req.user?.id;
     const { page = 1, limit = 50 } = req.query;
@@ -31,7 +28,7 @@ export const getConversations = async (
     const pageNumber = Number(page);
     const limitNumber = Number(limit);
 
-    const conversations: ConversationWithMessages[] = await prisma.conversation.findMany({
+    const conversations = (await prisma.conversation.findMany({
       where: { userId },
       orderBy: { lastMessageAt: "desc" },
       take: limitNumber,
@@ -40,8 +37,10 @@ export const getConversations = async (
         _count: {
           select: {
             messages: {
-              where: { status: "received" }
-            }
+              where: {
+                status: MessageStatus.DELIVERED,
+              },
+            },
           },
         },
         messages: {
@@ -49,13 +48,13 @@ export const getConversations = async (
           orderBy: { timestamp: "desc" },
         },
       },
-    });
+    })) as ConversationWithMessages[];
 
     // Transformar dados se necessário
-    const formattedConversations = conversations.map(conv => ({
+    const formattedConversations = conversations.map((conv) => ({
       ...conv,
       unreadCount: conv._count.messages,
-      lastMessage: conv.messages[0] || null
+      lastMessage: conv.messages[0] || null,
     }));
 
     res.json({
@@ -63,13 +62,13 @@ export const getConversations = async (
       pagination: {
         page: pageNumber,
         limit: limitNumber,
-      }
+      },
     });
   } catch (error) {
-    console.error('Erro ao buscar conversas:', error);
+    console.error("Erro ao buscar conversas:", error);
     res.status(500).json({
-      message: 'Erro interno ao buscar conversas',
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      message: "Erro interno ao buscar conversas",
+      error: error instanceof Error ? error.message : "Erro desconhecido",
     });
   }
 };
@@ -95,7 +94,7 @@ export const getConversationMessages = async (
 
     // Buscar total de mensagens para paginação
     const totalMessages = await prisma.message.count({
-      where: { conversationId }
+      where: { conversationId },
     });
 
     res.json({
@@ -104,14 +103,14 @@ export const getConversationMessages = async (
         page: pageNumber,
         limit: limitNumber,
         total: totalMessages,
-        totalPages: Math.ceil(totalMessages / limitNumber)
-      }
+        totalPages: Math.ceil(totalMessages / limitNumber),
+      },
     });
   } catch (error) {
-    console.error('Erro ao buscar mensagens:', error);
+    console.error("Erro ao buscar mensagens:", error);
     res.status(500).json({
-      message: 'Erro interno ao buscar mensagens',
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
+      message: "Erro interno ao buscar mensagens",
+      error: error instanceof Error ? error.message : "Erro desconhecido",
     });
   }
 };

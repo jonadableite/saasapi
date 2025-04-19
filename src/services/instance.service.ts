@@ -3,41 +3,43 @@ import { logger } from "@/utils/logger";
 // src/services/instance.service.ts
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
-import type { InstanceStatus } from "../interface";
-import { Prisma } from '@prisma/client';
+
+import { InstanceStatus, Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
 const InstanceStatusValues = {
-  OPEN: 'OPEN',
-  CLOSED: 'CLOSED',
-  CONNECTING: 'CONNECTING',
-  DISCONNECTED: 'DISCONNECTED',
-  OFFLINE: 'OFFLINE',
-  ERROR: 'ERROR'
+  OPEN: "OPEN",
+  CLOSED: "CLOSED",
+  CONNECTING: "CONNECTING",
+  DISCONNECTED: "DISCONNECTED",
+  OFFLINE: "OFFLINE",
+  ERROR: "ERROR",
 } as const;
 
 // Função auxiliar para mapear strings para valores de enum válidos
-function mapToInstanceStatus(status: string): string {
+function mapToInstanceStatus(status: string): InstanceStatus {
   switch (status.toUpperCase()) {
     case "OPEN":
-      return InstanceStatusValues.OPEN;
+      return InstanceStatus.OPEN;
     case "CLOSE":
     case "CLOSED":
-      return InstanceStatusValues.CLOSED;
+      return InstanceStatus.CLOSED;
     case "CONNECTING":
-      return InstanceStatusValues.CONNECTING;
+      return InstanceStatus.CONNECTING;
     case "DISCONNECTED":
-      return InstanceStatusValues.DISCONNECTED;
+      return InstanceStatus.DISCONNECTED;
     case "OFFLINE":
-      return InstanceStatusValues.OFFLINE;
+      return InstanceStatus.OFFLINE;
     case "ERROR":
-      return InstanceStatusValues.ERROR;
+      return InstanceStatus.ERROR;
     default:
-      return InstanceStatusValues.OFFLINE;
+      return InstanceStatus.OFFLINE;
   }
 }
+
 interface ExternalInstance {
   id: string;
   name: string;
@@ -74,27 +76,6 @@ interface ExternalApiResponse {
   data: ExternalInstance[];
 }
 
-// Função auxiliar para mapear strings para o enum do Prisma
-function mapToInstanceStatus(status: string): any {
-  switch (status.toUpperCase()) {
-    case "OPEN":
-      return "OPEN"; // Use strings diretamente
-    case "CLOSE":
-    case "CLOSED":
-      return "CLOSED";
-    case "CONNECTING":
-      return "CONNECTING";
-    case "DISCONNECTED":
-      return "DISCONNECTED";
-    case "OFFLINE":
-      return "OFFLINE";
-    case "ERROR":
-      return "ERROR";
-    default:
-      return "OFFLINE";
-  }
-}
-
 export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
   const instanceLogger = logger.setContext("InstanceStatusUpdate");
 
@@ -105,7 +86,7 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
       try {
         const response = await axios.get<InstanceResponse>(
           `${API_URL}/instance/connectionState/${instance.instanceName}`,
-          { headers: { apikey: API_KEY } },
+          { headers: { apikey: API_KEY } }
         );
 
         if (response.status === 200 && response.data.instance) {
@@ -121,14 +102,14 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
             });
 
             instanceLogger.info(
-              `Status da instância ${instance.instanceName} atualizado para ${mappedStatus}`,
+              `Status da instância ${instance.instanceName} atualizado para ${mappedStatus}`
             );
           }
         }
       } catch (error: any) {
         instanceLogger.error(
           `Erro ao verificar status da instância ${instance.instanceName}`,
-          error,
+          error
         );
       }
     }
@@ -147,7 +128,7 @@ export const createInstance = async (userId: string, instanceName: string) => {
 
     if (existingInstance) {
       instanceLogger.warn(
-        `Tentativa de criar instância duplicada: ${instanceName}`,
+        `Tentativa de criar instância duplicada: ${instanceName}`
       );
       return { error: "Uma instância com esse nome já existe." };
     }
@@ -178,7 +159,7 @@ export const createInstance = async (userId: string, instanceName: string) => {
           "Content-Type": "application/json",
           apikey: API_KEY,
         },
-      },
+      }
     );
 
     const data = evoResponse.data as {
@@ -199,10 +180,10 @@ export const createInstance = async (userId: string, instanceName: string) => {
 
     const mappedStatus: InstanceStatus =
       instanceData.status?.toUpperCase() === "OPEN"
-        ? InstanceStatusEnum.OPEN
+        ? InstanceStatus.OPEN
         : instanceData.status?.toUpperCase() === "CONNECTING"
-          ? InstanceStatusEnum.CONNECTING
-          : InstanceStatusEnum.CLOSE;
+        ? InstanceStatus.CONNECTING
+        : InstanceStatus.CLOSED;
 
     const newInstance = await prisma.instance.create({
       data: {
@@ -250,7 +231,7 @@ export const listInstances = async (userId: string) => {
     });
 
     instanceLogger.log(
-      `Listando ${instances.length} instâncias para usuário ${userId}`,
+      `Listando ${instances.length} instâncias para usuário ${userId}`
     );
 
     return instances.map((instance) => ({
@@ -279,7 +260,7 @@ export const deleteInstance = async (userId: string, instanceId: string) => {
 
       if (!instance) {
         instanceLogger.warn(
-          `Tentativa de deletar instância não encontrada: ${instanceId}`,
+          `Tentativa de deletar instância não encontrada: ${instanceId}`
         );
         throw new Error("Instância não encontrada ou não pertence ao usuário");
       }
@@ -316,7 +297,7 @@ export const deleteInstance = async (userId: string, instanceId: string) => {
 export const updateInstance = async (
   instanceId: string,
   userId: string,
-  updateData: Partial<{ instanceName: string; connectionStatus: string }>,
+  updateData: Partial<{ instanceName: string; connectionStatus: string }>
 ) => {
   const instanceLogger = logger.setContext("InstanceUpdate");
 
@@ -330,7 +311,7 @@ export const updateInstance = async (
 
     if (!instance) {
       instanceLogger.warn(
-        `Tentativa de atualizar instância não encontrada: ${instanceId}`,
+        `Tentativa de atualizar instância não encontrada: ${instanceId}`
       );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
@@ -341,7 +322,7 @@ export const updateInstance = async (
     // Se connectionStatus estiver presente, converta para o enum
     if (updateData.connectionStatus) {
       prismaUpdateData.connectionStatus = mapToInstanceStatus(
-        updateData.connectionStatus,
+        updateData.connectionStatus
       );
     }
 
@@ -361,7 +342,7 @@ export const updateInstance = async (
 export const updateInstanceConnectionStatus = async (
   instanceId: string,
   userId: string,
-  connectionStatus: string,
+  connectionStatus: string
 ) => {
   const instanceLogger = logger.setContext("InstanceConnectionStatusUpdate");
 
@@ -377,14 +358,13 @@ export const updateInstanceConnectionStatus = async (
 
     if (!instance) {
       instanceLogger.warn(
-        `Instância não encontrada para atualização de status: ${instanceId}`,
+        `Instância não encontrada para atualização de status: ${instanceId}`
       );
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
 
     // Use a função mapToInstanceStatus para garantir valores de enum válidos
     const mappedStatus = mapToInstanceStatus(connectionStatus);
-
     const updatedInstance = await prisma.instance.update({
       where: { id: instanceId },
       data: {
@@ -392,9 +372,8 @@ export const updateInstanceConnectionStatus = async (
         updatedAt: new Date(),
       },
     });
-
     instanceLogger.log(
-      `Status atualizado para: ${updatedInstance.connectionStatus}`,
+      `Status atualizado para: ${updatedInstance.connectionStatus}`
     );
     return updatedInstance;
   } catch (error) {
@@ -404,14 +383,14 @@ export const updateInstanceConnectionStatus = async (
 };
 
 export const syncInstancesWithExternalApi = async (
-  userId: string,
+  userId: string
 ): Promise<void> => {
   const instanceLogger = logger.setContext("InstanceSync");
   const cacheKey = `user:${userId}:external_instances`;
 
   try {
     instanceLogger.info(
-      "Iniciando sincronização de instâncias com API externa",
+      "Iniciando sincronização de instâncias com API externa"
     );
 
     const cachedData = await redisClient.get(cacheKey);
@@ -426,14 +405,14 @@ export const syncInstancesWithExternalApi = async (
     });
 
     const userInstanceNames = new Set(
-      userInstances.map((inst) => inst.instanceName),
+      userInstances.map((inst) => inst.instanceName)
     );
 
     const externalResponse = await axios.get<ExternalInstance[]>(
       `${API_URL}/instance/fetchInstances`,
       {
         headers: { apikey: API_KEY },
-      },
+      }
     );
 
     if (externalResponse.status !== 200) {
@@ -445,7 +424,7 @@ export const syncInstancesWithExternalApi = async (
 
     const updatePromises = externalInstances
       .filter(
-        (instance) => instance.name && userInstanceNames.has(instance.name),
+        (instance) => instance.name && userInstanceNames.has(instance.name)
       )
       .map(async (instance) => {
         // Corrija aqui: use instance.connectionStatus em vez de connectionStatus
@@ -453,16 +432,16 @@ export const syncInstancesWithExternalApi = async (
 
         switch (instance.connectionStatus.toUpperCase()) {
           case "OPEN":
-            mappedStatus = InstanceStatusEnum.OPEN;
+            mappedStatus = InstanceStatus.OPEN;
             break;
           case "CLOSE":
-            mappedStatus = InstanceStatusEnum.CLOSE;
+            mappedStatus = InstanceStatus.CLOSED;
             break;
           case "CONNECTING":
-            mappedStatus = InstanceStatusEnum.CONNECTING;
+            mappedStatus = InstanceStatus.CONNECTING;
             break;
           default:
-            mappedStatus = InstanceStatusEnum.CLOSE;
+            mappedStatus = InstanceStatus.CLOSED;
             break;
         }
 
@@ -470,7 +449,7 @@ export const syncInstancesWithExternalApi = async (
           ownerJid: instance.ownerJid,
           profileName: instance.profileName,
           profilePicUrl: instance.profilePicUrl,
-          connectionStatus: mappedStatus, // Usando o enum
+          connectionStatus: mappedStatus,
           token: instance.token,
           number: instance.number,
           clientName: instance.clientName,
@@ -494,7 +473,7 @@ export const syncInstancesWithExternalApi = async (
   } catch (error: any) {
     instanceLogger.error(
       "Erro ao sincronizar instâncias com a API externa",
-      error,
+      error
     );
     throw new Error("Erro ao sincronizar instâncias com a API externa.");
   }
