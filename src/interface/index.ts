@@ -179,6 +179,9 @@ export interface SegmentationRule {
 }
 
 export type InstanceStatus =
+  | "OPEN"
+  | "CLOSE"
+  | "CLOSED"
   | "CONNECTED"
   | "DISCONNECTED"
   | "CONNECTING"

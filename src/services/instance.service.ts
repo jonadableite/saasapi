@@ -1,14 +1,43 @@
-import type { InstanceStatus } from "@/interface";
+import redisClient from "@/lib/redis";
+import { logger } from "@/utils/logger";
 // src/services/instance.service.ts
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
-import { prisma } from "../lib/prisma";
-import redisClient from "../lib/redis";
-import { logger } from "../utils/logger";
+import type { InstanceStatus } from "../interface";
+import { Prisma } from '@prisma/client';
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
+const InstanceStatusValues = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+  CONNECTING: 'CONNECTING',
+  DISCONNECTED: 'DISCONNECTED',
+  OFFLINE: 'OFFLINE',
+  ERROR: 'ERROR'
+} as const;
+
+// Função auxiliar para mapear strings para valores de enum válidos
+function mapToInstanceStatus(status: string): string {
+  switch (status.toUpperCase()) {
+    case "OPEN":
+      return InstanceStatusValues.OPEN;
+    case "CLOSE":
+    case "CLOSED":
+      return InstanceStatusValues.CLOSED;
+    case "CONNECTING":
+      return InstanceStatusValues.CONNECTING;
+    case "DISCONNECTED":
+      return InstanceStatusValues.DISCONNECTED;
+    case "OFFLINE":
+      return InstanceStatusValues.OFFLINE;
+    case "ERROR":
+      return InstanceStatusValues.ERROR;
+    default:
+      return InstanceStatusValues.OFFLINE;
+  }
+}
 interface ExternalInstance {
   id: string;
   name: string;
@@ -45,6 +74,27 @@ interface ExternalApiResponse {
   data: ExternalInstance[];
 }
 
+// Função auxiliar para mapear strings para o enum do Prisma
+function mapToInstanceStatus(status: string): any {
+  switch (status.toUpperCase()) {
+    case "OPEN":
+      return "OPEN"; // Use strings diretamente
+    case "CLOSE":
+    case "CLOSED":
+      return "CLOSED";
+    case "CONNECTING":
+      return "CONNECTING";
+    case "DISCONNECTED":
+      return "DISCONNECTED";
+    case "OFFLINE":
+      return "OFFLINE";
+    case "ERROR":
+      return "ERROR";
+    default:
+      return "OFFLINE";
+  }
+}
+
 export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
   const instanceLogger = logger.setContext("InstanceStatusUpdate");
 
@@ -60,14 +110,18 @@ export const fetchAndUpdateInstanceStatuses = async (): Promise<void> => {
 
         if (response.status === 200 && response.data.instance) {
           const currentStatus = response.data.instance.connectionStatus;
+          // Converta o status para o formato do enum
+          const mappedStatus = mapToInstanceStatus(currentStatus);
 
-          if (instance.connectionStatus !== currentStatus) {
+          // Compare com o status atual
+          if (instance.connectionStatus !== mappedStatus) {
             await prisma.instance.update({
               where: { id: instance.id },
-              data: { connectionStatus: currentStatus },
+              data: { connectionStatus: mappedStatus },
             });
+
             instanceLogger.info(
-              `Status da instância ${instance.instanceName} atualizado para ${currentStatus}`,
+              `Status da instância ${instance.instanceName} atualizado para ${mappedStatus}`,
             );
           }
         }
@@ -143,12 +197,19 @@ export const createInstance = async (userId: string, instanceName: string) => {
 
     const instanceData = data.instance;
 
+    const mappedStatus: InstanceStatus =
+      instanceData.status?.toUpperCase() === "OPEN"
+        ? InstanceStatusEnum.OPEN
+        : instanceData.status?.toUpperCase() === "CONNECTING"
+          ? InstanceStatusEnum.CONNECTING
+          : InstanceStatusEnum.CLOSE;
+
     const newInstance = await prisma.instance.create({
       data: {
         userId,
         instanceName: instanceData.instanceName,
         integration: instanceData.integration,
-        connectionStatus: instanceData.status || "pending",
+        connectionStatus: mappedStatus,
       },
     });
 
@@ -274,9 +335,19 @@ export const updateInstance = async (
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
 
+    // Crie um novo objeto para os dados de atualização
+    const prismaUpdateData: any = { ...updateData };
+
+    // Se connectionStatus estiver presente, converta para o enum
+    if (updateData.connectionStatus) {
+      prismaUpdateData.connectionStatus = mapToInstanceStatus(
+        updateData.connectionStatus,
+      );
+    }
+
     const updatedInstance = await prisma.instance.update({
       where: { id: instanceId },
-      data: updateData,
+      data: prismaUpdateData,
     });
 
     instanceLogger.log(`Instância atualizada com sucesso: ${instanceId}`);
@@ -311,10 +382,13 @@ export const updateInstanceConnectionStatus = async (
       throw new Error("Instância não encontrada ou não pertence ao usuário");
     }
 
+    // Use a função mapToInstanceStatus para garantir valores de enum válidos
+    const mappedStatus = mapToInstanceStatus(connectionStatus);
+
     const updatedInstance = await prisma.instance.update({
       where: { id: instanceId },
       data: {
-        connectionStatus,
+        connectionStatus: mappedStatus,
         updatedAt: new Date(),
       },
     });
@@ -374,32 +448,41 @@ export const syncInstancesWithExternalApi = async (
         (instance) => instance.name && userInstanceNames.has(instance.name),
       )
       .map(async (instance) => {
-        const connectionStatus = ["OPEN", "CLOSE", "CONNECTING"].includes(
-          instance.connectionStatus.toUpperCase(),
-        )
-          ? instance.connectionStatus.toUpperCase()
-          : "CLOSE";
+        // Corrija aqui: use instance.connectionStatus em vez de connectionStatus
+        let mappedStatus: InstanceStatus;
+
+        switch (instance.connectionStatus.toUpperCase()) {
+          case "OPEN":
+            mappedStatus = InstanceStatusEnum.OPEN;
+            break;
+          case "CLOSE":
+            mappedStatus = InstanceStatusEnum.CLOSE;
+            break;
+          case "CONNECTING":
+            mappedStatus = InstanceStatusEnum.CONNECTING;
+            break;
+          default:
+            mappedStatus = InstanceStatusEnum.CLOSE;
+            break;
+        }
 
         const syncData = {
           ownerJid: instance.ownerJid,
           profileName: instance.profileName,
           profilePicUrl: instance.profilePicUrl,
-          connectionStatus: connectionStatus as InstanceStatus,
+          connectionStatus: mappedStatus, // Usando o enum
           token: instance.token,
           number: instance.number,
           clientName: instance.clientName,
         };
 
+        // Corrija aqui: não precisamos do código anterior que estava tentando atualizar
         return prisma.instance.update({
           where: {
             instanceName: instance.name,
             userId: userId,
           },
-          data: {
-            ...syncData,
-            connectionStatus:
-              instance.connectionStatus.toUpperCase() as InstanceStatus,
-          },
+          data: syncData,
         });
       });
 
