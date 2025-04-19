@@ -1,11 +1,11 @@
-import redisClient from "@/lib/redis";
-import { logger } from "@/utils/logger";
+import redisClient from "../lib/redis";
+import { logger } from "../utils/logger";
 // src/services/instance.service.ts
 import axios from "axios";
 import type { InstanceResponse } from "../@types/instance";
 
 import { InstanceStatus, Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../lib/prisma";
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";

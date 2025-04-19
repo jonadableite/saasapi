@@ -2,8 +2,11 @@
   "name": "saas-api",
   "version": "1.0.0",
   "main": "index.js",
+  "_moduleAliases": {
+    "@": "dist"
+  },
   "scripts": {
-    "start": "node dist/server.js",
+    "start": "node -r module-alias/register dist/server.js",
     "build": "tsc --skipLibCheck",
     "dev": "tsnd -r tsconfig-paths/register --files --transpile-only --respawn --ignore-watch node_modules ./src/server.ts"
   },
@@ -35,6 +38,7 @@
     "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.3",
+    "module-alias": "^2.2.3",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
     "node-schedule": "^2.1.1",

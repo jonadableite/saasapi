@@ -1,3 +1,4 @@
+require("module-alias/register");
 import { createServer } from "node:http";
 // src/server.ts
 import cors from "cors";
@@ -83,7 +84,7 @@ app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook,
+  handleWebhook
 );
 
 app.use("/api/stripe", stripeRoutes);
