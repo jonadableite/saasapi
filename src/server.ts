@@ -10,7 +10,6 @@ import setupMinioBucket from "./config/setupMinio";
 import specs from "./config/swagger";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController } from "./controllers/user.controller";
-import { initializeSocket } from "./helpers/socketEmit";
 import { schedulePaymentReminders } from "./jobs/payment-reminder.job";
 import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
@@ -41,25 +40,25 @@ import userRoutes from "./routes/user.routes";
 import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { campaignService } from "./services/campaign.service";
+import socketService from "./services/socket.service";
 import { logger } from "./utils/logger";
 
 // Configurar logger para este contexto
 const serverLogger = logger.setContext("ServerInitialization");
-
 dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 9000;
-
 let server: ReturnType<typeof app.listen>;
 
-// Inicialização do socket
+// Inicialização do socket usando o socket.service
 try {
-  initializeSocket(httpServer);
-  serverLogger.info("Socket inicializado com sucesso");
+  socketService.initializeSocketServer(httpServer);
+  serverLogger.info("Socket.io inicializado com sucesso");
 } catch (error) {
-  serverLogger.error("Erro ao inicializar socket", error);
+  serverLogger.error("Erro ao inicializar Socket.io", error);
+  // Mesmo com erro, continuamos a inicialização do servidor
 }
 
 // Configurações de CORS
@@ -85,9 +84,8 @@ app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook,
+  handleWebhook
 );
-
 app.use("/api/stripe", stripeRoutes);
 
 // Rotas públicas (sem autenticação)
@@ -162,7 +160,6 @@ async function gracefulShutdown() {
   try {
     await prisma.$disconnect();
     serverLogger.info("Conexão com o banco de dados encerrada");
-
     if (server) {
       server.close(() => {
         serverLogger.info("Servidor encerrado com sucesso");
@@ -185,7 +182,9 @@ serverLogger.info(`Timezone configurado para: ${process.env.TZ}`);
 setupMinioBucket()
   .then(() => {
     serverLogger.info("Bucket Minio configurado com sucesso");
-    server = app.listen(PORT, () => {
+
+    // Iniciando o servidor HTTP
+    server = httpServer.listen(PORT, () => {
       serverLogger.info(`Servidor rodando na porta ${PORT}`);
     });
   })

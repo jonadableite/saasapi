@@ -53,11 +53,19 @@ export class WebhookController {
 
       // Emitir evento para o frontend via Socket.IO para debugging
       const io = socketService.getSocketServer();
-      io.emit("webhook_received", {
-        timestamp: new Date(),
-        type: webhookData.event,
-        data: webhookData.data,
-      });
+
+      // Verificamos se o socket está disponível antes de usá-lo
+      if (io) {
+        io.emit("webhook_received", {
+          timestamp: new Date(),
+          type: webhookData.event,
+          data: webhookData.data,
+        });
+      } else {
+        console.warn(
+          "Socket.io não está disponível para enviar notificações em tempo real"
+        );
+      }
 
       if (webhookData.event === "messages.upsert") {
         await this.handleMessageUpsert(webhookData.data);
@@ -132,12 +140,20 @@ export class WebhookController {
 
   private emitConversationUpdate(phone: string, message: any) {
     const io = socketService.getSocketServer();
-    io.emit("conversation_update", {
-      phone,
-      message,
-    });
-    // Também atualiza a lista de conversas
-    this.updateConversationList(phone, message);
+
+    // Verificamos se o socket está disponível antes de usá-lo
+    if (io) {
+      io.emit("conversation_update", {
+        phone,
+        message,
+      });
+      // Também atualiza a lista de conversas
+      this.updateConversationList(phone, message);
+    } else {
+      console.warn(
+        `Não foi possível emitir atualização de conversa para ${phone}: Socket.io não inicializado`
+      );
+    }
   }
 
   private async updateConversationList(phone: string, message: any) {
@@ -237,19 +253,27 @@ export class WebhookController {
 
       // Emitir atualização da lista de conversas
       const io = socketService.getSocketServer();
-      const updatedConversations = await prisma.conversation.findMany({
-        where: {
-          status: { not: "CLOSED" },
-        },
-        include: {
-          contact: true,
-        },
-        orderBy: {
-          lastMessageAt: "desc",
-        },
-      });
 
-      io.emit("conversations_list_update", updatedConversations);
+      // Verificamos se o socket está disponível antes de usá-lo
+      if (io) {
+        const updatedConversations = await prisma.conversation.findMany({
+          where: {
+            status: { not: "CLOSED" },
+          },
+          include: {
+            contact: true,
+          },
+          orderBy: {
+            lastMessageAt: "desc",
+          },
+        });
+
+        io.emit("conversations_list_update", updatedConversations);
+      } else {
+        console.warn(
+          "Socket.io não está disponível para atualizar a lista de conversas"
+        );
+      }
     } catch (error) {
       console.error("Erro ao atualizar lista de conversas:", error);
     }
@@ -383,11 +407,19 @@ export class WebhookController {
         // Atualizar o status da mensagem no frontend
         if (phone) {
           const io = socketService.getSocketServer();
-          io.emit("message_status_update", {
-            phone,
-            messageId: cacheKey,
-            status: mappedStatus,
-          });
+
+          // Verificamos se o socket está disponível antes de usá-lo
+          if (io) {
+            io.emit("message_status_update", {
+              phone,
+              messageId: cacheKey,
+              status: mappedStatus,
+            });
+          } else {
+            console.warn(
+              `Não foi possível emitir atualização de status para ${phone}: Socket.io não inicializado`
+            );
+          }
         }
       }
     } catch (error) {

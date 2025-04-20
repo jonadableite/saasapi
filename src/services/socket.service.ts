@@ -27,12 +27,15 @@ export const initializeSocketServer = (server: any): Server => {
     });
   });
 
+  console.log("Socket.io inicializado com sucesso");
   return socketServer;
 };
 
-export const getSocketServer = (): Server => {
+export const getSocketServer = (): Server | null => {
+  // Em vez de lançar um erro, retornamos null quando o servidor não está inicializado
   if (!socketServer) {
-    throw new Error("Socket.io não foi inicializado ainda");
+    console.warn("Socket.io não foi inicializado ainda, retornando null");
+    return null;
   }
   return socketServer;
 };
@@ -42,12 +45,14 @@ export const emitToTenant = (
   event: string,
   data: any
 ): void => {
-  if (!socketServer) {
-    console.error("Socket.io não foi inicializado");
+  const server = getSocketServer();
+  if (!server) {
+    console.warn(
+      `Não foi possível emitir evento ${event} para ${tenantId}: Socket.io não inicializado`
+    );
     return;
   }
-
-  socketServer.to(String(tenantId)).emit(event, data);
+  server.to(String(tenantId)).emit(event, data);
 };
 
 export default {
