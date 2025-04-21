@@ -1,7 +1,9 @@
-// src/controllers/webhook.controller.ts
-import { PrismaClient } from "@prisma/client";
+//src/controllers/webhook.controller.ts
+import {
+  PrismaClient,
+  type MessageStatus as PrismaMessageStatus,
+} from "@prisma/client";
 import type { Request, Response } from "express";
-import type { MessageStatus } from "../interface";
 import { AnalyticsService } from "../services/analytics.service";
 import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 import { crmMessagingService } from "../services/CRM/messaging.service";
@@ -10,6 +12,9 @@ import { logger } from "@/utils/logger";
 
 // Logger específico para o contexto
 const WebhookControllerLogger = logger.setContext("WebhookController");
+
+// Tipo personalizado para evitar conflitos com o enum Prisma
+type MessageStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
 
 interface MessageKey {
   remoteJid: string;
@@ -25,6 +30,7 @@ interface MessageResponse {
   status: string;
   pushName?: string;
   instanceId?: string;
+  instanceName?: string;
 }
 
 const prisma = new PrismaClient();
@@ -140,12 +146,10 @@ export class WebhookController {
         messageTimestamp,
         status,
         pushName,
-        instanceId,
       } = data;
 
       // Capturar o nome da instância do webhook
-      // Este valor precisa vir do payload de entrada original
-      const instanceName = instanceId || data.instanceId || "default";
+      const instanceName = data.instanceName || data.instanceId || "default";
 
       const phone = remoteJid.split("@")[0].split(":")[0];
       const timestamp = new Date(
@@ -197,6 +201,7 @@ export class WebhookController {
         timestamp,
         status: this.mapWhatsAppStatus(status),
         senderName: pushName || "Contato",
+        instanceName, // Adicionar o nome da instância à mensagem
       });
     } catch (error) {
       WebhookControllerLogger.error("Erro ao processar nova mensagem:", error);
@@ -205,7 +210,6 @@ export class WebhookController {
 
   private emitConversationUpdate(phone: string, message: any) {
     const io = socketService.getSocketServer();
-
     // Verificamos se o socket está disponível antes de usá-lo
     if (io) {
       io.emit("conversation_update", {
@@ -221,16 +225,24 @@ export class WebhookController {
     }
   }
 
+  /**
+   * Atualiza ou cria uma conversa para um determinado contato
+   * @param phone Número do telefone do contato
+   * @param message Dados da mensagem recebida
+   */
   private async updateConversationList(phone: string, message: any) {
     try {
       // Log para depuração
-      console.log(`Atualizando conversa para ${phone} com dados:`, {
-        messageId: message.id,
-        content:
-          message.content?.substring(0, 20) +
-          (message.content?.length > 20 ? "..." : ""),
-        instanceName: message.instanceName || "não informado",
-      });
+      WebhookControllerLogger.log(
+        `Atualizando conversa para ${phone} com dados:`,
+        {
+          messageId: message.id,
+          content:
+            message.content?.substring(0, 20) +
+            (message.content?.length > 20 ? "..." : ""),
+          instanceName: message.instanceName || "não informado",
+        }
+      );
 
       // Buscar ou criar contato
       let contact = await prisma.contact.findFirst({
@@ -238,6 +250,7 @@ export class WebhookController {
       });
 
       if (!contact) {
+        WebhookControllerLogger.log(`Criando novo contato para ${phone}`);
         // Buscar um usuário padrão para associar o contato
         const defaultUser = await prisma.user.findFirst({
           orderBy: { createdAt: "asc" },
@@ -250,143 +263,109 @@ export class WebhookController {
         contact = await prisma.contact.create({
           data: {
             phone,
-            name: message.senderName || "Contato",
-            source: "whatsapp",
+            name: message.pushName || phone,
             userId: defaultUser.id,
           },
         });
-        console.log(`Novo contato criado para ${phone}, ID: ${contact.id}`);
+        WebhookControllerLogger.log(`Novo contato criado: ${contact.id}`);
       }
 
-      // Identificar a instância correta
-      let instance;
-      const instanceName = message.instanceName;
+      // Buscar instância pelo nome
+      WebhookControllerLogger.log(
+        `Buscando instância pelo nome: ${message.instanceName || "sem nome"}`
+      );
 
-      if (instanceName) {
-        // Buscar a instância pelo nome fornecido na mensagem
+      let instance = null;
+      if (message.instanceName) {
         instance = await prisma.instance.findFirst({
-          where: { instanceName },
+          where: {
+            instanceName: message.instanceName,
+          },
+          select: {
+            id: true,
+            instanceName: true,
+          },
         });
-
-        console.log(
-          `Buscando instância "${instanceName}": ${
-            instance ? "Encontrada" : "Não encontrada"
-          }`
-        );
-      }
-
-      // Se não encontrou a instância pelo nome fornecido, buscar uma instância padrão
-      if (!instance) {
-        instance = await prisma.instance.findFirst({
-          orderBy: { createdAt: "asc" },
-        });
-
-        console.log(
-          `Usando instância padrão: ${
-            instance?.instanceName || "Nenhuma encontrada"
-          }`
-        );
       }
 
       if (!instance) {
-        throw new Error("Nenhuma instância do WhatsApp encontrada");
+        // Se não encontrou a instância específica ou não foi informada, buscar a primeira instância disponível
+        WebhookControllerLogger.warn(
+          "Instância não encontrada pelo nome, buscando a primeira disponível"
+        );
+        instance = await prisma.instance.findFirst({
+          select: {
+            id: true,
+            instanceName: true,
+          },
+        });
       }
 
-      // Buscar um usuário para associar à conversa
-      const user = await prisma.user.findFirst({
-        orderBy: { createdAt: "asc" },
-      });
-
-      if (!user) {
-        throw new Error("Nenhum usuário encontrado para associar à conversa");
+      if (!instance) {
+        throw new Error(
+          "Nenhuma instância disponível para associar a conversa"
+        );
       }
 
-      // Buscar ou criar conversa
-      let conversation = await prisma.conversation.findFirst({
+      WebhookControllerLogger.log(
+        `Instância encontrada: ${instance.instanceName} (${instance.id})`
+      );
+
+      // Buscar conversa existente
+      const existingConversation = await prisma.conversation.findFirst({
         where: {
+          instanceName: instance.instanceName,
           contactPhone: phone,
-          status: { not: "CLOSED" },
         },
       });
 
-      if (!conversation) {
-        // Criar nova conversa com a instância específica
-        console.log(
+      const lastMessageContent = message.content || "(mídia)";
+
+      if (existingConversation) {
+        // Atualizar conversa existente
+        await prisma.conversation.update({
+          where: { id: existingConversation.id },
+          data: {
+            lastMessageAt: new Date(),
+            lastMessage: lastMessageContent,
+          },
+        });
+
+        WebhookControllerLogger.log(
+          `Conversa atualizada, ID: ${existingConversation.id}, Instância: ${instance.instanceName}`
+        );
+      } else {
+        // Criar nova conversa
+        WebhookControllerLogger.log(
           `Criando nova conversa para ${phone} com instância "${instance.instanceName}"`
         );
 
-        conversation = await prisma.conversation.create({
+        const defaultUser = await prisma.user.findFirst({
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (!defaultUser) {
+          throw new Error("Nenhum usuário disponível para associar a conversa");
+        }
+
+        const newConversation = await prisma.conversation.create({
           data: {
             contactPhone: phone,
-            status: "OPEN",
-            lastMessageAt: message.timestamp,
-            lastMessage: message.content || "",
             instanceName: instance.instanceName,
-            user: {
-              connect: {
-                id: user.id,
-              },
-            },
-            contact: {
-              connect: {
-                id: contact.id,
-              },
-            },
+            lastMessageAt: new Date(),
+            lastMessage: lastMessageContent,
+            userId: defaultUser.id,
+            contactId: contact.id,
           },
         });
 
-        console.log(
-          `Nova conversa criada, ID: ${conversation.id}, Instância: ${conversation.instanceName}`
-        );
-      } else {
-        // Atualizar conversa existente sem mudar a instância
-        console.log(
-          `Atualizando conversa existente ID: ${conversation.id}, Instância: ${conversation.instanceName}`
-        );
-
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: {
-            lastMessageAt: message.timestamp,
-            lastMessage: message.content || "",
-            status: "OPEN",
-            contact: {
-              connect: {
-                id: contact.id,
-              },
-            },
-            ...(message.sender === "contact"
-              ? { unreadCount: { increment: 1 } }
-              : {}),
-          },
-        });
-      }
-
-      // Emitir atualização da lista de conversas
-      const io = socketService.getSocketServer();
-
-      if (io) {
-        const updatedConversations = await prisma.conversation.findMany({
-          where: {
-            status: { not: "CLOSED" },
-          },
-          include: {
-            contact: true,
-          },
-          orderBy: {
-            lastMessageAt: "desc",
-          },
-        });
-
-        io.emit("conversations_list_update", updatedConversations);
-      } else {
-        console.warn(
-          "Socket.io não está disponível para atualizar a lista de conversas"
+        WebhookControllerLogger.log(
+          `Nova conversa criada, ID: ${newConversation.id}, Instância: ${instance.instanceName}`
         );
       }
     } catch (error) {
-      console.error(
-        `Erro ao atualizar lista de conversas para ${phone}:`,
+      WebhookControllerLogger.error(
+        `Erro ao atualizar conversa para ${phone}:`,
         error
       );
     }
@@ -445,7 +424,7 @@ export class WebhookController {
   ) {
     const messageLog = await prisma.messageLog.findFirst({
       where: {
-        OR: [{ messageId }, { messageId: data.key?.id }],
+        messageId: messageId,
       },
     });
 
@@ -490,19 +469,30 @@ export class WebhookController {
 
   private async handleMessageUpdate(data: any) {
     try {
-      const { messageId, keyId, status, remoteJid } = data;
-      const cacheKey = messageId || keyId;
+      // Compatibilidade com diferentes formatos de eventos de atualização de mensagem
+      const messageId = data.messageId || data.key?.id;
+      const status = data.status || data.receipt?.status;
+      const remoteJid = data.remoteJid || data.key?.remoteJid;
+
+      if (!messageId || !status) {
+        WebhookControllerLogger.warn(
+          "Dados insuficientes para atualizar mensagem",
+          {
+            messageId,
+            status,
+            remoteJid,
+          }
+        );
+        return;
+      }
+
+      const cacheKey = messageId;
       const cachedMessage = this.messageCache.get(cacheKey);
       const phone = remoteJid?.split("@")[0].split(":")[0];
 
       const messageLog = await prisma.messageLog.findFirst({
         where: {
-          OR: [
-            { messageId: messageId },
-            { messageId: keyId },
-            { messageId: messageId?.split("@")[0] },
-            { messageId: keyId?.split("@")[0] },
-          ],
+          messageId: messageId,
         },
       });
 
@@ -520,7 +510,6 @@ export class WebhookController {
         // Atualizar o status da mensagem no frontend
         if (phone) {
           const io = socketService.getSocketServer();
-
           // Verificamos se o socket está disponível antes de usá-lo
           if (io) {
             io.emit("message_status_update", {
@@ -545,25 +534,32 @@ export class WebhookController {
 
   private async updateMessageStatus(
     messageLog: any,
-    status: MessageStatus,
+    statusInput: MessageStatus,
     timestamp: Date = new Date()
   ) {
     try {
+      // Converter para o tipo correto esperado pelo Prisma
+      const status = statusInput as PrismaMessageStatus;
+
+      const updateData: any = {
+        status,
+        updatedAt: timestamp,
+        statusHistory: {
+          push: {
+            status,
+            timestamp: timestamp.toISOString(),
+          },
+        },
+      };
+
+      // Adicionar timestamps específicos com base no status
+      if (status === "DELIVERED") updateData.deliveredAt = timestamp;
+      if (status === "READ") updateData.readAt = timestamp;
+      if (status === "FAILED") updateData.failedAt = timestamp;
+
       await prisma.messageLog.update({
         where: { id: messageLog.id },
-        data: {
-          status,
-          ...(status === "DELIVERED" && { deliveredAt: timestamp }),
-          ...(status === "READ" && { readAt: timestamp }),
-          ...(status === "FAILED" && { failedAt: timestamp }),
-          statusHistory: {
-            push: {
-              status,
-              timestamp: timestamp.toISOString(),
-            },
-          },
-          updatedAt: timestamp,
-        },
+        data: updateData,
       });
 
       await prisma.campaignLead.update({
