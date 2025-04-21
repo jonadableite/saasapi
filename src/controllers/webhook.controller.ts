@@ -6,6 +6,10 @@ import { AnalyticsService } from "../services/analytics.service";
 import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 import { crmMessagingService } from "../services/CRM/messaging.service";
 import socketService from "../services/socket.service";
+import { logger } from "@/utils/logger";
+
+// Logger específico para o contexto
+const WebhookControllerLogger = logger.setContext("WebhookController");
 
 interface MessageKey {
   remoteJid: string;
@@ -49,33 +53,81 @@ export class WebhookController {
   public handleWebhook = async (req: Request, res: Response): Promise<void> => {
     try {
       const webhookData = req.body;
-      console.log("Webhook recebido:", JSON.stringify(webhookData, null, 2));
+      WebhookControllerLogger.log(
+        "Webhook completo recebido:",
+        JSON.stringify(webhookData, null, 2)
+      );
+
+      // Extrair informações da instância do payload
+      const instanceName =
+        webhookData.instance ||
+        webhookData.instanceName ||
+        webhookData.data?.instanceName ||
+        webhookData.data?.instance ||
+        webhookData.data?.instanceId ||
+        webhookData.instance_data?.instanceName;
+
+      WebhookControllerLogger.log(
+        "Nome da instância identificado:",
+        instanceName || "Não encontrado"
+      );
+
+      // Logs para depuração da estrutura do payload
+      WebhookControllerLogger.log(
+        "Estrutura do payload:",
+        Object.keys(webhookData).join(", ")
+      );
+
+      if (webhookData.data) {
+        WebhookControllerLogger.log(
+          "Estrutura do campo data:",
+          Object.keys(webhookData.data).join(", ")
+        );
+      }
+
+      // Injetar o nome da instância nos dados se encontrado
+      if (instanceName && webhookData.data) {
+        webhookData.data.instanceName = instanceName;
+        WebhookControllerLogger.log(
+          "Nome da instância injetado nos dados do webhook"
+        );
+      }
 
       // Emitir evento para o frontend via Socket.IO para debugging
       const io = socketService.getSocketServer();
-
-      // Verificamos se o socket está disponível antes de usá-lo
       if (io) {
         io.emit("webhook_received", {
           timestamp: new Date(),
           type: webhookData.event,
           data: webhookData.data,
+          instanceName, // Incluir o nome da instância na emissão do evento
         });
       } else {
-        console.warn(
+        WebhookControllerLogger.warn(
           "Socket.io não está disponível para enviar notificações em tempo real"
         );
       }
 
+      // Processar os eventos do webhook
       if (webhookData.event === "messages.upsert") {
-        await this.handleMessageUpsert(webhookData.data);
+        WebhookControllerLogger.log("Processando evento messages.upsert");
+        await this.handleMessageUpsert({
+          ...webhookData.data,
+          instanceName, // Passar o nome da instância explicitamente
+        });
       } else if (webhookData.event === "messages.update") {
-        await this.handleMessageUpdate(webhookData.data);
+        WebhookControllerLogger.log("Processando evento messages.update");
+        await this.handleMessageUpdate({
+          ...webhookData.data,
+          instanceName, // Passar o nome da instância explicitamente
+        });
+      } else {
+        WebhookControllerLogger.log(`Evento não tratado: ${webhookData.event}`);
       }
 
       res.status(200).json({ success: true });
     } catch (error) {
-      console.error("Erro ao processar webhook:", error);
+      WebhookControllerLogger.error("Erro ao processar webhook:", error);
       res.status(500).json({ error: "Erro interno ao processar webhook" });
     }
   };
@@ -88,7 +140,12 @@ export class WebhookController {
         messageTimestamp,
         status,
         pushName,
+        instanceId,
       } = data;
+
+      // Capturar o nome da instância do webhook
+      // Este valor precisa vir do payload de entrada original
+      const instanceName = instanceId || data.instanceId || "default";
 
       const phone = remoteJid.split("@")[0].split(":")[0];
       const timestamp = new Date(
@@ -96,12 +153,19 @@ export class WebhookController {
       );
       const { messageType, content } = this.extractMessageContent(message);
 
+      // Verifica se a mensagem já foi processada
       this.messageCache.set(messageId, {
         timestamp: Date.now(),
-        data: { ...data, phone, messageType, content },
+        data: {
+          ...data,
+          phone,
+          messageType,
+          content,
+          instanceName,
+        },
       });
 
-      // Processar mensagem para o sistema CRM
+      // Processar a mensagem
       await crmMessagingService.processMessage({
         id: messageId,
         remoteJid: phone,
@@ -111,6 +175,7 @@ export class WebhookController {
         messageType,
         pushName,
         status: this.mapWhatsAppStatus(status),
+        instanceName,
       });
 
       const messageLog = await this.findOrCreateMessageLog(messageId, phone, {
@@ -134,7 +199,7 @@ export class WebhookController {
         senderName: pushName || "Contato",
       });
     } catch (error) {
-      console.error("Erro ao processar nova mensagem:", error);
+      WebhookControllerLogger.error("Erro ao processar nova mensagem:", error);
     }
   }
 
@@ -150,7 +215,7 @@ export class WebhookController {
       // Também atualiza a lista de conversas
       this.updateConversationList(phone, message);
     } else {
-      console.warn(
+      WebhookControllerLogger.warn(
         `Não foi possível emitir atualização de conversa para ${phone}: Socket.io não inicializado`
       );
     }
@@ -158,6 +223,15 @@ export class WebhookController {
 
   private async updateConversationList(phone: string, message: any) {
     try {
+      // Log para depuração
+      console.log(`Atualizando conversa para ${phone} com dados:`, {
+        messageId: message.id,
+        content:
+          message.content?.substring(0, 20) +
+          (message.content?.length > 20 ? "..." : ""),
+        instanceName: message.instanceName || "não informado",
+      });
+
       // Buscar ou criar contato
       let contact = await prisma.contact.findFirst({
         where: { phone },
@@ -181,12 +255,38 @@ export class WebhookController {
             userId: defaultUser.id,
           },
         });
+        console.log(`Novo contato criado para ${phone}, ID: ${contact.id}`);
       }
 
-      // Buscar uma instância padrão do WhatsApp
-      const instance = await prisma.instance.findFirst({
-        orderBy: { createdAt: "asc" },
-      });
+      // Identificar a instância correta
+      let instance;
+      const instanceName = message.instanceName;
+
+      if (instanceName) {
+        // Buscar a instância pelo nome fornecido na mensagem
+        instance = await prisma.instance.findFirst({
+          where: { instanceName },
+        });
+
+        console.log(
+          `Buscando instância "${instanceName}": ${
+            instance ? "Encontrada" : "Não encontrada"
+          }`
+        );
+      }
+
+      // Se não encontrou a instância pelo nome fornecido, buscar uma instância padrão
+      if (!instance) {
+        instance = await prisma.instance.findFirst({
+          orderBy: { createdAt: "asc" },
+        });
+
+        console.log(
+          `Usando instância padrão: ${
+            instance?.instanceName || "Nenhuma encontrada"
+          }`
+        );
+      }
 
       if (!instance) {
         throw new Error("Nenhuma instância do WhatsApp encontrada");
@@ -210,16 +310,19 @@ export class WebhookController {
       });
 
       if (!conversation) {
-        // CORREÇÃO - Incluindo campos obrigatórios instanceName e user
+        // Criar nova conversa com a instância específica
+        console.log(
+          `Criando nova conversa para ${phone} com instância "${instance.instanceName}"`
+        );
+
         conversation = await prisma.conversation.create({
           data: {
             contactPhone: phone,
             status: "OPEN",
             lastMessageAt: message.timestamp,
             lastMessage: message.content || "",
-            instanceName: instance.instanceName, // Campo obrigatório
+            instanceName: instance.instanceName,
             user: {
-              // Campo obrigatório
               connect: {
                 id: user.id,
               },
@@ -231,8 +334,16 @@ export class WebhookController {
             },
           },
         });
+
+        console.log(
+          `Nova conversa criada, ID: ${conversation.id}, Instância: ${conversation.instanceName}`
+        );
       } else {
-        // Atualizar conversa existente
+        // Atualizar conversa existente sem mudar a instância
+        console.log(
+          `Atualizando conversa existente ID: ${conversation.id}, Instância: ${conversation.instanceName}`
+        );
+
         await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
@@ -254,7 +365,6 @@ export class WebhookController {
       // Emitir atualização da lista de conversas
       const io = socketService.getSocketServer();
 
-      // Verificamos se o socket está disponível antes de usá-lo
       if (io) {
         const updatedConversations = await prisma.conversation.findMany({
           where: {
@@ -275,7 +385,10 @@ export class WebhookController {
         );
       }
     } catch (error) {
-      console.error("Erro ao atualizar lista de conversas:", error);
+      console.error(
+        `Erro ao atualizar lista de conversas para ${phone}:`,
+        error
+      );
     }
   }
 
@@ -316,7 +429,7 @@ export class WebhookController {
       content = "";
     } else {
       // Log do objeto message para depuração de novos tipos
-      console.log(
+      WebhookControllerLogger.log(
         "Tipo de mensagem desconhecido:",
         JSON.stringify(message, null, 2)
       );
@@ -416,14 +529,17 @@ export class WebhookController {
               status: mappedStatus,
             });
           } else {
-            console.warn(
+            WebhookControllerLogger.warn(
               `Não foi possível emitir atualização de status para ${phone}: Socket.io não inicializado`
             );
           }
         }
       }
     } catch (error) {
-      console.error("Erro ao processar atualização de mensagem:", error);
+      WebhookControllerLogger.error(
+        "Erro ao processar atualização de mensagem:",
+        error
+      );
     }
   }
 
@@ -465,7 +581,7 @@ export class WebhookController {
         await this.updateCampaignStats(messageLog.campaignId);
       }
     } catch (error) {
-      console.error("Erro ao atualizar status:", error);
+      WebhookControllerLogger.error("Erro ao atualizar status:", error);
       throw error;
     }
   }
@@ -515,7 +631,10 @@ export class WebhookController {
         },
       });
     } catch (error) {
-      console.error("Erro ao atualizar estatísticas da campanha:", error);
+      WebhookControllerLogger.error(
+        "Erro ao atualizar estatísticas da campanha:",
+        error
+      );
     }
   }
 }

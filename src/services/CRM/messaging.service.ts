@@ -85,7 +85,7 @@ export class CRMMessagingService {
       // Enviar via API Evolution
       const response = await this.evolutionApiService.sendMessage({
         instanceName,
-        to: cleanPhone, // Parâmetro corrigido para usar 'to' em vez de 'number'
+        to: cleanPhone,
         message,
         options: {
           delay: 0,
@@ -823,7 +823,6 @@ export class CRMMessagingService {
       }
 
       // Enviar via API Evolution
-      // Nota: Você precisa implementar o método sendReaction na classe EvolutionApiService
       const response = await this.evolutionApiService.sendReaction({
         instanceName,
         to: cleanPhone,
@@ -876,59 +875,72 @@ export class CRMMessagingService {
   }
 
   /**
+   * Valida o nome da instância
+   */
+  private async validateInstanceName(
+    instanceName: string,
+    userId: string
+  ): Promise<string> {
+    // Verificar se a instância existe e pertence ao usuário
+    const instance = await prisma.instance.findFirst({
+      where: {
+        instanceName: instanceName,
+        userId: userId,
+      },
+    });
+
+    if (instance) {
+      return instance.instanceName; // Retorna o nome correto da instância
+    } else {
+      // Tenta encontrar qualquer instância associada ao usuário
+      const defaultInstance = await prisma.instance.findFirst({
+        where: { userId },
+      });
+
+      if (defaultInstance) {
+        return defaultInstance.instanceName;
+      }
+
+      // Se não encontrar nenhuma instância, lance um erro
+      throw new Error(`Nenhuma instância encontrada para o usuário ${userId}`);
+    }
+  }
+
+  /**
    * Encontra ou cria uma conversa para o contato
    */
-  private async findOrCreateConversation(params: {
+  async findOrCreateConversation(params: {
     instanceName: string;
     contactPhone: string;
     userId: string;
-  }): Promise<{ id: string; new: boolean }> {
+  }): Promise<any> {
     const { instanceName, contactPhone, userId } = params;
 
-    try {
-      // Verificar se a conversa já existe
-      const existingConversation = await prisma.conversation.findUnique({
-        where: {
-          instanceName_contactPhone: {
-            instanceName,
-            contactPhone,
-          },
+    // Validar o nome da instância antes de prosseguir
+    const validInstanceName = await this.validateInstanceName(
+      instanceName,
+      userId
+    );
+
+    return prisma.conversation.upsert({
+      where: {
+        instanceName_contactPhone: {
+          instanceName: validInstanceName, // Nome validado da instância
+          contactPhone: contactPhone,
         },
-      });
-
-      if (existingConversation) {
-        return { id: existingConversation.id, new: false };
-      }
-
-      // Verificar se existe um contato com este telefone
-      const existingContact = await prisma.contact.findFirst({
-        where: {
-          phone: contactPhone,
-          userId,
-        },
-      });
-
-      // Criar nova conversa
-      const newConversation = await prisma.conversation.create({
-        data: {
-          instanceName,
-          contactPhone,
-          contactName: existingContact?.name || contactPhone,
-          status: "OPEN",
-          lastMessageAt: new Date(),
-          userId, // Usando userId diretamente em vez de relação user
-          // Conectar com contato existente (se existir)
-          ...(existingContact && {
-            contactId: existingContact.id, // Usando contactId em vez de relação contact
-          }),
-        },
-      });
-
-      return { id: newConversation.id, new: true };
-    } catch (error) {
-      messagingLogger.error("Erro ao buscar/criar conversa:", error);
-      throw error;
-    }
+      },
+      update: {
+        lastMessageAt: new Date(),
+      },
+      create: {
+        instanceName: validInstanceName, // Nome validado da instância
+        contactPhone: contactPhone,
+        contactName: contactPhone,
+        userId: userId,
+        lastMessageAt: new Date(),
+        status: "OPEN",
+      },
+    });
   }
 
   /**

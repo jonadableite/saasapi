@@ -60,7 +60,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
         event,
         instance,
         dataSnippet: JSON.stringify(data).slice(0, 200),
-      })}`,
+      })}`
     );
 
     switch (event) {
@@ -124,10 +124,10 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
       return;
     }
 
-    // Identificar o usuário associado à instância
+    // Validar se a instância existe
     const instance = await prisma.instance.findUnique({
       where: { instanceName },
-      select: { userId: true },
+      select: { userId: true, instanceName: true },
     });
 
     if (!instance) {
@@ -153,12 +153,14 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     // Extrair conteúdo da mensagem
     const messageContent = extractMessageContent(message);
 
+    // Usar o nome validado da instância
+    const validInstanceName = instance.instanceName;
+
     // Upsert Conversation
     const conversation = await prisma.conversation.upsert({
       where: {
-        // biome-ignore lint/style/useNamingConvention: <explanation>
         instanceName_contactPhone: {
-          instanceName,
+          instanceName: validInstanceName, // Nome validado
           contactPhone: contactPhone.replace("@s.whatsapp.net", ""),
         },
       },
@@ -168,7 +170,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
         isGroup,
       },
       create: {
-        instanceName,
+        instanceName: validInstanceName, // Nome validado
         contactPhone: contactPhone.replace("@s.whatsapp.net", ""),
         contactName,
         userId: instance.userId,
@@ -214,7 +216,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Mensagem ${key.id} processada para conversa ${conversation.id}`,
+      `Mensagem ${key.id} processada para conversa ${conversation.id}`
     );
   } catch (error) {
     webhookLogger.error("Erro ao processar nova mensagem:", error);
@@ -244,7 +246,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Status da mensagem ${keyId} atualizado para ${mappedStatus}`,
+      `Status da mensagem ${keyId} atualizado para ${mappedStatus}`
     );
 
     // Se a mensagem foi encontrada, emitir evento
@@ -291,7 +293,7 @@ const handleConnectionUpdate = async (instanceName: string, data: any) => {
     });
 
     webhookLogger.verbose(
-      `Status da instância ${instanceName} atualizado para ${mappedStatus}`,
+      `Status da instância ${instanceName} atualizado para ${mappedStatus}`
     );
 
     // Emitir evento de atualização de status
@@ -332,7 +334,7 @@ const handleQrCodeUpdate = async (instanceName: string, data: any) => {
 
     if (!instance) {
       webhookLogger.warn(
-        `Instância não encontrada para QR code: ${instanceName}`,
+        `Instância não encontrada para QR code: ${instanceName}`
       );
       return;
     }
@@ -370,7 +372,7 @@ const handleGroupUpdate = async (instanceName: string, data: any) => {
 
     if (!instance) {
       webhookLogger.warn(
-        `Instância não encontrada para grupo: ${instanceName}`,
+        `Instância não encontrada para grupo: ${instanceName}`
       );
       return;
     }
