@@ -458,6 +458,18 @@ function extractMessageContent(message: any): {
   mediaType?: string;
   mediaMimeType?: string;
 } {
+  // Verifica se é uma mensagem de template
+  if (message.templateMessage) {
+    const hydratedTemplate = message.templateMessage.hydratedTemplate;
+
+    return {
+      text: hydratedTemplate.hydratedContentText || "Mensagem de Template",
+      type: "template",
+      mediaUrl: hydratedTemplate.hydratedButtons?.[0]?.urlButton?.url,
+    };
+  }
+
+  // Restante do código original...
   if (!message) {
     return { text: "", type: "unknown" };
   }
