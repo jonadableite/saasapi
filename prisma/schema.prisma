@@ -455,34 +455,34 @@ model Contact {
   conversations     Conversation[]
   contactNotes      ContactNote[]
 
-  @@unique([phone, userId])
+  @@unique([phone, userId], name: "Contact_phone_userId")
 }
 
 model Conversation {
-  id            String    @id @default(uuid())
-  instanceName  String
-  contactPhone  String
-  contactName   String?
-  contactAvatar String?
-  lastMessageAt DateTime  @default(now())
-  lastMessage   String?
-  unreadCount   Int       @default(0)
-  status        String    @default("OPEN")
-  tags          Json      @default("{}")
-  isActive      Boolean   @default(true)
-  messages      Message[]
-  contactId     String?
-  contact       Contact?  @relation(fields: [contactId], references: [id])
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  isGroup       Boolean   @default(false)
-  groupMetadata Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@unique([instanceName, contactPhone])
-  @@index([userId, lastMessageAt])
+  id              String            @id @default(uuid())
+  instanceName    String
+  contactPhone    String
+  contactName     String?
+  contactAvatar   String?
+  lastMessageAt   DateTime          @default(now())
+  lastMessage     String?
+  unreadCount     Int               @default(0)
+  status          String            @default("OPEN")
+  tags            Json              @default("{}")
+  isActive        Boolean           @default(true)
+  messages        Message[]
+  contactId       String?
+  contact         Contact?          @relation(fields: [contactId], references: [id])
+  userId          String
+  user            User              @relation(fields: [userId], references: [id])
+  isGroup         Boolean           @default(false)
+  groupMetadata   Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   MessageReaction MessageReaction[]
+
+  @@unique([instanceName, contactPhone], name: "Conversation_instanceName_contactPhone")
+  @@index([userId, lastMessageAt])
 }
 
 model Message {
@@ -544,14 +544,14 @@ model ContactNote {
 }
 
 model MessageReaction {
-  id             String      @id @default(uuid())
-  messageId      String      
+  id             String       @id @default(uuid())
+  messageId      String
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  reaction       String      // emoji usado como reação
-  userId         String      // ID do usuário que reagiu
-  createdAt      DateTime    @default(now())
-  
+  reaction       String // emoji usado como reação
+  userId         String // ID do usuário que reagiu
+  createdAt      DateTime     @default(now())
+
   @@index([messageId])
   @@index([conversationId])
 }
