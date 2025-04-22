@@ -232,94 +232,63 @@ export class WebhookController {
    */
   private async updateConversationList(phone: string, message: any) {
     try {
-      // Log para depuração
-      WebhookControllerLogger.log(
-        `Atualizando conversa para ${phone} com dados:`,
-        {
-          messageId: message.id,
-          content:
-            message.content?.substring(0, 20) +
-            (message.content?.length > 20 ? "..." : ""),
-          instanceName: message.instanceName || "não informado",
-        }
-      );
-
-      // Buscar ou criar contato
-      let contact = await prisma.contact.findFirst({
-        where: { phone },
-      });
-
-      if (!contact) {
-        WebhookControllerLogger.log(`Criando novo contato para ${phone}`);
-        // Buscar um usuário padrão para associar o contato
-        const defaultUser = await prisma.user.findFirst({
-          orderBy: { createdAt: "asc" },
-        });
-
-        if (!defaultUser) {
-          throw new Error("Nenhum usuário encontrado para associar o contato");
-        }
-
-        contact = await prisma.contact.create({
-          data: {
-            phone,
-            name: message.pushName || phone,
-            userId: defaultUser.id,
-          },
-        });
-        WebhookControllerLogger.log(`Novo contato criado: ${contact.id}`);
+      // Verificar se é um grupo e ignorar
+      if (phone.includes("@g.us")) {
+        WebhookControllerLogger.log("Mensagem de grupo ignorada");
+        return;
       }
 
-      // Buscar instância pelo nome
-      WebhookControllerLogger.log(
-        `Buscando instância pelo nome: ${message.instanceName || "sem nome"}`
-      );
+      // Remover "@s.whatsapp.net" do número
+      const cleanPhone = phone.replace(/@.*$/, "");
 
-      let instance = null;
-      if (message.instanceName) {
-        instance = await prisma.instance.findFirst({
-          where: {
-            instanceName: message.instanceName,
-          },
-          select: {
-            id: true,
-            instanceName: true,
-          },
-        });
-      }
-
-      if (!instance) {
-        // Se não encontrou a instância específica ou não foi informada, buscar a primeira instância disponível
-        WebhookControllerLogger.warn(
-          "Instância não encontrada pelo nome, buscando a primeira disponível"
-        );
-        instance = await prisma.instance.findFirst({
-          select: {
-            id: true,
-            instanceName: true,
-          },
-        });
-      }
-
-      if (!instance) {
-        throw new Error(
-          "Nenhuma instância disponível para associar a conversa"
-        );
-      }
-
-      WebhookControllerLogger.log(
-        `Instância encontrada: ${instance.instanceName} (${instance.id})`
-      );
-
-      // Buscar conversa existente
-      const existingConversation = await prisma.conversation.findFirst({
+      // Buscar a instância com seu usuário proprietário
+      const instance = await prisma.instance.findFirst({
         where: {
-          instanceName: instance.instanceName,
-          contactPhone: phone,
+          instanceName: message.instanceName,
+        },
+        include: {
+          user: true, // Incluir detalhes do usuário proprietário
         },
       });
 
+      if (!instance || !instance.user) {
+        WebhookControllerLogger.error(
+          `Instância não encontrada ou sem usuário: ${message.instanceName}`
+        );
+        return;
+      }
+
+      const instanceOwner = instance.user;
+
+      // Criar ou buscar contato vinculado ao usuário da instância
+      let contact = await prisma.contact.findFirst({
+        where: {
+          phone: cleanPhone,
+          userId: instanceOwner.id, // Filtrar pelo usuário da instância
+        },
+      });
+
+      // Se não existir contato, criar vinculado ao usuário da instância
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            phone: cleanPhone,
+            name: message.pushName || cleanPhone,
+            userId: instanceOwner.id, // Vincular ao usuário da instância
+          },
+        });
+      }
+
       const lastMessageContent = message.content || "(mídia)";
+
+      // Buscar conversa existente para este contato e instância
+      const existingConversation = await prisma.conversation.findFirst({
+        where: {
+          contactPhone: cleanPhone,
+          instanceName: instance.instanceName,
+          userId: instanceOwner.id, // Filtrar pela instância do usuário
+        },
+      });
 
       if (existingConversation) {
         // Atualizar conversa existente
@@ -330,39 +299,23 @@ export class WebhookController {
             lastMessage: lastMessageContent,
           },
         });
-
-        WebhookControllerLogger.log(
-          `Conversa atualizada, ID: ${existingConversation.id}, Instância: ${instance.instanceName}`
-        );
       } else {
-        // Criar nova conversa
-        WebhookControllerLogger.log(
-          `Criando nova conversa para ${phone} com instância "${instance.instanceName}"`
-        );
-
-        const defaultUser = await prisma.user.findFirst({
-          orderBy: { createdAt: "asc" },
-        });
-
-        if (!defaultUser) {
-          throw new Error("Nenhum usuário disponível para associar a conversa");
-        }
-
-        const newConversation = await prisma.conversation.create({
+        // Criar nova conversa vinculada ao usuário da instância
+        await prisma.conversation.create({
           data: {
-            contactPhone: phone,
+            contactPhone: cleanPhone,
             instanceName: instance.instanceName,
             lastMessageAt: new Date(),
             lastMessage: lastMessageContent,
-            userId: defaultUser.id,
+            userId: instanceOwner.id, // Usuário proprietário da instância
             contactId: contact.id,
           },
         });
-
-        WebhookControllerLogger.log(
-          `Nova conversa criada, ID: ${newConversation.id}, Instância: ${instance.instanceName}`
-        );
       }
+
+      WebhookControllerLogger.log(
+        `Conversa atualizada/criada para ${cleanPhone} na instância ${instance.instanceName}`
+      );
     } catch (error) {
       WebhookControllerLogger.error(
         `Erro ao atualizar conversa para ${phone}:`,

@@ -18,21 +18,34 @@ export class CRMMessagingService {
   /**
    * Processa uma mensagem recebida
    */
-  async processMessage(payload: any): Promise<boolean> {
+  async processMessage(messageData: any) {
     try {
-      messagingLogger.info("Processando mensagem recebida");
-
-      // Verifica se a payload tem o formato esperado
-      if (!payload || !payload.key || !payload.instanceName) {
-        messagingLogger.error("Payload de mensagem inválida:", payload);
-        return false;
+      // Validações mais robustas
+      if (!messageData.remoteJid) {
+        messagingLogger.error("Número de telefone ausente", messageData);
+        return null;
       }
 
-      // Delegar o processamento para o método apropriado
-      return this.processIncomingMessage(payload);
+      // Remover sufixos de grupos/whatsapp
+      const cleanPhone = messageData.remoteJid.replace(/@.*$/, "");
+
+      // Validar número de telefone
+      if (!/^\d+$/.test(cleanPhone)) {
+        messagingLogger.error("Número de telefone inválido", cleanPhone);
+        return null;
+      }
+
+      // Dados atualizados
+      const processedMessage = {
+        ...messageData,
+        remoteJid: cleanPhone,
+      };
+
+      // Resto do processamento
+      return processedMessage;
     } catch (error) {
-      messagingLogger.error("Erro ao processar mensagem:", error);
-      return false;
+      messagingLogger.error("Erro ao processar mensagem", error);
+      return null;
     }
   }
 
