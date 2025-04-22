@@ -159,10 +159,16 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     // Upsert Conversation
     const conversation = await prisma.conversation.upsert({
       where: {
-        instanceName_contactPhone: {
-          instanceName: validInstanceName, // Nome validado
-          contactPhone: contactPhone.replace("@s.whatsapp.net", ""),
-        },
+        id:
+          (
+            await prisma.conversation.findFirst({
+              where: {
+                instanceName: validInstanceName,
+                contactPhone: contactPhone.replace("@s.whatsapp.net", ""),
+              },
+              select: { id: true },
+            })
+          )?.id || undefined,
       },
       update: {
         contactName: !isFromMe ? contactName : undefined,
@@ -383,11 +389,16 @@ const handleGroupUpdate = async (instanceName: string, data: any) => {
     // Upsert para a conversa do grupo
     const conversation = await prisma.conversation.upsert({
       where: {
-        // biome-ignore lint/style/useNamingConvention: <explanation>
-        instanceName_contactPhone: {
-          instanceName,
-          contactPhone: groupPhone,
-        },
+        id:
+          (
+            await prisma.conversation.findFirst({
+              where: {
+                instanceName,
+                contactPhone: groupPhone,
+              },
+              select: { id: true },
+            })
+          )?.id || undefined,
       },
       update: {
         contactName: subject || "Grupo sem nome",

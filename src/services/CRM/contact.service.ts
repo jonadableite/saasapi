@@ -262,7 +262,7 @@ export class ContactService {
           // Criar ou atualizar o contato
           await prisma.contact.upsert({
             where: {
-              phone_userId: {
+              Contact_phone_userId: {
                 phone: cleanPhone,
                 userId: contact.userId,
               },

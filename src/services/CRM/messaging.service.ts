@@ -809,6 +809,7 @@ export class CRMMessagingService {
     userId: string;
   }): Promise<{ success: boolean; error?: string }> {
     const { instanceName, contactPhone, messageId, emoji, userId } = params;
+
     try {
       messagingLogger.info(
         `Enviando reação para mensagem ${messageId} via instância ${instanceName}`
@@ -821,13 +822,12 @@ export class CRMMessagingService {
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar a conversa
-      const conversation = await prisma.conversation.findUnique({
+      // Encontrar a conversa com uma abordagem alternativa
+      const conversation = await prisma.conversation.findFirst({
         where: {
-          instanceName_contactPhone: {
-            instanceName,
-            contactPhone: cleanPhone,
-          },
+          instanceName,
+          contactPhone: cleanPhone,
+          userId, // Adicionar userId para maior precisão
         },
       });
 
@@ -853,11 +853,19 @@ export class CRMMessagingService {
 
       // Registrar a reação no banco usando transação
       await prisma.$transaction(async (tx) => {
+        // Verificar se a mensagem original existe
+        const originalMessage = await tx.message.findUnique({
+          where: { messageId },
+        });
+
+        if (!originalMessage) {
+          throw new Error("Mensagem original não encontrada");
+        }
+
         // Criar registro de reação
-        // Nota: Você precisa ter uma tabela de reações no seu schema do Prisma
         await tx.messageReaction.create({
           data: {
-            messageId,
+            messageId: originalMessage.id, // Usar o ID interno da mensagem
             conversationId: conversation.id,
             reaction: emoji,
             userId,
@@ -869,7 +877,7 @@ export class CRMMessagingService {
         await tx.conversation.update({
           where: { id: conversation.id },
           data: {
-            lastMessageAt: new Date(), // Usando lastMessageAt em vez de lastActivityAt
+            lastMessageAt: new Date(),
           },
         });
       });
@@ -877,6 +885,7 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Reação enviada com sucesso para mensagem ${messageId}`
       );
+
       return { success: true };
     } catch (error) {
       messagingLogger.error("Erro ao enviar reação:", error);
@@ -935,18 +944,25 @@ export class CRMMessagingService {
       userId
     );
 
+    // Primeiro, tente encontrar uma conversa existente
+    const existingConversation = await prisma.conversation.findFirst({
+      where: {
+        instanceName: validInstanceName,
+        contactPhone: contactPhone,
+        userId: userId,
+      },
+    });
+
+    // Use o ID da conversa existente ou deixe indefinido para criar uma nova
     return prisma.conversation.upsert({
       where: {
-        instanceName_contactPhone: {
-          instanceName: validInstanceName, // Nome validado da instância
-          contactPhone: contactPhone,
-        },
+        id: existingConversation?.id || undefined,
       },
       update: {
         lastMessageAt: new Date(),
       },
       create: {
-        instanceName: validInstanceName, // Nome validado da instância
+        instanceName: validInstanceName,
         contactPhone: contactPhone,
         contactName: contactPhone,
         userId: userId,
@@ -964,14 +980,14 @@ export class CRMMessagingService {
       const { key, message, messageTimestamp, status, pushName, instanceName } =
         payload;
 
+      // Validações iniciais (mantidas como estavam)
       if (!key?.remoteJid || !key.id) {
         messagingLogger.warn("Mensagem recebida sem ID ou remetente");
         return false;
       }
 
-      // Extrair número de telefone do JID
       const phoneJid = key.remoteJid;
-      const contactPhone = phoneJid.split("@")[0]; // Remove a parte após @
+      const contactPhone = phoneJid.split("@")[0];
 
       if (!contactPhone) {
         messagingLogger.warn(`JID inválido: ${phoneJid}`);
@@ -981,28 +997,25 @@ export class CRMMessagingService {
       // Determinar o tipo de mensagem
       const msgType = this.determineMessageType(message);
       const content = this.extractMessageContent(message, msgType);
-
-      // Determinar se é uma mensagem recebida ou enviada
       const isSentByMe = key.fromMe === true;
 
-      // Buscar a conversa
+      // Buscar a conversa com uma abordagem mais robusta
       let conversation = await prisma.conversation.findFirst({
         where: {
-          contactPhone,
           instanceName,
+          contactPhone,
+          // Opcional: adicionar userId se quiser ser mais específico
         },
         include: {
           user: true,
         },
       });
 
-      // Se não existe conversa mas é mensagem recebida, criar automaticamente
+      // Se não existe conversa e é mensagem recebida, criar automaticamente
       if (!conversation && !isSentByMe) {
         // Buscar um usuário associado à instância
         const instance = await prisma.instance.findFirst({
-          where: {
-            instanceName, // Usando instanceName em vez de name
-          },
+          where: { instanceName },
           include: { user: true },
         });
 
@@ -1019,7 +1032,7 @@ export class CRMMessagingService {
             contactName: pushName || contactPhone,
             status: "OPEN",
             lastMessageAt: new Date(),
-            userId: instance.userId,
+            userId: instance.user.id, // Certifique-se de usar o ID correto
           },
           include: {
             user: true,
