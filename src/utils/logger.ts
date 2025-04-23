@@ -243,7 +243,7 @@ export class Logger {
   // Novo método success
   public success(
     message: string,
-    context?: Record<string, any> | string | undefined,
+    context?: Record<string, any> | string | undefined
   ): void {
     let logContext: Record<string, any> | undefined;
 
@@ -257,7 +257,7 @@ export class Logger {
             ...acc,
             [key]: this.sanitizeLogData(value),
           }),
-          {},
+          {}
         );
     }
 
@@ -271,6 +271,8 @@ export class Logger {
   public log(
     message: string,
     context?: Record<string, any> | string | undefined,
+    p0?: string,
+    isCurrentUser?: boolean
   ): void {
     let logContext: Record<string, any> | undefined;
 
@@ -284,7 +286,7 @@ export class Logger {
             ...acc,
             [key]: this.sanitizeLogData(value),
           }),
-          {},
+          {}
         );
     }
 
@@ -297,7 +299,7 @@ export class Logger {
 
   public info(
     message: string,
-    context?: Record<string, any> | string | undefined,
+    context?: Record<string, any> | string | undefined
   ): void {
     let logContext: Record<string, any> | undefined;
 
@@ -311,7 +313,7 @@ export class Logger {
             ...acc,
             [key]: this.sanitizeLogData(value),
           }),
-          {},
+          {}
         );
     }
 
@@ -324,7 +326,7 @@ export class Logger {
 
   public warn(
     message: string,
-    context?: Record<string, any> | string | undefined,
+    context?: Record<string, any> | string | undefined
   ): void {
     let logContext: Record<string, any> | undefined;
 
@@ -338,7 +340,7 @@ export class Logger {
             ...acc,
             [key]: this.sanitizeLogData(value),
           }),
-          {},
+          {}
         );
     }
 
@@ -352,7 +354,7 @@ export class Logger {
   public error(
     message: string,
     error?: any,
-    additionalContext?: unknown,
+    additionalContext?: unknown
   ): void {
     const errorContext =
       error instanceof Error
