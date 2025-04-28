@@ -1,214 +1,201 @@
 // src/services/evolution-api.service.ts
-import { PrismaClient, Prisma } from "@prisma/client";
 import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
+import { logger } from "@/utils/logger";
+
+const evolutionLogger = logger.setContext("EvolutionApiService");
 
 export class EvolutionApiService {
-  private prisma: PrismaClient;
-  private apiBaseUrl: string;
+  private apiUrl: string;
   private apiKey: string;
 
   constructor() {
-    this.prisma = new PrismaClient();
-    this.apiBaseUrl = process.env.EVOLUTION_API_BASE_URL || "";
+    this.apiUrl =
+      process.env.EVOLUTION_API_URL || "https://evo.whatlead.com.br";
     this.apiKey = process.env.EVOLUTION_API_KEY || "";
   }
 
-  // Método para enviar mensagem de texto
-  async sendTextMessage(data: {
+  private async makeRequest(
+    endpoint: string,
+    method: string,
+    data: any
+  ): Promise<any> {
+    try {
+      const response = await axios({
+        method,
+        url: `${this.apiUrl}${endpoint}`,
+        headers: {
+          "Content-Type": "application/json",
+          apikey: this.apiKey,
+        },
+        data,
+      });
+
+      return {
+        success: true,
+        messageId: response.data?.id || response.data?.messageId,
+        data: response.data,
+      };
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro na requisição: ${endpoint}`,
+        error.response?.data || error.message
+      );
+      return {
+        success: false,
+        error:
+          error.response?.data?.message || error.message || "Erro desconhecido",
+      };
+    }
+  }
+
+  async sendMessage(params: {
     instanceName: string;
     number: string;
     text: string;
-  }) {
+    options?: any;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const response = await axios.post(
-        `${this.apiBaseUrl}/message/sendText/${data.instanceName}`,
+      const response = await this.makeRequest(
+        `/message/sendText/${params.instanceName}`,
+        "POST",
         {
-          number: data.number,
-          text: data.text,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
+          number: params.number,
+          text: params.text,
+          ...params.options,
         }
       );
-
-      return response.data;
-    } catch (error) {
-      console.error("Erro ao enviar mensagem de texto:", error);
-      throw error;
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar mensagem de texto para ${params.number}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao enviar mensagem de texto",
+      };
     }
   }
 
-  // Método para enviar mídia
-  async sendMediaMessage(data: {
+  async sendMedia(params: {
     instanceName: string;
     number: string;
-    mediaUrl: string;
-    type: "image" | "document" | "audio" | "video";
+    mediatype: string;
+    media: string;
     caption?: string;
-  }) {
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const endpoint = this.getMediaEndpoint(data.type);
-
-      const payload = {
-        number: data.number,
-        [data.type]: data.mediaUrl,
-        ...(data.caption && { caption: data.caption }),
-      };
-
-      const response = await axios.post(
-        `${this.apiBaseUrl}${endpoint}/${data.instanceName}`,
-        payload,
+      const response = await this.makeRequest(
+        `/message/sendMedia/${params.instanceName}`,
+        "POST",
         {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
+          number: params.number,
+          mediatype: params.mediatype,
+          media: params.media,
+          caption: params.caption,
         }
       );
-
-      return response.data;
-    } catch (error) {
-      console.error("Erro ao enviar mídia:", error);
-      throw error;
-    }
-  }
-
-  // Método auxiliar para determinar endpoint de mídia
-  private getMediaEndpoint(type: string): string {
-    const endpoints = {
-      image: "/message/sendMedia",
-      document: "/message/sendMedia",
-      audio: "/message/sendWhatsAppAudio",
-      video: "/message/sendMedia",
-    };
-    return endpoints[type] || "/message/sendMedia";
-  }
-
-  // Método para processar mensagem recebida
-  async handleIncomingMessage(messageData: any, instanceName: string) {
-    try {
-      // Encontrar a instância
-      const instance = await this.prisma.instance.findUnique({
-        where: { instanceName },
-        select: { userId: true },
-      });
-
-      if (!instance) {
-        throw new Error("Instância não encontrada");
-      }
-
-      // Encontrar ou criar conversa
-      const conversation = await this.prisma.conversation.upsert({
-        where: {
-          Conversation_instanceName_contactPhone: {
-            instanceName,
-            contactPhone: messageData.key?.participant || messageData.sender,
-          },
-        },
-        update: {
-          lastMessageAt: new Date(),
-          lastMessage: messageData.message?.conversation || "",
-        },
-        create: {
-          instanceName,
-          contactPhone: messageData.key?.participant || messageData.sender,
-          contactName: messageData.pushName,
-          userId: instance.userId,
-        },
-      });
-
-      // Processar mensagem
-      const message = await this.processMessageFromEvolution(
-        instanceName,
-        messageData,
-        conversation.id,
-        instance.userId
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar mídia para ${params.number}`,
+        error
       );
-
-      return message;
-    } catch (error) {
-      console.error("Erro ao processar mensagem recebida", error);
-      throw error;
+      return { success: false, error: "Falha ao enviar mídia" };
     }
   }
 
-  // Método para processar detalhes da mensagem
-  async processMessageFromEvolution(
-    instanceName: string,
-    messageData: any,
-    conversationId: string,
-    userId: string
-  ) {
+  async sendButton(params: {
+    instanceName: string;
+    number: string;
+    text: string;
+    buttons: Array<{ id: string; text: string }>;
+    title?: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      // Determinar o tipo de mídia
-      const getMediaType = (type: string) => {
-        const mediaTypes = {
-          image: "image",
-          video: "video",
-          audio: "audio",
-          document: "document",
-          text: "text",
-        };
-        return mediaTypes[type] || "text";
-      };
-
-      // Preparar dados da mensagem
-      const messagePayload: Prisma.MessageCreateInput = {
-        messageId: messageData.key?.id || uuidv4(),
-        content: messageData.message?.conversation || messageData.content || "",
-        type: getMediaType(messageData.type),
-        sender: messageData.key?.fromMe
-          ? "me"
-          : messageData.key?.participant || messageData.sender,
-        status: "SENT",
-        timestamp: new Date(messageData.messageTimestamp || Date.now()),
-        conversation: { connect: { id: conversationId } },
-        user: { connect: { id: userId } },
-      };
-
-      // Adicionar anexos se existirem
-      const attachments: Prisma.MessageAttachmentCreateNestedManyWithoutMessageInput =
-        messageData.mediaUrl
-          ? {
-              create: [
-                {
-                  type: getMediaType(messageData.type),
-                  url: messageData.mediaUrl,
-                  mimeType: messageData.mimeType || "application/octet-stream",
-                  name: messageData.fileName,
-                },
-              ],
-            }
-          : undefined;
-
-      // Adicionar attachments se existirem
-      if (attachments) {
-        (
-          messagePayload as unknown as Prisma.MessageUncheckedCreateInput
-        ).attachments = attachments;
-      }
-
-      // Criar mensagem
-      const message = await this.prisma.message.create({
-        data: messagePayload,
-      });
-
-      return message;
-    } catch (error) {
-      console.error("Erro ao processar mensagem", error);
-      throw new Error(`Falha ao processar mensagem: ${error.message}`);
+      const response = await this.makeRequest(
+        `/message/sendButton/${params.instanceName}`,
+        "POST",
+        {
+          number: params.number,
+          text: params.text,
+          buttons: params.buttons,
+          title: params.title,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar botões para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar botões" };
     }
   }
 
-  // Método para buscar chats
+  async sendList(params: {
+    instanceName: string;
+    number: string;
+    title: string;
+    text: string;
+    buttonText: string;
+    sections: Array<{
+      title: string;
+      rows: Array<{ rowId: string; title: string; description: string }>;
+    }>;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/message/sendList/${params.instanceName}`,
+        "POST",
+        {
+          number: params.number,
+          title: params.title,
+          text: params.text,
+          buttonText: params.buttonText,
+          sections: params.sections,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar lista para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar lista" };
+    }
+  }
+
+  async sendReaction(params: {
+    instanceName: string;
+    number: string;
+    messageId: string;
+    emoji: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/message/sendReaction/${params.instanceName}`,
+        "POST",
+        {
+          number: params.number,
+          messageId: params.messageId,
+          emoji: params.emoji,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar reação para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar reação" };
+    }
+  }
+
   async findChats(instanceName: string) {
     try {
       const response = await axios.post(
-        `${this.apiBaseUrl}/chat/findChats/${instanceName}`,
+        `${this.apiUrl}/chat/findChats/${instanceName}`,
         {},
         {
           headers: {
@@ -217,49 +204,10 @@ export class EvolutionApiService {
           },
         }
       );
-
       return response.data;
     } catch (error) {
       console.error("Erro ao buscar chats:", error);
       throw error;
     }
   }
-
-  // Método para buscar mensagens
-  async findMessages(
-    instanceName: string,
-    options: {
-      remoteJid?: string;
-      page?: number;
-      offset?: number;
-    } = {}
-  ) {
-    try {
-      const response = await axios.post(
-        `${this.apiBaseUrl}/chat/findMessages/${instanceName}`,
-        {
-          where: {
-            key: {
-              remoteJid: options.remoteJid,
-            },
-          },
-          page: options.page || 1,
-          offset: options.offset || 10,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      return response.data;
-    } catch (error) {
-      console.error("Erro ao buscar mensagens:", error);
-      throw error;
-    }
-  }
 }
-
-export default new EvolutionApiService();

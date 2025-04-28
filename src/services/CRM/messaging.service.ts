@@ -1,11 +1,9 @@
 import { MessageStatus, Prisma } from "@prisma/client";
-// src/services/CRM/messaging.service.ts
 import { prisma } from "../../lib/prisma";
 import { pubsub } from "../../lib/pubsub";
 import { logger } from "../../utils/logger";
 import { EvolutionApiService } from "../evolution-api.service";
 
-// Logger específico para o contexto
 const messagingLogger = logger.setContext("CRMMessaging");
 
 export class CRMMessagingService {
@@ -15,33 +13,25 @@ export class CRMMessagingService {
     this.evolutionApiService = new EvolutionApiService();
   }
 
-  /**
-   * Processa uma mensagem recebida
-   */
   async processMessage(messageData: any) {
     try {
-      // Validações mais robustas
       if (!messageData.remoteJid) {
         messagingLogger.error("Número de telefone ausente", messageData);
         return null;
       }
 
-      // Remover sufixos de grupos/whatsapp
       const cleanPhone = messageData.remoteJid.replace(/@.*$/, "");
 
-      // Validar número de telefone
       if (!/^\d+$/.test(cleanPhone)) {
         messagingLogger.error("Número de telefone inválido", cleanPhone);
         return null;
       }
 
-      // Dados atualizados
       const processedMessage = {
         ...messageData,
         remoteJid: cleanPhone,
       };
 
-      // Resto do processamento
       return processedMessage;
     } catch (error) {
       messagingLogger.error("Erro ao processar mensagem", error);
@@ -49,9 +39,6 @@ export class CRMMessagingService {
     }
   }
 
-  /**
-   * Envia uma mensagem de texto para um contato
-   */
   async sendTextMessage(params: {
     instanceName: string;
     contactPhone: string;
@@ -65,21 +52,18 @@ export class CRMMessagingService {
         `Enviando mensagem para ${contactPhone} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar ou criar a conversa
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
         userId,
       });
 
-      // Criar a mensagem com status pendente no banco
       const pendingMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -95,55 +79,50 @@ export class CRMMessagingService {
         },
       });
 
-      // Enviar via API Evolution
       const response = await this.evolutionApiService.sendMessage({
         instanceName,
-        to: cleanPhone,
-        message,
+        number: cleanPhone, // Use 'number' instead of 'to'
+        text: message,
         options: {
           delay: 0,
         },
       });
 
-      if (!response.success) {
-        // Atualizar mensagem como falha
+      if (!response?.success) {
         await prisma.message.update({
           where: { id: pendingMessage.id },
           data: {
             status: MessageStatus.FAILED,
-            failureReason: response.error || "Falha no envio",
+            failureReason: response?.error || "Falha no envio",
           },
         });
-        messagingLogger.error("Falha ao enviar mensagem:", response.error);
-        return { success: false, error: response.error || "Falha no envio" };
+        messagingLogger.error("Falha ao enviar mensagem:", response?.error);
+        return { success: false, error: response?.error || "Falha no envio" };
       }
 
-      // Atualizar mensagem com ID retornado e status enviado
       const updatedMessage = await prisma.message.update({
         where: { id: pendingMessage.id },
         data: {
-          messageId: response.messageId || pendingMessage.messageId,
+          messageId: response?.messageId || pendingMessage.messageId,
           status: MessageStatus.SENT,
         },
       });
 
-      // Atualizar conversa com última mensagem
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { lastMessageAt: new Date() },
       });
 
-      // Emitir evento em tempo real
       pubsub.publish(`conversation:${conversation.id}:new_message`, {
         message: updatedMessage,
         conversation,
       });
 
       messagingLogger.info(
-        `Mensagem enviada com sucesso, ID: ${response.messageId}`
+        `Mensagem enviada com sucesso, ID: ${response?.messageId}`
       );
-      return { success: true, messageId: response.messageId };
-    } catch (error) {
+      return { success: true, messageId: response?.messageId };
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar mensagem:", error);
       return {
         success: false,
@@ -152,9 +131,6 @@ export class CRMMessagingService {
     }
   }
 
-  /**
-   * Envia uma mensagem de mídia (imagem, áudio, vídeo, documento)
-   */
   async sendMediaMessage(params: {
     instanceName: string;
     contactPhone: string;
@@ -179,26 +155,22 @@ export class CRMMessagingService {
         `Enviando ${mediaType} para ${contactPhone} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar ou criar a conversa
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
         userId,
       });
 
-      // ID temporário exclusivo
       const tempMessageId = `pending_${Date.now()}_${Math.random()
         .toString(36)
         .substring(2, 9)}`;
 
-      // Criar a mensagem com status pendente no banco
       const pendingMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -209,7 +181,6 @@ export class CRMMessagingService {
           status: MessageStatus.PENDING,
           timestamp: new Date(),
           userId,
-          mediaUrl,
           mediaType,
           attachments: {
             create: {
@@ -227,33 +198,31 @@ export class CRMMessagingService {
         },
       });
 
-      // Enviar via API Evolution
       const response = await this.evolutionApiService.sendMedia({
         instanceName,
-        contactPhone: cleanPhone,
-        mediaUrl,
-        mediaType,
+        number: cleanPhone, // Change here
+        media: mediaUrl,
+        mediatype: mediaType,
         caption,
       });
 
-      if (!response.success) {
+      if (!response?.success) {
         // Atualizar mensagem como falha
         await prisma.message.update({
           where: { id: pendingMessage.id },
           data: {
             status: MessageStatus.FAILED,
-            failureReason: response.error || "Falha no envio",
+            failureReason: response?.error || "Falha no envio",
           },
         });
-        messagingLogger.error("Falha ao enviar mídia:", response.error);
-        return { success: false, error: response.error || "Falha no envio" };
+        messagingLogger.error("Falha ao enviar mídia:", response?.error);
+        return { success: false, error: response?.error || "Falha no envio" };
       }
 
-      // Atualizar mensagem com ID retornado e status enviado
       const updatedMessage = await prisma.message.update({
         where: { id: pendingMessage.id },
         data: {
-          messageId: response.messageId || pendingMessage.messageId,
+          messageId: response?.messageId || pendingMessage.messageId,
           status: MessageStatus.SENT,
         },
         include: {
@@ -261,13 +230,11 @@ export class CRMMessagingService {
         },
       });
 
-      // Atualizar conversa com última mensagem
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { lastMessageAt: new Date() },
       });
 
-      // Emitir evento em tempo real
       pubsub.publish(`conversation:${conversation.id}:new_message`, {
         message: updatedMessage,
         conversation,
@@ -275,14 +242,14 @@ export class CRMMessagingService {
 
       messagingLogger.info(
         `Mídia enviada com sucesso, ID: ${
-          response.messageId || pendingMessage.messageId
+          response?.messageId || pendingMessage.messageId
         }`
       );
       return {
         success: true,
-        messageId: response.messageId || pendingMessage.messageId,
+        messageId: response?.messageId || pendingMessage.messageId,
       };
-    } catch (error) {
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar mídia:", error);
       return {
         success: false,
@@ -291,9 +258,6 @@ export class CRMMessagingService {
     }
   }
 
-  /**
-   * Envia uma mensagem de contato (vCard)
-   */
   async sendContactMessage(params: {
     instanceName: string;
     contactPhone: string;
@@ -302,31 +266,28 @@ export class CRMMessagingService {
     userId: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const { instanceName, contactPhone, vcard, fullName, userId } = params;
+
     try {
       messagingLogger.info(
         `Enviando contato para ${contactPhone} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar ou criar a conversa
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
         userId,
       });
 
-      // ID temporário exclusivo
       const tempMessageId = `pending_${Date.now()}_${Math.random()
         .toString(36)
         .substring(2, 9)}`;
 
-      // Criar a mensagem com status pendente no banco
       const pendingMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -340,184 +301,55 @@ export class CRMMessagingService {
         },
       });
 
-      // Enviar via API Evolution
-      // Nota: Você precisa implementar o método sendContact na classe EvolutionApiService
-      const response = await this.evolutionApiService.sendContact({
+      // TODO: Implement sendContact in EvolutionApiService
+      // const response = await this.evolutionApiService.sendContact({
+      //   instanceName,
+      //   number: cleanPhone,
+      //   vcard,
+      //   fullName,
+      // });
+
+      // if (!response.success) {
+      //   await prisma.message.update({
+      //     where: { id: pendingMessage.id },
+      //     data: {
+      //       status: MessageStatus.FAILED,
+      //       failureReason: response.error || "Falha no envio",
+      //     },
+      //   });
+      //   messagingLogger.error("Falha ao enviar contato:", response.error);
+      //   return { success: false, error: response.error || "Falha no envio" };
+      // }
+
+      // const updatedMessage = await prisma.message.update({
+      //   where: { id: pendingMessage.id },
+      //   data: {
+      //     messageId: response.messageId || pendingMessage.messageId,
+      //     status: MessageStatus.SENT,
+      //   },
+      // });
+
+      // await prisma.conversation.update({
+      //   where: { id: conversation.id },
+      //   data: { lastMessageAt: new Date() },
+      // });
+
+      // pubsub.publish(`conversation:${conversation.id}:new_message`, {
+      //   message: updatedMessage,
+      //   conversation,
+      // });
+
+      messagingLogger.warn(
+        "sendContact não implementado, enviando mensagem de texto alternativa"
+      );
+      return await this.sendTextMessage({
         instanceName,
-        to: cleanPhone,
-        vcard,
-        fullName,
+        contactPhone,
+        message: `[CONTATO] ${fullName}`,
+        userId,
       });
-
-      if (!response.success) {
-        // Atualizar mensagem como falha
-        await prisma.message.update({
-          where: { id: pendingMessage.id },
-          data: {
-            status: MessageStatus.FAILED,
-            failureReason: response.error || "Falha no envio",
-          },
-        });
-        messagingLogger.error("Falha ao enviar contato:", response.error);
-        return { success: false, error: response.error || "Falha no envio" };
-      }
-
-      // Atualizar mensagem com ID retornado e status enviado
-      const updatedMessage = await prisma.message.update({
-        where: { id: pendingMessage.id },
-        data: {
-          messageId: response.messageId || pendingMessage.messageId,
-          status: MessageStatus.SENT,
-        },
-      });
-
-      // Atualizar conversa com última mensagem
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date() },
-      });
-
-      // Emitir evento em tempo real
-      pubsub.publish(`conversation:${conversation.id}:new_message`, {
-        message: updatedMessage,
-        conversation,
-      });
-
-      messagingLogger.info(
-        `Contato enviado com sucesso, ID: ${
-          response.messageId || pendingMessage.messageId
-        }`
-      );
-      return {
-        success: true,
-        messageId: response.messageId || pendingMessage.messageId,
-      };
-    } catch (error) {
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar contato:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Erro desconhecido",
-      };
-    }
-  }
-
-  /**
-   * Adiciona um anexo a uma mensagem
-   */
-  async addMessageAttachment(
-    messageId: string,
-    attachmentData: {
-      type: string;
-      url: string;
-      name: string;
-      mimeType: string;
-      filename: string;
-      size?: number;
-    }
-  ): Promise<string> {
-    try {
-      messagingLogger.info(
-        `Adicionando anexo do tipo ${attachmentData.type} à mensagem ${messageId}`
-      );
-
-      const attachment = await prisma.messageAttachment.create({
-        data: {
-          messageId,
-          type: attachmentData.type,
-          url: attachmentData.url,
-          name: attachmentData.name,
-          mimeType: attachmentData.mimeType,
-          filename: attachmentData.filename,
-          size: attachmentData.size || 0,
-        },
-      });
-
-      return attachment.id;
-    } catch (error) {
-      messagingLogger.error(
-        `Erro ao adicionar anexo à mensagem ${messageId}:`,
-        error
-      );
-      throw new Error(
-        `Falha ao adicionar anexo: ${
-          error instanceof Error ? error.message : "Erro desconhecido"
-        }`
-      );
-    }
-  }
-
-  /**
-   * Adiciona uma reação a uma mensagem
-   */
-  async addMessageReaction(params: {
-    messageId: string;
-    conversationId: string;
-    reaction: string;
-    userId: string;
-  }): Promise<{ success: boolean; reactionId?: string; error?: string }> {
-    const { messageId, conversationId, reaction, userId } = params;
-
-    try {
-      messagingLogger.info(
-        `Adicionando reação "${reaction}" à mensagem ${messageId}`
-      );
-
-      // Verificar se a mensagem existe
-      const message = await prisma.message.findUnique({
-        where: { id: messageId },
-      });
-
-      if (!message) {
-        return { success: false, error: "Mensagem não encontrada" };
-      }
-
-      // Verificar se já existe uma reação do mesmo usuário na mesma mensagem
-      const existingReaction = await prisma.messageReaction.findFirst({
-        where: {
-          messageId,
-          userId,
-        },
-      });
-
-      let reactionRecord;
-
-      if (existingReaction) {
-        // Atualizar reação existente
-        reactionRecord = await prisma.messageReaction.update({
-          where: { id: existingReaction.id },
-          data: { reaction },
-        });
-        messagingLogger.verbose(`Reação atualizada: ${existingReaction.id}`);
-      } else {
-        // Criar nova reação
-        reactionRecord = await prisma.messageReaction.create({
-          data: {
-            messageId,
-            userId,
-            reaction,
-            conversation: {
-              connect: { id: conversationId },
-            },
-          },
-        });
-        messagingLogger.verbose(`Nova reação criada: ${reactionRecord.id}`);
-      }
-
-      // Emitir evento em tempo real
-      pubsub.publish(`conversation:${conversationId}:reaction`, {
-        reaction: reactionRecord,
-        messageId,
-      });
-
-      return {
-        success: true,
-        reactionId: reactionRecord.id,
-      };
-    } catch (error) {
-      messagingLogger.error(
-        `Erro ao adicionar reação à mensagem ${messageId}:`,
-        error
-      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Erro desconhecido",
@@ -534,49 +366,37 @@ export class CRMMessagingService {
     title: string;
     message: string;
     buttons: Array<{ buttonId: string; buttonText: string }>;
-    footer?: string;
     userId: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const {
-      instanceName,
-      contactPhone,
-      title,
-      message,
-      buttons,
-      footer,
-      userId,
-    } = params;
+    const { instanceName, contactPhone, title, message, buttons, userId } =
+      params;
+
     try {
       messagingLogger.info(
         `Enviando botões para ${contactPhone} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar ou criar a conversa
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
         userId,
       });
 
-      // ID temporário exclusivo
       const tempMessageId = `pending_${Date.now()}_${Math.random()
         .toString(36)
         .substring(2, 9)}`;
 
-      // Dados de metadados dos botões para salvar no banco
       const metadataButtons = buttons.map((b) => ({
         id: b.buttonId,
         text: b.buttonText,
       }));
 
-      // Criar a mensagem com status pendente no banco
       const pendingMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -587,55 +407,46 @@ export class CRMMessagingService {
           status: MessageStatus.PENDING,
           timestamp: new Date(),
           userId,
-          // Usando o campo personalizado para armazenar metadados JSON
           metadata: JSON.stringify({
             title,
             buttons: metadataButtons,
-            footer,
           }),
-        } as any, // Necessário para contornar a verificação de tipos
+        } as any,
       });
 
-      // Enviar via API Evolution
-      // Nota: Você precisa implementar o método sendButton na classe EvolutionApiService
       const response = await this.evolutionApiService.sendButton({
         instanceName,
-        to: cleanPhone,
+        number: cleanPhone, // Change here
         title,
-        message,
-        buttons,
-        footer,
+        text: message,
+        buttons: buttons.map((b) => ({ id: b.buttonId, text: b.buttonText })),
       });
 
-      if (!response.success) {
-        // Atualizar mensagem como falha
+      if (!response?.success) {
         await prisma.message.update({
           where: { id: pendingMessage.id },
           data: {
             status: MessageStatus.FAILED,
-            failureReason: response.error || "Falha no envio",
+            failureReason: response?.error || "Falha no envio",
           },
         });
-        messagingLogger.error("Falha ao enviar botões:", response.error);
-        return { success: false, error: response.error || "Falha no envio" };
+        messagingLogger.error("Falha ao enviar botões:", response?.error);
+        return { success: false, error: response?.error || "Falha no envio" };
       }
 
-      // Atualizar mensagem com ID retornado e status enviado
       const updatedMessage = await prisma.message.update({
         where: { id: pendingMessage.id },
         data: {
-          messageId: response.messageId || pendingMessage.messageId,
+          messageId: response?.messageId || pendingMessage.messageId,
           status: MessageStatus.SENT,
         },
       });
 
-      // Atualizar conversa com última mensagem
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { lastMessageAt: new Date() },
       });
 
-      // Emitir evento em tempo real
       pubsub.publish(`conversation:${conversation.id}:new_message`, {
         message: updatedMessage,
         conversation,
@@ -643,14 +454,14 @@ export class CRMMessagingService {
 
       messagingLogger.info(
         `Botões enviados com sucesso, ID: ${
-          response.messageId || pendingMessage.messageId
+          response?.messageId || pendingMessage.messageId
         }`
       );
       return {
         success: true,
-        messageId: response.messageId || pendingMessage.messageId,
+        messageId: response?.messageId || pendingMessage.messageId,
       };
-    } catch (error) {
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar botões:", error);
       return {
         success: false,
@@ -676,7 +487,6 @@ export class CRMMessagingService {
         rowId: string;
       }>;
     }>;
-    footer?: string;
     userId: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const {
@@ -686,34 +496,30 @@ export class CRMMessagingService {
       description,
       buttonText,
       sections,
-      footer,
       userId,
     } = params;
+
     try {
       messagingLogger.info(
         `Enviando lista para ${contactPhone} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar ou criar a conversa
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
         userId,
       });
 
-      // ID temporário exclusivo
       const tempMessageId = `pending_${Date.now()}_${Math.random()
         .toString(36)
         .substring(2, 9)}`;
 
-      // Criar a mensagem com status pendente no banco
       const pendingMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -724,57 +530,55 @@ export class CRMMessagingService {
           status: MessageStatus.PENDING,
           timestamp: new Date(),
           userId,
-          // Usando o campo personalizado para armazenar metadados JSON
           metadata: JSON.stringify({
             title,
             buttonText,
             sections,
-            footer,
           }),
-        } as any, // Necessário para contornar a verificação de tipos
+        } as any,
       });
 
-      // Enviar via API Evolution
-      // Nota: Você precisa implementar o método sendList na classe EvolutionApiService
       const response = await this.evolutionApiService.sendList({
         instanceName,
-        to: cleanPhone,
+        number: cleanPhone, // Change here
         title,
-        description,
+        text: description,
         buttonText,
-        sections,
-        footer,
-      });
+        sections: sections.map((s) => ({
+          title: s.title,
+          rows: s.rows.map((r) => ({
+            rowId: r.rowId,
+            title: r.title,
+            description: r.description || "",
+          })),
+        })),
+      } as any);
 
-      if (!response.success) {
-        // Atualizar mensagem como falha
+      if (!response?.success) {
         await prisma.message.update({
           where: { id: pendingMessage.id },
           data: {
             status: MessageStatus.FAILED,
-            failureReason: response.error || "Falha no envio",
+            failureReason: response?.error || "Falha no envio",
           },
         });
-        messagingLogger.error("Falha ao enviar lista:", response.error);
-        return { success: false, error: response.error || "Falha no envio" };
+        messagingLogger.error("Falha ao enviar lista:", response?.error);
+        return { success: false, error: response?.error || "Falha no envio" };
       }
 
-      // Atualizar mensagem com ID retornado e status enviado
       const updatedMessage = await prisma.message.update({
         where: { id: pendingMessage.id },
         data: {
-          messageId: response.messageId || pendingMessage.messageId,
+          messageId: response?.messageId || pendingMessage.messageId,
           status: MessageStatus.SENT,
         },
       });
 
-      // Atualizar conversa com última mensagem
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { lastMessageAt: new Date() },
       });
 
-      // Emitir evento em tempo real
       pubsub.publish(`conversation:${conversation.id}:new_message`, {
         message: updatedMessage,
         conversation,
@@ -782,14 +586,14 @@ export class CRMMessagingService {
 
       messagingLogger.info(
         `Lista enviada com sucesso, ID: ${
-          response.messageId || pendingMessage.messageId
+          response?.messageId || pendingMessage.messageId
         }`
       );
       return {
         success: true,
-        messageId: response.messageId || pendingMessage.messageId,
+        messageId: response?.messageId || pendingMessage.messageId,
       };
-    } catch (error) {
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar lista:", error);
       return {
         success: false,
@@ -815,19 +619,17 @@ export class CRMMessagingService {
         `Enviando reação para mensagem ${messageId} via instância ${instanceName}`
       );
 
-      // Validar o número de telefone
       const cleanPhone = this.sanitizePhoneNumber(contactPhone);
       if (!cleanPhone) {
         messagingLogger.warn(`Número de telefone inválido: ${contactPhone}`);
         return { success: false, error: "Número de telefone inválido" };
       }
 
-      // Encontrar a conversa com uma abordagem alternativa
       const conversation = await prisma.conversation.findFirst({
         where: {
           instanceName,
           contactPhone: cleanPhone,
-          userId, // Adicionar userId para maior precisão
+          userId,
         },
       });
 
@@ -835,19 +637,18 @@ export class CRMMessagingService {
         return { success: false, error: "Conversa não encontrada" };
       }
 
-      // Enviar via API Evolution
       const response = await this.evolutionApiService.sendReaction({
         instanceName,
-        to: cleanPhone,
+        number: cleanPhone, // Change here
         messageId,
         emoji,
       });
 
-      if (!response.success) {
-        messagingLogger.error("Falha ao enviar reação:", response.error);
+      if (!response?.success) {
+        messagingLogger.error("Falha ao enviar reação:", response?.error);
         return {
           success: false,
-          error: response.error || "Falha no envio da reação",
+          error: response?.error || "Falha no envio da reação",
         };
       }
 
@@ -885,9 +686,8 @@ export class CRMMessagingService {
       messagingLogger.info(
         `Reação enviada com sucesso para mensagem ${messageId}`
       );
-
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
       messagingLogger.error("Erro ao enviar reação:", error);
       return {
         success: false,
@@ -895,7 +695,6 @@ export class CRMMessagingService {
       };
     }
   }
-
   /**
    * Valida o nome da instância
    */
@@ -971,7 +770,6 @@ export class CRMMessagingService {
       },
     });
   }
-
   /**
    * Processa mensagens recebidas da Evolution API
    */
@@ -988,7 +786,6 @@ export class CRMMessagingService {
 
       const phoneJid = key.remoteJid;
       const contactPhone = phoneJid.split("@")[0];
-
       if (!contactPhone) {
         messagingLogger.warn(`JID inválido: ${phoneJid}`);
         return false;
@@ -1038,7 +835,6 @@ export class CRMMessagingService {
             user: true,
           },
         });
-
         messagingLogger.info(`Nova conversa criada para ${contactPhone}`);
       }
 
@@ -1131,20 +927,17 @@ export class CRMMessagingService {
           },
         });
       }
-
       return true;
     } catch (error) {
       messagingLogger.error("Erro ao processar mensagem recebida:", error);
       return false;
     }
   }
-
   /**
    * Determina o tipo de mensagem com base no objeto message
    */
   private determineMessageType(messageObj: any): string {
     if (!messageObj) return "unknown";
-
     if (messageObj.conversation) return "text";
     if (messageObj.extendedTextMessage) return "text";
     if (messageObj.imageMessage) return "image";
@@ -1160,16 +953,13 @@ export class CRMMessagingService {
     if (messageObj.buttonsResponseMessage) return "button_response";
     if (messageObj.listResponseMessage) return "list_response";
     if (messageObj.templateButtonReplyMessage) return "template_reply";
-
     return "unknown";
   }
-
   /**
    * Extrai o conteúdo da mensagem em formato de texto
    */
   private extractMessageContent(messageObj: any, type: string): string {
     if (!messageObj) return "";
-
     switch (type) {
       case "text":
         return (
@@ -1211,6 +1001,96 @@ export class CRMMessagingService {
         return messageObj.listResponseMessage?.title || "[RESPOSTA DE LISTA]";
       default:
         return "[MENSAGEM]";
+    }
+  }
+
+  /**
+   * Adiciona um anexo a uma mensagem
+   * @param messageId ID da mensagem para anexar o arquivo
+   * @param attachment Dados do anexo
+   * @returns ID do anexo criado
+   */
+  async addMessageAttachment(
+    messageId: string,
+    attachment: {
+      type: string;
+      url: string;
+      name: string;
+      mimeType: string;
+      filename: string;
+      size?: number;
+    }
+  ): Promise<string> {
+    try {
+      const newAttachment = await prisma.messageAttachment.create({
+        data: {
+          messageId,
+          type: attachment.type,
+          url: attachment.url,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          filename: attachment.filename,
+          size: attachment.size || 0,
+        },
+      });
+      return newAttachment.id;
+    } catch (error) {
+      logger.error(`Erro ao adicionar anexo à mensagem ${messageId}:`, error);
+      throw new Error("Falha ao adicionar anexo à mensagem");
+    }
+  }
+
+  /**
+   * Adiciona uma reação a uma mensagem
+   * @param params Parâmetros para adicionar reação
+   * @returns Objeto com status da operação
+   */
+  async addMessageReaction(params: {
+    messageId: string;
+    conversationId: string;
+    reaction: string;
+    userId: string;
+  }): Promise<{ success: boolean; reactionId?: string; error?: string }> {
+    try {
+      // Buscar informações da mensagem e conversa
+      const message = await prisma.message.findUnique({
+        where: { id: params.messageId },
+        include: { conversation: true },
+      });
+
+      if (!message) {
+        return { success: false, error: "Mensagem não encontrada" };
+      }
+
+      // Criar registro da reação no banco de dados
+      const newReaction = await prisma.messageReaction.create({
+        data: {
+          messageId: params.messageId,
+          reaction: params.reaction,
+          userId: params.userId,
+          conversation: {
+            connect: { id: params.conversationId },
+          },
+        },
+      });
+
+      // Opcionalmente, adicionar lógica para enviar a reação via WhatsApp API
+      // usando o evolutionApiService se necessário
+
+      return {
+        success: true,
+        reactionId: newReaction.id,
+      };
+    } catch (error) {
+      logger.error(
+        `Erro ao adicionar reação à mensagem ${params.messageId}:`,
+        error
+      );
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Falha ao adicionar reação",
+      };
     }
   }
 
