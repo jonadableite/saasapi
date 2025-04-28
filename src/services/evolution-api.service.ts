@@ -29,7 +29,6 @@ export class EvolutionApiService {
         },
         data,
       });
-
       return {
         success: true,
         messageId: response.data?.id || response.data?.messageId,
@@ -208,6 +207,133 @@ export class EvolutionApiService {
     } catch (error) {
       console.error("Erro ao buscar chats:", error);
       throw error;
+    }
+  }
+
+  async findMessages(
+    instanceName: string,
+    remoteJid: string,
+    page: number = 1,
+    offset: number = 50
+  ) {
+    try {
+      const response = await this.makeRequest(
+        `/chat/findMessages/${instanceName}`,
+        "POST",
+        {
+          where: {
+            key: {
+              remoteJid: remoteJid,
+            },
+          },
+          page: page,
+          offset: offset,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao buscar mensagens para ${remoteJid}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao buscar mensagens",
+      };
+    }
+  }
+
+  async fetchProfilePicture(
+    instanceName: string,
+    number: string
+  ): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/chat/fetchProfilePictureUrl/${instanceName}`,
+        "POST",
+        {
+          number: number,
+        }
+      );
+      return {
+        success: true,
+        url: response.data,
+      };
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao buscar foto de perfil para ${number}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao buscar foto de perfil",
+      };
+    }
+  }
+
+  async findContacts(
+    instanceName: string,
+    contactId?: string
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const data: any = { where: {} };
+      if (contactId) {
+        data.where.id = contactId;
+      }
+
+      const response = await this.makeRequest(
+        `/chat/findContacts/${instanceName}`,
+        "POST",
+        data
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error("Erro ao buscar contatos", error);
+      return {
+        success: false,
+        error: error.message || "Falha ao buscar contatos",
+      };
+    }
+  }
+
+  async configureWebhook(
+    instanceName: string,
+    webhookUrl: string,
+    token: string,
+    events: string[] = ["messages.upsert", "messages.update", "chats.upsert"]
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/webhook/set/${instanceName}`,
+        "POST",
+        {
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            headers: {
+              authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            byEvents: false,
+            base64: false,
+            events: events,
+          },
+        }
+      );
+
+      evolutionLogger.log(
+        `Webhook configurado com sucesso para ${instanceName}`
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao configurar webhook para instância ${instanceName}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao configurar webhook",
+      };
     }
   }
 }
