@@ -7,7 +7,11 @@ const router = express.Router();
 const webhookController = new WebhookController();
 
 // Rotas de webhook (sem autenticação)
-router.post("/evolution-global", webhookController.handleWebhook);
+router.post(
+  "/evolution-global",
+  webhookController.handleWebhook,
+  handleEvolutionWebhook
+);
 router.post("/evolution-webhook", webhookController.handleWebhook);
 // CRM
 router.post("/evolution", handleEvolutionWebhook);

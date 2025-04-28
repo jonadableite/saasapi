@@ -116,7 +116,7 @@ export const getConversations = async (req: RequestWithUser, res: Response) => {
     }));
 
     crmLogger.verbose(
-      `Retornando ${conversations.length} conversas para o usuário ${userId}`,
+      `Retornando ${conversations.length} conversas para o usuário ${userId}`
     );
 
     res.json({
@@ -142,7 +142,7 @@ export const getConversations = async (req: RequestWithUser, res: Response) => {
  */
 export const getConversationMessages = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { conversationId } = req.params;
@@ -193,7 +193,7 @@ export const getConversationMessages = async (
     });
 
     crmLogger.verbose(
-      `Retornando ${messages.length} mensagens para a conversa ${conversationId}`,
+      `Retornando ${messages.length} mensagens para a conversa ${conversationId}`
     );
 
     res.json({
@@ -219,7 +219,7 @@ export const getConversationMessages = async (
  */
 export const updateConversationTags = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { conversationId } = req.params;
@@ -328,7 +328,7 @@ export const sendMessage = async (req: RequestWithUser, res: Response) => {
     });
 
     crmLogger.verbose(
-      `Mensagem ${message.id} enviada para a conversa ${conversationId}`,
+      `Mensagem ${message.id} enviada para a conversa ${conversationId}`
     );
 
     res.status(201).json({
@@ -349,7 +349,7 @@ export const sendMessage = async (req: RequestWithUser, res: Response) => {
  */
 export const updateConversationStatus = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { conversationId } = req.params;
@@ -382,7 +382,7 @@ export const updateConversationStatus = async (
     });
 
     crmLogger.verbose(
-      `Status da conversa ${conversationId} atualizado para ${status}`,
+      `Status da conversa ${conversationId} atualizado para ${status}`
     );
 
     res.json({
@@ -422,6 +422,7 @@ export const sendMediaMessage = async (req: RequestWithUser, res: Response) => {
     // Verificar se a conversa pertence ao usuário
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, userId },
+      select: { id: true, instanceName: true, contactPhone: true },
     });
 
     if (!conversation) {
@@ -430,17 +431,23 @@ export const sendMediaMessage = async (req: RequestWithUser, res: Response) => {
       });
     }
 
-    const messageId = uuid(); // Gerar ID único para a mensagem
+    // Enviar mídia via serviço de mensagens
+    const result = await crmMessagingService.sendMediaMessage({
+      instanceName: conversation.instanceName,
+      contactPhone: conversation.contactPhone,
+      mediaUrl,
+      mediaType,
+      caption,
+      userId: "",
+    });
 
-    // Registrar a mensagem de mídia
+    // Criar registro de mensagem no banco
     const message = await prisma.message.create({
       data: {
-        messageId,
+        messageId: result.messageId || uuid(),
         conversationId,
         content: caption || "",
         type: mediaType,
-        mediaUrl,
-        mediaType,
         sender: "me",
         status: MessageStatus.PENDING,
         timestamp: new Date(),
@@ -448,24 +455,25 @@ export const sendMediaMessage = async (req: RequestWithUser, res: Response) => {
       },
     });
 
-    // Criar um anexo associado à mensagem
-    await crmMessagingService.addMessageAttachment(message.id, {
-      type: mediaType,
-      url: mediaUrl,
-      name:
-        caption || `${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}`,
-      mimeType: getMimeTypeFromMediaType(mediaType),
-      filename: `${mediaType}_${Date.now()}${getFileExtension(mediaType)}`,
-    });
+    // Adicionar anexo se necessário
+    if (mediaUrl) {
+      await crmMessagingService.addMessageAttachment(message.id, {
+        type: mediaType,
+        url: mediaUrl,
+        name: `Mídia ${mediaType}`,
+        mimeType: getMimeTypeFromMediaType(mediaType),
+        filename: "",
+      });
+    }
 
-    // Atualizar o último horário de mensagem da conversa
+    // Atualizar último horário da conversa
     await prisma.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
 
     crmLogger.verbose(
-      `Mensagem de mídia ${message.id} enviada para a conversa ${conversationId}`,
+      `Mensagem de mídia enviada para conversa ${conversationId}`
     );
 
     res.status(201).json({
@@ -486,7 +494,7 @@ export const sendMediaMessage = async (req: RequestWithUser, res: Response) => {
  */
 export const markConversationAsRead = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { conversationId } = req.params;
@@ -516,7 +524,7 @@ export const markConversationAsRead = async (
     });
 
     crmLogger.verbose(
-      `${result.count} mensagens marcadas como lidas na conversa ${conversationId}`,
+      `${result.count} mensagens marcadas como lidas na conversa ${conversationId}`
     );
 
     res.json({
@@ -537,7 +545,7 @@ export const markConversationAsRead = async (
  */
 export const toggleConversationArchived = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { conversationId } = req.params;
@@ -590,7 +598,7 @@ export const toggleConversationArchived = async (
  */
 export const addMessageReaction = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { messageId } = req.params;
@@ -662,7 +670,7 @@ export const addMessageReaction = async (
  */
 export const getMessageReactions = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { messageId } = req.params;
@@ -714,7 +722,7 @@ export const getMessageReactions = async (
  */
 export const removeMessageReaction = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { messageId, reactionId } = req.params;
@@ -770,7 +778,7 @@ export const removeMessageReaction = async (
  */
 export const addMessageAttachment = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { messageId } = req.params;
@@ -817,11 +825,11 @@ export const addMessageAttachment = async (
         mimeType: mimeType || getMimeTypeFromMediaType(type),
         filename: filename || `${type}_${Date.now()}${getFileExtension(type)}`,
         size,
-      },
+      }
     );
 
     crmLogger.verbose(
-      `Anexo ${attachmentId} adicionado à mensagem ${messageId}`,
+      `Anexo ${attachmentId} adicionado à mensagem ${messageId}`
     );
 
     // Buscar o anexo criado para retornar na resposta
@@ -847,7 +855,7 @@ export const addMessageAttachment = async (
  */
 export const getMessageAttachments = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { messageId } = req.params;
@@ -877,7 +885,7 @@ export const getMessageAttachments = async (
     });
 
     crmLogger.verbose(
-      `Retornando ${attachments.length} anexos da mensagem ${messageId}`,
+      `Retornando ${attachments.length} anexos da mensagem ${messageId}`
     );
 
     res.json({

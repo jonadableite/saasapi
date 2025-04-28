@@ -1,13 +1,13 @@
+// src/controllers/admin.controller.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { format, subDays } from "date-fns";
 import type { Request, Response } from "express";
+import { welcomeService } from "../services/welcome.service"; // Importe o serviço de boas-vindas
+
 const prisma = new PrismaClient();
 
-/**
- * ✅ Criar um novo usuário com papel (`role`) e afiliado opcional (`referredBy`)
- *    e uma empresa temporária associada.
- */
+/** * ✅ Criar um novo usuário com papel (`role`) e afiliado opcional (`referredBy`) *    e uma empresa temporária associada. */
 export const createUser = async (req: Request, res: Response) => {
   try {
     const {
@@ -26,6 +26,7 @@ export const createUser = async (req: Request, res: Response) => {
       referredBy,
       payment,
       dueDate,
+      sendWelcomeEmail = true, // Novo parâmetro opcional
     } = req.body;
 
     if (!name || !email || !password) {
@@ -45,7 +46,7 @@ export const createUser = async (req: Request, res: Response) => {
       // Criar uma empresa temporária para o usuário
       const tempCompany = await tx.company.create({
         data: {
-          name: `Empresa ${name}`,
+          name: `Temporary Company`,
           active: true,
         },
       });
@@ -88,9 +89,28 @@ export const createUser = async (req: Request, res: Response) => {
       return user;
     });
 
+    // Enviar email de boas-vindas se o parâmetro for true
+    if (sendWelcomeEmail) {
+      try {
+        await welcomeService.sendWelcomeMessage({
+          name: result.name,
+          email: result.email,
+          login: result.email, // Usando email como login
+          password: result.email,
+          phone: result.phone, // Enviando senha original
+        });
+      } catch (emailError) {
+        console.error("Erro ao enviar email de boas-vindas:", emailError);
+        // Não interrompe a criação do usuário se o email falhar
+      }
+    }
+
     return res.status(201).json({
       message: "Usuário criado com sucesso.",
-      user: result,
+      user: {
+        ...result,
+        password: undefined, // Não retorna a senha
+      },
     });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);

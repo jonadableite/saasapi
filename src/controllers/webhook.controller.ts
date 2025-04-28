@@ -138,6 +138,23 @@ export class WebhookController {
     }
   };
 
+  private emitConversationUpdate(phone: string, message: any) {
+    const io = socketService.getSocketServer();
+    // Verificamos se o socket está disponível antes de usá-lo
+    if (io) {
+      io.emit("conversation_update", {
+        phone,
+        message,
+      });
+      // Também atualiza a lista de conversas
+      this.updateConversationList(phone, message);
+    } else {
+      WebhookControllerLogger.warn(
+        `Não foi possível emitir atualização de conversa para ${phone}: Socket.io não inicializado`
+      );
+    }
+  }
+
   private async handleMessageUpsert(data: MessageResponse) {
     try {
       const {
@@ -150,7 +167,6 @@ export class WebhookController {
 
       // Capturar o nome da instância do webhook
       const instanceName = data.instanceName || data.instanceId || "default";
-
       const phone = remoteJid.split("@")[0].split(":")[0];
       const timestamp = new Date(
         Number.parseInt(messageTimestamp.toString()) * 1000
@@ -202,25 +218,74 @@ export class WebhookController {
         status: this.mapWhatsAppStatus(status),
         senderName: pushName || "Contato",
         instanceName, // Adicionar o nome da instância à mensagem
+        messageType, // Adicionar o tipo da mensagem
       });
     } catch (error) {
       WebhookControllerLogger.error("Erro ao processar nova mensagem:", error);
     }
   }
 
-  private emitConversationUpdate(phone: string, message: any) {
-    const io = socketService.getSocketServer();
-    // Verificamos se o socket está disponível antes de usá-lo
-    if (io) {
-      io.emit("conversation_update", {
-        phone,
-        message,
+  private async handleMessageUpdate(data: any) {
+    try {
+      // Compatibilidade com diferentes formatos de eventos de atualização de mensagem
+      const messageId = data.messageId || data.key?.id;
+      const status = data.status || data.receipt?.status;
+      const remoteJid = data.remoteJid || data.key?.remoteJid;
+
+      if (!messageId || !status) {
+        WebhookControllerLogger.warn(
+          "Dados insuficientes para atualizar mensagem",
+          {
+            messageId,
+            status,
+            remoteJid,
+          }
+        );
+        return;
+      }
+
+      const cacheKey = messageId;
+      const cachedMessage = this.messageCache.get(cacheKey);
+      const phone = remoteJid?.split("@")[0].split(":")[0];
+
+      const messageLog = await prisma.messageLog.findFirst({
+        where: {
+          messageId: messageId,
+        },
       });
-      // Também atualiza a lista de conversas
-      this.updateConversationList(phone, message);
-    } else {
-      WebhookControllerLogger.warn(
-        `Não foi possível emitir atualização de conversa para ${phone}: Socket.io não inicializado`
+
+      if (!messageLog && cachedMessage) {
+        return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
+          ...cachedMessage.data,
+          status: this.mapWhatsAppStatus(status),
+        });
+      }
+
+      if (messageLog) {
+        const mappedStatus = this.mapWhatsAppStatus(status);
+        await this.updateMessageStatus(messageLog, mappedStatus);
+
+        // Atualizar o status da mensagem no frontend
+        if (phone) {
+          const io = socketService.getSocketServer();
+          // Verificamos se o socket está disponível antes de usá-lo
+          if (io) {
+            io.emit("message_status_update", {
+              phone,
+              messageId: cacheKey,
+              status: mappedStatus,
+            });
+          } else {
+            WebhookControllerLogger.warn(
+              `Não foi possível emitir atualização de status para ${phone}: Socket.io não inicializado`
+            );
+          }
+        }
+      }
+    } catch (error) {
+      WebhookControllerLogger.error(
+        "Erro ao processar atualização de mensagem:",
+        error
       );
     }
   }
@@ -429,71 +494,6 @@ export class WebhookController {
         ],
       },
     });
-  }
-
-  private async handleMessageUpdate(data: any) {
-    try {
-      // Compatibilidade com diferentes formatos de eventos de atualização de mensagem
-      const messageId = data.messageId || data.key?.id;
-      const status = data.status || data.receipt?.status;
-      const remoteJid = data.remoteJid || data.key?.remoteJid;
-
-      if (!messageId || !status) {
-        WebhookControllerLogger.warn(
-          "Dados insuficientes para atualizar mensagem",
-          {
-            messageId,
-            status,
-            remoteJid,
-          }
-        );
-        return;
-      }
-
-      const cacheKey = messageId;
-      const cachedMessage = this.messageCache.get(cacheKey);
-      const phone = remoteJid?.split("@")[0].split(":")[0];
-
-      const messageLog = await prisma.messageLog.findFirst({
-        where: {
-          messageId: messageId,
-        },
-      });
-
-      if (!messageLog && cachedMessage) {
-        return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
-          ...cachedMessage.data,
-          status: this.mapWhatsAppStatus(status),
-        });
-      }
-
-      if (messageLog) {
-        const mappedStatus = this.mapWhatsAppStatus(status);
-        await this.updateMessageStatus(messageLog, mappedStatus);
-
-        // Atualizar o status da mensagem no frontend
-        if (phone) {
-          const io = socketService.getSocketServer();
-          // Verificamos se o socket está disponível antes de usá-lo
-          if (io) {
-            io.emit("message_status_update", {
-              phone,
-              messageId: cacheKey,
-              status: mappedStatus,
-            });
-          } else {
-            WebhookControllerLogger.warn(
-              `Não foi possível emitir atualização de status para ${phone}: Socket.io não inicializado`
-            );
-          }
-        }
-      }
-    } catch (error) {
-      WebhookControllerLogger.error(
-        "Erro ao processar atualização de mensagem:",
-        error
-      );
-    }
   }
 
   private async updateMessageStatus(
