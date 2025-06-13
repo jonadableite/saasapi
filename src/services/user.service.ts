@@ -286,6 +286,8 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
   free: {
     maxLeads: 100,
     maxCampaigns: 1,
+    maxContacts: 100,
+    maxInstances: 1,
     features: ["TEXT"],
     name: "Gratuito",
     price: 0,
@@ -293,6 +295,8 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
   starter: {
     maxLeads: 1000,
     maxCampaigns: 2,
+    maxContacts: 1000,
+    maxInstances: 2,
     features: ["TEXT", "IMAGE"],
     name: "Starter",
     price: 47,
@@ -300,6 +304,8 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
   growth: {
     maxLeads: 5000,
     maxCampaigns: 5,
+    maxContacts: 5000,
+    maxInstances: 5,
     features: ["TEXT", "IMAGE", "VIDEO", "AUDIO"],
     name: "Growth",
     price: 97,
@@ -307,6 +313,8 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
   scale: {
     maxLeads: 20000,
     maxCampaigns: 15,
+    maxContacts: 20000,
+    maxInstances: 15,
     features: ["TEXT", "IMAGE", "VIDEO", "AUDIO", "STICKER"],
     name: "Scale",
     price: 197,
@@ -328,6 +336,12 @@ export const fetchUserPlan = async (userId: string) => {
           select: {
             id: true,
             name: true,
+          },
+        },
+        // Incluir as instâncias do usuário para contar
+        instances: {
+          select: {
+            id: true,
           },
         },
       },
@@ -355,6 +369,14 @@ export const fetchUserPlan = async (userId: string) => {
       }),
     ]);
 
+    // Contar as instâncias do usuário
+    const currentInstances = user.instances.length;
+    const maxInstances = planLimits.maxInstances; // <-- Obter o limite de instâncias do PLAN_LIMITS
+
+    // Calcular a porcentagem de uso de instâncias
+    const instancesPercentage =
+      maxInstances > 0 ? (currentInstances / maxInstances) * 100 : 0;
+
     // Verificar se está no período trial
     const isInTrial = user.trialEndDate
       ? new Date() < user.trialEndDate
@@ -373,13 +395,16 @@ export const fetchUserPlan = async (userId: string) => {
       limits: {
         maxLeads: planLimits.maxLeads,
         maxCampaigns: planLimits.maxCampaigns,
+        maxInstances: maxInstances, // <-- Adicionado aqui!
         features: planLimits.features,
       },
       usage: {
         currentLeads: leadsCount,
         currentCampaigns: campaignsCount,
+        currentInstances: currentInstances, // <-- Opcional: Adicionar o uso atual de instâncias
         leadsPercentage: (leadsCount / planLimits.maxLeads) * 100,
         campaignsPercentage: (campaignsCount / planLimits.maxCampaigns) * 100,
+        instancesPercentage: instancesPercentage, // <-- Opcional: Adicionar a porcentagem de uso de instâncias
       },
       company: user.company,
     };
@@ -392,7 +417,7 @@ export const fetchUserPlan = async (userId: string) => {
 // Adicione esta função para verificar limites do plano
 export const checkPlanLimits = async (
   userId: string,
-  operation: "leads" | "campaigns",
+  operation: "leads" | "campaigns" | "instances", // Adicionado 'instances'
   quantity = 1,
 ) => {
   const planInfo = await fetchUserPlan(userId);
@@ -415,5 +440,13 @@ export const checkPlanLimits = async (
     }
   }
 
+  if (operation === "instances") {
+    const newTotal = planInfo.usage.currentInstances + quantity;
+    if (newTotal > planInfo.limits.maxInstances) {
+      throw new Error(
+        `Limite de instâncias do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+      );
+    }
+  }
   return true;
 };

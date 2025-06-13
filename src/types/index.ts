@@ -1,4 +1,5 @@
 // src/types/index.ts
+import { User } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import type { PLAN_LIMITS } from "../constants/planLimits";
 
@@ -36,3 +37,40 @@ export type AuthMiddleware = (
   res: Response,
   next: NextFunction,
 ) => Promise<undefined | Response>;
+
+export interface EvoIAUser {
+	id: string;
+	name: string;
+	email: string;
+	is_active: boolean;
+	is_admin: boolean;
+	client_id?: string;
+	email_verified?: boolean;
+	created_at?: string;
+	updated_at?: string;
+}
+
+
+export interface FileRequest extends Request {
+  user?: User;
+  file?: Express.Multer.File;
+}
+
+export interface QueryParams {
+  page?: string;
+  limit?: string;
+  status?: string;
+}
+
+// Definição dos planos para campanhas
+export enum CampaignPlan {
+  STARTER = "starter", // Plano básico para campanhas
+  GROWTH = "growth", // Plano intermediário
+  SCALE = "scale", // Plano avançado
+}
+
+export interface PlanLimits {
+  maxLeads: number;
+  maxCampaigns: number;
+  features: string[];
+}

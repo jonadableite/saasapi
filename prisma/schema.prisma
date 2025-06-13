@@ -41,9 +41,12 @@ model Company {
 
 model User {
   id                       String         @id @default(uuid())
+  evoAiUserId              String? // ID do usuário na Evo AI
+  client_Id                String? // ID do cliente na Evo AI
   email                    String         @unique
   name                     String
   password                 String
+  image                    String?
   profile                  String
   phone                    String
   stripeCustomerId         String?
@@ -197,6 +200,8 @@ model Instance {
   mediaStats         MediaStats[]
 
   @@index([userId])
+  @@index([instanceName])
+  @@index([connectionStatus])
 }
 
 model MediaStats {

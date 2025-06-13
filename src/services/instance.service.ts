@@ -4,20 +4,11 @@ import type { InstanceResponse } from "../@types/instance";
 import redisClient from "../lib/redis";
 import { logger } from "../utils/logger";
 
-import { InstanceStatus, Prisma } from "@prisma/client";
+import { InstanceStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 const API_URL = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
-
-const InstanceStatusValues = {
-  OPEN: "OPEN",
-  CLOSED: "CLOSED",
-  CONNECTING: "CONNECTING",
-  DISCONNECTED: "DISCONNECTED",
-  OFFLINE: "OFFLINE",
-  ERROR: "ERROR",
-} as const;
 
 // Função auxiliar para mapear strings para valores de enum válidos
 function mapToInstanceStatus(status: string): InstanceStatus {

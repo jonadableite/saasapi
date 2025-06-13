@@ -15,8 +15,6 @@ import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
 import { authMiddleware } from "./middlewares/authenticate";
 import { errorHandler } from "./middlewares/errorHandler";
-import { crmRoutes } from "./routes/CRM/crm.routes";
-import { botRoutes } from "./routes/Chatbot/bot.routes";
 import adminRoutes from "./routes/admin.routes";
 import affiliateRoutes from "./routes/affiliate.routes";
 import { analyticsRoutes } from "./routes/analytics.routes";
@@ -65,7 +63,13 @@ try {
 const corsOptions = {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "headers", "apikey"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "headers",
+    "apikey",
+    "X-API-Key",
+  ],
   credentials: true,
   optionsSuccessStatus: 200,
 };
@@ -84,7 +88,7 @@ app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook
+  handleWebhook,
 );
 app.use("/api/stripe", stripeRoutes);
 
@@ -118,8 +122,6 @@ const protectedRoutes = [
   { path: "/api/companies", route: companyRoutes },
   { path: "/api/dashboards", route: dashboardsRoutes },
   { path: "/api/message-logs", route: messageLogRoutes },
-  { path: "/api/bot", route: botRoutes },
-  { path: "/api/crm", route: crmRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {

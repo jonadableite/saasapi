@@ -167,6 +167,8 @@ export interface BaseCampaignRequest extends Request {
 export interface PlanDetails {
   maxLeads: number;
   maxCampaigns: number;
+  maxContacts: number;
+  maxInstances: number;
   features: string[];
   name: string;
   price: number;
@@ -246,18 +248,18 @@ export interface IMessageDispatcherService {
     phone: string,
     messageType: string,
     content: string,
-    reason?: string
+    reason?: string,
   ): Promise<void>;
 
   stopDispatch(): void;
   getDailyStats(
     campaignId: string,
-    date: Date
+    date: Date,
   ): Promise<Record<string, number>>;
   getDetailedReport(
     campaignId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
   ): Promise<any>;
 }
 
