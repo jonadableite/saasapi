@@ -1,14 +1,14 @@
 import { PrismaClient } from "@prisma/client";
+import axios from "axios";
 import bcrypt from "bcryptjs";
 import { format, subDays } from "date-fns";
 import type { Request, Response } from "express";
-import axios from "axios";
 
 const prisma = new PrismaClient();
 
 const EVO_AI_API_URL = process.env.EVO_AI_API_URL || "";
-const EVO_IA_API_KEY = process.env.EVO_IA_API_KEY || "429683C4C977415CAAFCCE10F7D57E11";
-
+const EVO_IA_API_KEY =
+  process.env.EVO_IA_API_KEY || "429683C4C977415CAAFCCE10F7D57E11";
 
 /**
  * ✅ Criar um novo usuário com papel (`role`) e afiliado opcional (`referredBy`)
@@ -95,7 +95,6 @@ export const createUser = async (req: Request, res: Response) => {
       return user; // Retorna o usuário criado pela transação
     });
 
-
     // --- Sincronizar usuário com Evo AI ---
     let evoAiUserId = null;
     let evoAiClientId = null;
@@ -114,10 +113,10 @@ export const createUser = async (req: Request, res: Response) => {
         },
         {
           headers: {
-            'Authorization': `Bearer ${EVO_AI_ADMIN_TOKEN}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${EVO_IA_API_KEY}`,
+            "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       console.log("Usuário criado na Evo AI:", evoAiResponse.data);
@@ -132,10 +131,9 @@ export const createUser = async (req: Request, res: Response) => {
         where: { id: createdUser.id },
         data: {
           evoAiUserId: evoAiUserId,
-          evoAiClientId: evoAiClientId,
+          client_Id: evoAiClientId,
         },
       });
-
     } catch (evoAiError) {
       console.error("Erro ao criar usuário na Evo AI:", evoAiError);
       // Trate o erro - talvez registre, envie um alerta.
@@ -146,21 +144,17 @@ export const createUser = async (req: Request, res: Response) => {
     }
     // --- Fim da Sincronização com Evo AI ---
 
-
     // Buscar o usuário atualizado para retornar na resposta (opcional, mas útil)
     const userWithEvoAiIds = await prisma.user.findUnique({
-        where: { id: createdUser.id },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            plan: true,
-            evoAiUserId: true,
-            evoAiClientId: true,
-
-        }
+      where: { id: createdUser.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        plan: true,
+        evoAiUserId: true,
+      },
     });
-
 
     return res.status(201).json({
       message: "Usuário criado com sucesso.",
