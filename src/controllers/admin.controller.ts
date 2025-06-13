@@ -1,16 +1,14 @@
-// src/controllers/admin.controller.ts
-// src/controllers/admin.controller.ts
 import { PrismaClient } from "@prisma/client";
-import axios from "axios";
 import bcrypt from "bcryptjs";
 import { format, subDays } from "date-fns";
 import type { Request, Response } from "express";
+import axios from "axios";
 
 const prisma = new PrismaClient();
 
-const EVO_AI_API_URL = process.env.EVO_IA_API_URL || "";
-const EVO_AI_API_KEY =
-  process.env.EVO_AI_API_KEY || "429683C4C977415CAAFCCE10F7D57E11";
+const EVO_AI_API_URL = process.env.EVO_AI_API_URL || "";
+const EVO_IA_API_KEY = process.env.EVO_IA_API_KEY || "429683C4C977415CAAFCCE10F7D57E11";
+
 
 /**
  * ✅ Criar um novo usuário com papel (`role`) e afiliado opcional (`referredBy`)
@@ -34,7 +32,6 @@ export const createUser = async (req: Request, res: Response) => {
       referredBy,
       payment,
       dueDate,
-      sendWelcomeEmail = true, // Novo parâmetro opcional
     } = req.body;
 
     if (!name || !email || !password) {
@@ -50,20 +47,18 @@ export const createUser = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // biome-ignore lint/suspicious/noImplicitAnyLet: <explanation>
-    let createdUser; // Variável para armazenar o usuário criado no seu DB
-
-    await prisma.$transaction(async (tx) => {
+    // Usamos uma transação para garantir que o usuário e a empresa temporária sejam criados juntos
+    const createdUser = await prisma.$transaction(async (tx) => {
       // Criar uma empresa temporária para o usuário
       const tempCompany = await tx.company.create({
         data: {
-          name: `Temporary Company`,
+          name: `Empresa ${name}`,
           active: true,
         },
       });
 
       // Criar o usuário com trialEndDate
-      createdUser = await tx.user.create({
+      const user = await tx.user.create({
         data: {
           name,
           email,
@@ -87,7 +82,7 @@ export const createUser = async (req: Request, res: Response) => {
       if (payment && dueDate) {
         await tx.payment.create({
           data: {
-            userId: createdUser.id,
+            userId: user.id,
             amount: Math.round(Number.parseFloat(payment) * 100), // Convertendo para centavos
             dueDate: new Date(dueDate),
             status: "pending",
@@ -96,69 +91,85 @@ export const createUser = async (req: Request, res: Response) => {
           },
         });
       }
-    }); // Fim da transação do Prisma
+
+      return user; // Retorna o usuário criado pela transação
+    });
+
 
     // --- Sincronizar usuário com Evo AI ---
     let evoAiUserId = null;
-    let clientId = null;
+    let evoAiClientId = null;
 
     try {
-      // Generate a secure password for the Evo AI client,
-      // DO NOT use the user's plain text password from the request.
+      // Gere uma senha segura para o cliente Evo AI.ss
+      // NÃO use a senha em texto claro do usuário da requisição.
       const evoAiPassword = `evoai_${createdUser.id}_${Date.now()}`; // Exemplo: usando ID do usuário e timestamp
 
       const evoAiResponse = await axios.post(
-        `${EVO_AI_API_URL}/api/v1/auth/register`,
+        `${EVO_AI_API_URL}/api/v1/clients`,
         {
           name: createdUser.name,
           email: createdUser.email,
-          password: password,
+          password: evoAiPassword, // Use a senha gerada/segura
         },
         {
           headers: {
-            authorization: `Bearer ${EVO_AI_API_KEY}`,
-            "Content-Type": "application/json",
+            'Authorization': `Bearer ${EVO_AI_ADMIN_TOKEN}`,
+            'Content-Type': 'application/json',
           },
+        }
+      );
+
+      console.log("Usuário criado na Evo AI:", evoAiResponse.data);
+
+      // **Capturar e armazenar os IDs da Evo AI**
+      // Assumindo que a resposta da Evo AI inclui 'id' para o usuário e 'clientId' para o cliente
+      evoAiUserId = evoAiResponse.data.id; // Verifique a estrutura exata da resposta da Evo AI
+      evoAiClientId = evoAiResponse.data.clientId; // Verifique a estrutura exata da resposta da Evo AI
+
+      // Atualizar o usuário no seu banco de dados local com os IDs da Evo AI
+      await prisma.user.update({
+        where: { id: createdUser.id },
+        data: {
+          evoAiUserId: evoAiUserId,
+          evoAiClientId: evoAiClientId,
         },
-      );
+      });
 
-      console.log(
-        "Resposta da criação de usuário na Evo AI:",
-        evoAiResponse.data,
-      );
-
-      // Capture os IDs da resposta da Evo AI
-      evoAiUserId = evoAiResponse.data.id;
-      clientId = evoAiResponse.data.client_id;
-
-      // Atualize o usuário no seu DB com os IDs da Evo AI
-      if (createdUser) {
-        // Verifique se o usuário foi criado na transação
-        await prisma.user.update({
-          where: { id: createdUser.id },
-          data: {
-            evoAiUserId: evoAiUserId,
-            client_Id: clientId,
-          },
-        });
-        console.log(`Usuário ${createdUser.id} atualizado com IDs da Evo AI.`);
-      }
     } catch (evoAiError) {
       console.error("Erro ao criar usuário na Evo AI:", evoAiError);
-      // Trate o erro da Evo AI. O usuário já foi criado no seu DB principal.
-      // Considere um mecanismo para tentar sincronizar novamente mais tarde.
-      // Você pode querer logar este erro de forma mais persistente.
+      // Trate o erro - talvez registre, envie um alerta.
+      // O usuário já foi criado no seu banco de dados principal.
+      // Considere um mecanismo para tentar criar o cliente na Evo AI novamente mais tarde.
+      // Não retorne erro 500 para o usuário final apenas por falha na sincronização externa,
+      // a menos que seja um requisito crítico.
     }
     // --- Fim da Sincronização com Evo AI ---
 
+
+    // Buscar o usuário atualizado para retornar na resposta (opcional, mas útil)
+    const userWithEvoAiIds = await prisma.user.findUnique({
+        where: { id: createdUser.id },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            plan: true,
+            evoAiUserId: true,
+            evoAiClientId: true,
+
+        }
+    });
+
+
     return res.status(201).json({
       message: "Usuário criado com sucesso.",
-      user: createdUser, // Retorna o usuário criado (sem os IDs da Evo AI, a menos que você os busque novamente)
-      evoAiUserId: evoAiUserId, // Opcional: retornar os IDs da Evo AI na resposta
-      client_Id: clientId,
+      user: userWithEvoAiIds, // Retorna o usuário com os IDs da Evo AI (se a sincronização foi bem-sucedida)
     });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
+    // Se o erro ocorreu ANTES da sincronização com a Evo AI, a transação do Prisma falhará e reverterá.
+    // Se o erro ocorreu DURANTE a sincronização, o usuário já está criado no seu DB.
     return res.status(500).json({ error: "Erro interno do servidor." });
   }
 };
@@ -329,7 +340,6 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
       where: {
         payments: {
           some: {
-            // biome-ignore lint/style/useNamingConvention: <explanation>
             OR: [
               {
                 status: "pending",
@@ -358,7 +368,6 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
         },
         payments: {
           where: {
-            // biome-ignore lint/style/useNamingConvention: <explanation>
             OR: [{ status: "pending" }, { status: "overdue" }],
           },
           select: {
@@ -411,7 +420,6 @@ export const getUserSignups = async (req: Request, res: Response) => {
 
     const signupsByDay: Record<string, number> = {};
 
-    // biome-ignore lint/complexity/noForEach: <explanation>
     users.forEach((user) => {
       const date = format(user.createdAt, "yyyy-MM-dd");
       signupsByDay[date] = (signupsByDay[date] || 0) + 1;
@@ -456,7 +464,6 @@ export const getRevenueByDay = async (req: Request, res: Response) => {
       { completed: number; pending: number; overdue: number }
     > = {};
 
-    // biome-ignore lint/complexity/noForEach: <explanation>
     payments.forEach((payment) => {
       const date = format(payment.createdAt, "yyyy-MM-dd");
       if (!revenueByDay[date]) {
