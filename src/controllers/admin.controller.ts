@@ -1,4 +1,5 @@
 // src/controllers/admin.controller.ts
+// src/controllers/admin.controller.ts
 import { PrismaClient } from "@prisma/client";
 import axios from "axios";
 import bcrypt from "bcryptjs";
@@ -33,6 +34,7 @@ export const createUser = async (req: Request, res: Response) => {
       referredBy,
       payment,
       dueDate,
+      sendWelcomeEmail = true, // Novo parâmetro opcional
     } = req.body;
 
     if (!name || !email || !password) {
@@ -55,7 +57,7 @@ export const createUser = async (req: Request, res: Response) => {
       // Criar uma empresa temporária para o usuário
       const tempCompany = await tx.company.create({
         data: {
-          name: `Empresa ${name}`,
+          name: `Temporary Company`,
           active: true,
         },
       });
@@ -98,7 +100,7 @@ export const createUser = async (req: Request, res: Response) => {
 
     // --- Sincronizar usuário com Evo AI ---
     let evoAiUserId = null;
-    let client_Id = null;
+    let clientId = null;
 
     try {
       // Generate a secure password for the Evo AI client,
@@ -127,7 +129,7 @@ export const createUser = async (req: Request, res: Response) => {
 
       // Capture os IDs da resposta da Evo AI
       evoAiUserId = evoAiResponse.data.id;
-      client_Id = evoAiResponse.data.client_id;
+      clientId = evoAiResponse.data.client_id;
 
       // Atualize o usuário no seu DB com os IDs da Evo AI
       if (createdUser) {
@@ -136,7 +138,7 @@ export const createUser = async (req: Request, res: Response) => {
           where: { id: createdUser.id },
           data: {
             evoAiUserId: evoAiUserId,
-            client_Id: client_Id,
+            client_Id: clientId,
           },
         });
         console.log(`Usuário ${createdUser.id} atualizado com IDs da Evo AI.`);
@@ -153,7 +155,7 @@ export const createUser = async (req: Request, res: Response) => {
       message: "Usuário criado com sucesso.",
       user: createdUser, // Retorna o usuário criado (sem os IDs da Evo AI, a menos que você os busque novamente)
       evoAiUserId: evoAiUserId, // Opcional: retornar os IDs da Evo AI na resposta
-      client_Id: client_Id,
+      client_Id: clientId,
     });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);

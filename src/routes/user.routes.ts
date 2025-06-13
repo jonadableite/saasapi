@@ -21,6 +21,8 @@ router.put("/company/update", routes.updateCompanyController);
 router.patch("/company/update", routes.updateCompanyController);
 
 // Rotas relacionadas ao plano
+// Rota para obter limites de instância
+router.get("/instance-limits", routes.getUserInstanceLimitsController);
 router.get("/plan", routes.getUserPlanController);
 router.post("/plan/check-limits", routes.checkPlanLimitsController);
 router.get("/plan-status", routes.checkPlanStatus);

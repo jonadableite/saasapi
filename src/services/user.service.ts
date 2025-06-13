@@ -1,3 +1,4 @@
+import { logger } from "@/utils/logger";
 // src/services/user.service.ts
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
@@ -127,7 +128,7 @@ export const createUser = async (userData: {
       token,
     };
   } catch (error) {
-    console.error("Erro ao criar usuário:", error);
+    logger.error("Erro ao criar usuário:", error);
     if (error instanceof Error) {
       throw new Error(error.message);
     }
@@ -155,7 +156,7 @@ export const updateCompany = async (
 
     return updatedCompany;
   } catch (error) {
-    console.error("Erro ao atualizar empresa:", error);
+    logger.error("Erro ao atualizar empresa:", error);
     throw new Error("Erro ao atualizar empresa");
   }
 };
@@ -188,7 +189,7 @@ export const getUser = async (
   id: string,
   isCurrentUser = false,
 ): Promise<UserWithInstances> => {
-  console.log("Buscando usuário com ID:", id, "isCurrentUser:", isCurrentUser);
+  logger.log("Buscando usuário com ID:", id, "isCurrentUser:", isCurrentUser);
 
   const user = await prisma.user.findUnique({
     where: {
@@ -217,7 +218,7 @@ export const getUser = async (
     },
   });
 
-  console.log("Resultado da busca:", user);
+  logger.log("Resultado da busca:", user);
 
   if (!user) {
     throw new Error("Usuário não encontrado");
@@ -292,17 +293,17 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
     name: "Gratuito",
     price: 0,
   },
-  starter: {
-    maxLeads: 1000,
+  basic: {
+    maxLeads: 200,
     maxCampaigns: 2,
     maxContacts: 1000,
     maxInstances: 2,
     features: ["TEXT", "IMAGE"],
-    name: "Starter",
-    price: 47,
+    name: "Básico",
+    price: 49,
   },
-  growth: {
-    maxLeads: 5000,
+  pro: {
+    maxLeads: 1000,
     maxCampaigns: 5,
     maxContacts: 5000,
     maxInstances: 5,
@@ -316,8 +317,8 @@ const PLAN_LIMITS: Record<string, PlanDetails> = {
     maxContacts: 20000,
     maxInstances: 15,
     features: ["TEXT", "IMAGE", "VIDEO", "AUDIO", "STICKER"],
-    name: "Scale",
-    price: 197,
+    name: "Enterprise",
+    price: 299,
   },
 };
 
@@ -328,7 +329,7 @@ export const fetchUserPlan = async (userId: string) => {
       where: { id: userId },
       select: {
         id: true,
-        plan: true,
+        plan: true, // Campo do banco
         trialEndDate: true,
         stripeSubscriptionStatus: true,
         stripeSubscriptionId: true,
@@ -351,7 +352,12 @@ export const fetchUserPlan = async (userId: string) => {
       throw new Error("Usuário não encontrado");
     }
 
-    const planLimits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
+    // Log para debug
+    logger.log("Plano do usuário:", user.plan);
+
+    // Corrija a verificação do plano
+    const planType = user.plan || "free";
+    const planLimits = PLAN_LIMITS[planType] || PLAN_LIMITS.free;
 
     // Buscar contagem atual de leads e campanhas do usuário
     const [leadsCount, campaignsCount] = await Promise.all([
@@ -384,8 +390,8 @@ export const fetchUserPlan = async (userId: string) => {
 
     return {
       currentPlan: {
-        name: planLimits.name,
-        type: user.plan,
+        name: planLimits.name, // Nome correto do plano
+        type: planType, // Tipo do plano correto
         price: planLimits.price,
         isInTrial,
         trialEndDate: user.trialEndDate,
@@ -409,7 +415,7 @@ export const fetchUserPlan = async (userId: string) => {
       company: user.company,
     };
   } catch (error) {
-    console.error("Erro ao buscar informações do plano:", error);
+    logger.error("Erro ao buscar informações do plano:", error);
     throw new Error("Erro ao buscar informações do plano do usuário");
   }
 };

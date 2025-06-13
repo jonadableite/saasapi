@@ -31,7 +31,7 @@ function isPrismaError(error: unknown): error is { code: string } {
 // Controlador para listar todos os usuários
 export const listUsersController = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   try {
     const users = await listUsers();
@@ -45,7 +45,7 @@ export const listUsersController = async (
 /// Controladores de verificação de plano
 export const getUserPlanController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -64,9 +64,48 @@ export const getUserPlanController = async (
   }
 };
 
+export const getUserInstanceLimitsController = async (
+  req: RequestWithUser,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        maxInstances: true,
+        plan: true,
+        _count: {
+          select: { instances: true },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    return res.json({
+      maxInstances: user.maxInstances,
+      currentInstances: user._count.instances,
+      plan: user.plan,
+    });
+  } catch (error) {
+    console.error("Erro ao buscar limites de instância:", error);
+    return res.status(500).json({
+      error: "Erro ao buscar limites de instância",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
+};
+
 export const checkPlanLimitsController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -83,7 +122,7 @@ export const checkPlanLimitsController = async (
     const canProceed = await checkPlanLimits(
       userId,
       operation as "leads" | "campaigns",
-      quantity || 1,
+      quantity || 1
     );
 
     return res.json({
@@ -105,7 +144,7 @@ export const checkPlanLimitsController = async (
 
 export const getUserProfileController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -169,7 +208,7 @@ export const checkPlanStatus = async (req: RequestWithUser, res: Response) => {
 
 export const checkPlanUpdateStatus = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -200,7 +239,7 @@ export const checkPlanUpdateStatus = async (
 // Controlador para encontrar um usuário por ID
 export const findOneUsersController = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const { id } = req.params;
   try {
@@ -220,7 +259,7 @@ export const findOneUsersController = async (
 // Controlador para criar um novo usuário
 export const createUsersController = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   try {
     const validatedData = await userSchema.validate(req.body, {
@@ -255,7 +294,7 @@ export const createUsersController = async (
 
 export const checkCompanyStatus = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -306,7 +345,7 @@ export const checkCompanyStatus = async (
 
 export const updateCompanyController = async (
   req: RequestWithUser,
-  res: Response,
+  res: Response
 ) => {
   try {
     const userId = req.user?.id;
@@ -368,7 +407,7 @@ export const updateCompanyController = async (
 // Controlador para atualizar um usuário
 export const updateUserController = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const { id } = req.params;
   try {
@@ -394,7 +433,7 @@ export const updateUserController = async (
 // Controlador para deletar um usuário
 export const deleteUserController = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<Response> => {
   const { id } = req.params;
   try {
@@ -422,4 +461,5 @@ export const routes = {
   checkPlanLimitsController,
   getUserProfileController,
   checkPlanUpdateStatus,
+  getUserInstanceLimitsController,
 };

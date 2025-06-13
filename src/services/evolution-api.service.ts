@@ -1,415 +1,338 @@
 // src/services/evolution-api.service.ts
-import { Injectable } from "@nestjs/common";
-import axios from "axios"; // Importação simplificada do axios
-import { AppError } from "../errors/AppError";
-import { logger } from "../utils/logger";
+import axios from "axios";
+import { logger } from "@/utils/logger";
 
-const apiLogger = logger.setContext("EvolutionAPI");
+const evolutionLogger = logger.setContext("EvolutionApiService");
 
-// Interface para o erro do axios
-interface AxiosErrorResponse {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  message?: string;
-}
-
-@Injectable()
 export class EvolutionApiService {
-  private baseUrl: string;
+  private apiUrl: string;
   private apiKey: string;
 
   constructor() {
-    this.baseUrl = process.env.API_EVO_URL || "https://evo.whatlead.com.br";
-    this.apiKey = process.env.EVO_API_KEY || "429683C4C977415CAAFCCE10F7D57E11";
+    this.apiUrl =
+      process.env.EVOLUTION_API_URL || "https://evo.whatlead.com.br";
+    this.apiKey = process.env.EVOLUTION_API_KEY || "";
   }
 
-  /**
-   * Envia uma mensagem de texto
-   */
-  async sendMessage(params: {
-    instanceName: string;
-    to: string;
-    message: string;
-    options?: {
-      delay?: number;
-    };
-  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  private async makeRequest(
+    endpoint: string,
+    method: string,
+    data: any
+  ): Promise<any> {
     try {
-      const { instanceName, to, message, options } = params;
-
-      interface SendMessageResponse {
-        status: string;
-        key?: { id: string };
-        response?: { key?: { id: string } };
-        message?: string;
-      }
-
-      const response = await axios.post<SendMessageResponse>(
-        `${this.baseUrl}/api/${instanceName}/send-message`,
-        {
-          number: to,
-          message,
-          options,
+      const response = await axios({
+        method,
+        url: `${this.apiUrl}${endpoint}`,
+        headers: {
+          "Content-Type": "application/json",
+          apikey: this.apiKey,
         },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            apikey: this.apiKey,
-          },
-        },
-      );
-
-      if (response.data.status === "success") {
-        return {
-          success: true,
-          messageId: response.data.key?.id || response.data.response?.key?.id,
-        };
-      }
-      apiLogger.warn(
-        `Falha ao enviar mensagem para ${to}: ${JSON.stringify(response.data)}`,
-      );
+        data,
+      });
       return {
-        success: false,
-        error: response.data.message || "Erro desconhecido",
+        success: true,
+        messageId: response.data?.id || response.data?.messageId,
+        data: response.data,
       };
     } catch (error: any) {
-      // Tipando como any para resolver o problema do 'unknown'
-      apiLogger.error("Erro ao enviar mensagem:", error);
+      evolutionLogger.error(
+        `Erro na requisição: ${endpoint}`,
+        error.response?.data || error.message
+      );
       return {
         success: false,
         error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
+          error.response?.data?.message || error.message || "Erro desconhecido",
       };
     }
   }
 
-  /**
-   * Envia uma mensagem com mídia (imagem, áudio, vídeo, documento)
-   */
+  async sendMessage(params: {
+    instanceName: string;
+    number: string;
+    text: string;
+    options?: any;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/message/sendText/${params.instanceName}`,
+        "POST",
+        {
+          number: params.number,
+          text: params.text,
+          ...params.options,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar mensagem de texto para ${params.number}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao enviar mensagem de texto",
+      };
+    }
+  }
+
   async sendMedia(params: {
     instanceName: string;
-    contactPhone: string;
-    mediaUrl: string;
-    mediaType: string;
+    number: string;
+    mediatype: string;
+    media: string;
     caption?: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const { instanceName, contactPhone, mediaUrl, mediaType, caption } =
-        params;
-
-      interface MediaResponse {
-        status: string;
-        key?: { id: string };
-        response?: { key?: { id: string } };
-        message?: string;
-      }
-
-      const endpoint = `${this.baseUrl}/api/${instanceName}/send-${mediaType}`;
-      const response = await axios.post<MediaResponse>(
-        endpoint,
+      const response = await this.makeRequest(
+        `/message/sendMedia/${params.instanceName}`,
+        "POST",
         {
-          number: contactPhone,
-          url: mediaUrl,
-          caption: caption || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            apikey: this.apiKey,
-          },
-        },
+          number: params.number,
+          mediatype: params.mediatype,
+          media: params.media,
+          caption: params.caption,
+        }
       );
-
-      if (response.data.status === "success") {
-        return {
-          success: true,
-          messageId: response.data.key?.id || response.data.response?.key?.id,
-        };
-      }
-      apiLogger.warn(
-        `Falha ao enviar mídia para ${contactPhone}: ${JSON.stringify(
-          response.data,
-        )}`,
-      );
-      return {
-        success: false,
-        error: response.data.message || "Erro desconhecido",
-      };
+      return response;
     } catch (error: any) {
-      apiLogger.error("Erro ao enviar mídia:", error);
-      return {
-        success: false,
-        error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
-      };
+      evolutionLogger.error(
+        `Erro ao enviar mídia para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar mídia" };
     }
   }
 
-  /**
-   * Envia uma mensagem de contato
-   */
-  async sendContact(params: {
-    instanceName: string;
-    to: string;
-    vcard: string;
-    fullName: string;
-  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    try {
-      const { instanceName, to, vcard, fullName } = params;
-
-      interface ContactResponse {
-        status: string;
-        key?: { id: string };
-        response?: { key?: { id: string } };
-        message?: string;
-      }
-
-      const response = await axios.post<ContactResponse>(
-        `${this.baseUrl}/api/${instanceName}/send-contact`,
-        {
-          number: to,
-          vcard,
-          name: fullName,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            apikey: this.apiKey,
-          },
-        },
-      );
-
-      if (response.data.status === "success") {
-        return {
-          success: true,
-          messageId: response.data.key?.id || response.data.response?.key?.id,
-        };
-      }
-      apiLogger.warn(
-        `Falha ao enviar contato para ${to}: ${JSON.stringify(response.data)}`,
-      );
-      return {
-        success: false,
-        error: response.data.message || "Erro desconhecido",
-      };
-    } catch (error: any) {
-      apiLogger.error("Erro ao enviar contato:", error);
-      return {
-        success: false,
-        error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
-      };
-    }
-  }
-
-  /**
-   * Envia uma mensagem com botões
-   */
   async sendButton(params: {
     instanceName: string;
-    to: string;
-    title: string;
-    message: string;
-    buttons: Array<{ buttonId: string; buttonText: string }>;
-    footer?: string;
+    number: string;
+    text: string;
+    buttons: Array<{ id: string; text: string }>;
+    title?: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const { instanceName, to, title, message, buttons, footer } = params;
-
-      // Formatar os botões como esperado pela API
-      const formattedButtons = buttons.map((b) => ({
-        id: b.buttonId,
-        text: b.buttonText,
-      }));
-
-      interface ButtonResponse {
-        status: string;
-        key?: { id: string };
-        response?: { key?: { id: string } };
-        message?: string;
-      }
-
-      const response = await axios.post<ButtonResponse>(
-        `${this.baseUrl}/api/${instanceName}/send-button`,
+      const response = await this.makeRequest(
+        `/message/sendButton/${params.instanceName}`,
+        "POST",
         {
-          number: to,
-          title,
-          message,
-          buttons: formattedButtons,
-          footer,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            apikey: this.apiKey,
-          },
-        },
+          number: params.number,
+          text: params.text,
+          buttons: params.buttons,
+          title: params.title,
+        }
       );
-
-      if (response.data.status === "success") {
-        return {
-          success: true,
-          messageId: response.data.key?.id || response.data.response?.key?.id,
-        };
-      }
-      apiLogger.warn(
-        `Falha ao enviar botões para ${to}: ${JSON.stringify(response.data)}`,
-      );
-      return {
-        success: false,
-        error: response.data.message || "Erro desconhecido",
-      };
+      return response;
     } catch (error: any) {
-      apiLogger.error("Erro ao enviar botões:", error);
-      return {
-        success: false,
-        error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
-      };
+      evolutionLogger.error(
+        `Erro ao enviar botões para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar botões" };
     }
   }
 
-  /**
-   * Envia uma mensagem com lista de seleção
-   */
   async sendList(params: {
     instanceName: string;
-    to: string;
+    number: string;
     title: string;
-    description: string;
+    text: string;
     buttonText: string;
     sections: Array<{
       title: string;
-      rows: Array<{
-        title: string;
-        description?: string;
-        rowId: string;
-      }>;
+      rows: Array<{ rowId: string; title: string; description: string }>;
     }>;
-    footer?: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const {
-        instanceName,
-        to,
-        title,
-        description,
-        buttonText,
-        sections,
-        footer,
-      } = params;
-
-      interface ListResponse {
-        status: string;
-        key?: { id: string };
-        response?: { key?: { id: string } };
-        message?: string;
-      }
-
-      const response = await axios.post<ListResponse>(
-        `${this.baseUrl}/api/${instanceName}/send-list`,
+      const response = await this.makeRequest(
+        `/message/sendList/${params.instanceName}`,
+        "POST",
         {
-          number: to,
-          title,
-          description,
-          buttonText,
-          sections,
-          footer,
-        },
+          number: params.number,
+          title: params.title,
+          text: params.text,
+          buttonText: params.buttonText,
+          sections: params.sections,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar lista para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar lista" };
+    }
+  }
+
+  async sendReaction(params: {
+    instanceName: string;
+    number: string;
+    messageId: string;
+    emoji: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/message/sendReaction/${params.instanceName}`,
+        "POST",
+        {
+          number: params.number,
+          messageId: params.messageId,
+          emoji: params.emoji,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao enviar reação para ${params.number}`,
+        error
+      );
+      return { success: false, error: "Falha ao enviar reação" };
+    }
+  }
+
+  async findChats(instanceName: string) {
+    try {
+      const response = await axios.post(
+        `${this.apiUrl}/chat/findChats/${instanceName}`,
+        {},
         {
           headers: {
+            Authorization: `Bearer ${this.apiKey}`,
             "Content-Type": "application/json",
-            apikey: this.apiKey,
           },
-        },
+        }
       );
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar chats:", error);
+      throw error;
+    }
+  }
 
-      if (response.data.status === "success") {
-        return {
-          success: true,
-          messageId: response.data.key?.id || response.data.response?.key?.id,
-        };
-      }
-      apiLogger.warn(
-        `Falha ao enviar lista para ${to}: ${JSON.stringify(response.data)}`,
+  async findMessages(
+    instanceName: string,
+    remoteJid: string,
+    page: number = 1,
+    offset: number = 50
+  ) {
+    try {
+      const response = await this.makeRequest(
+        `/chat/findMessages/${instanceName}`,
+        "POST",
+        {
+          where: {
+            key: {
+              remoteJid: remoteJid,
+            },
+          },
+          page: page,
+          offset: offset,
+        }
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao buscar mensagens para ${remoteJid}`,
+        error
       );
       return {
         success: false,
-        error: response.data.message || "Erro desconhecido",
-      };
-    } catch (error: any) {
-      apiLogger.error("Erro ao enviar lista:", error);
-      return {
-        success: false,
-        error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
+        error: error.message || "Falha ao buscar mensagens",
       };
     }
   }
 
-  /**
-   * Envia uma reação a uma mensagem
-   */
-  async sendReaction(params: {
-    instanceName: string;
-    to: string;
-    messageId: string;
-    emoji: string;
-  }): Promise<{ success: boolean; error?: string }> {
+  async fetchProfilePicture(
+    instanceName: string,
+    number: string
+  ): Promise<{ success: boolean; url?: string; error?: string }> {
     try {
-      const { instanceName, to, messageId, emoji } = params;
-
-      interface ReactionResponse {
-        status: string;
-        message?: string;
-      }
-
-      const response = await axios.post<ReactionResponse>(
-        `${this.baseUrl}/api/${instanceName}/send-reaction`,
+      const response = await this.makeRequest(
+        `/chat/fetchProfilePictureUrl/${instanceName}`,
+        "POST",
         {
-          number: to,
-          messageId,
-          reaction: emoji,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            apikey: this.apiKey,
-          },
-        },
-      );
-
-      if (response.data.status === "success") {
-        return { success: true };
-      }
-      apiLogger.warn(
-        `Falha ao enviar reação para ${to}: ${JSON.stringify(response.data)}`,
+          number: number,
+        }
       );
       return {
-        success: false,
-        error: response.data.message || "Erro desconhecido",
+        success: true,
+        url: response.data,
       };
     } catch (error: any) {
-      apiLogger.error("Erro ao enviar reação:", error);
+      evolutionLogger.error(
+        `Erro ao buscar foto de perfil para ${number}`,
+        error
+      );
       return {
         success: false,
-        error:
-          error?.response?.data?.message ||
-          error?.message ||
-          "Erro na requisição",
+        error: error.message || "Falha ao buscar foto de perfil",
+      };
+    }
+  }
+
+  async findContacts(
+    instanceName: string,
+    contactId?: string
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const data: any = { where: {} };
+      if (contactId) {
+        data.where.id = contactId;
+      }
+
+      const response = await this.makeRequest(
+        `/chat/findContacts/${instanceName}`,
+        "POST",
+        data
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error("Erro ao buscar contatos", error);
+      return {
+        success: false,
+        error: error.message || "Falha ao buscar contatos",
+      };
+    }
+  }
+
+  async configureWebhook(
+    instanceName: string,
+    webhookUrl: string,
+    token: string,
+    events: string[] = ["messages.upsert", "messages.update", "chats.upsert"]
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const response = await this.makeRequest(
+        `/webhook/set/${instanceName}`,
+        "POST",
+        {
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            headers: {
+              authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            byEvents: false,
+            base64: false,
+            events: events,
+          },
+        }
+      );
+
+      evolutionLogger.log(
+        `Webhook configurado com sucesso para ${instanceName}`
+      );
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao configurar webhook para instância ${instanceName}`,
+        error
+      );
+      return {
+        success: false,
+        error: error.message || "Falha ao configurar webhook",
       };
     }
   }
