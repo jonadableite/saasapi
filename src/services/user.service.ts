@@ -146,7 +146,7 @@ export const updateCompany = async (
   companyData: {
     name: string;
     // Adicione outros campos conforme necessário
-  },
+  }
 ) => {
   try {
     const updatedCompany = await prisma.company.update({
@@ -187,7 +187,7 @@ export const listUsers = async () => {
  */
 export const getUser = async (
   id: string,
-  isCurrentUser = false,
+  isCurrentUser = false
 ): Promise<UserWithInstances> => {
   logger.log("Buscando usuário com ID:", id, "isCurrentUser:", isCurrentUser);
 
@@ -253,7 +253,7 @@ export const updateUser = async (
     email: string;
     password: string;
     plan: string;
-  }>,
+  }>
 ) => {
   if (updateData.password) {
     updateData.password = await bcrypt.hash(updateData.password, 10);
@@ -329,7 +329,11 @@ export const fetchUserPlan = async (userId: string) => {
       where: { id: userId },
       select: {
         id: true,
-        plan: true, // Campo do banco
+        plan: true, // Campo do banco - SEMPRE usar este valor
+        maxInstances: true, // Campo do banco - SEMPRE usar este valor
+        messagesPerDay: true, // <-- ADICIONAR: Buscar do banco
+        features: true, // <-- ADICIONAR: Buscar do banco
+        support: true, // <-- ADICIONAR: Buscar do banco
         trialEndDate: true,
         stripeSubscriptionStatus: true,
         stripeSubscriptionId: true,
@@ -352,12 +356,18 @@ export const fetchUserPlan = async (userId: string) => {
       throw new Error("Usuário não encontrado");
     }
 
-    // Log para debug
-    logger.log("Plano do usuário:", user.plan);
+    // Log para debug - mostrar todos os dados do banco
+    logger.log("Dados do usuário do banco:", {
+      plan: user.plan,
+      maxInstances: user.maxInstances,
+      messagesPerDay: user.messagesPerDay,
+      features: user.features,
+      support: user.support,
+    });
 
-    // Corrija a verificação do plano
+    // ✅ PRINCÍPIO SOLID: Sempre priorizar dados do banco
     const planType = user.plan || "free";
-    const planLimits = PLAN_LIMITS[planType] || PLAN_LIMITS.free;
+    const planLimits = PLAN_LIMITS[planType] || PLAN_LIMITS.free; // Apenas como fallback
 
     // Buscar contagem atual de leads e campanhas do usuário
     const [leadsCount, campaignsCount] = await Promise.all([
@@ -375,11 +385,15 @@ export const fetchUserPlan = async (userId: string) => {
       }),
     ]);
 
-    // Contar as instâncias do usuário
-    const currentInstances = user.instances.length;
-    const maxInstances = planLimits.maxInstances; // <-- Obter o limite de instâncias do PLAN_LIMITS
+    // ✅ SEMPRE usar valores do banco, fallback apenas se null/undefined
+    const maxInstances = user.maxInstances ?? planLimits.maxInstances;
+    const messagesPerDay = user.messagesPerDay ?? 50; // Fallback padrão se não estiver no banco
+    const features = user.features ?? planLimits.features;
+    const support = user.support ?? "basic"; // Fallback padrão se não estiver no banco
 
-    // Calcular a porcentagem de uso de instâncias
+    const currentInstances = user.instances.length;
+
+    // Calcular porcentagens
     const instancesPercentage =
       maxInstances > 0 ? (currentInstances / maxInstances) * 100 : 0;
 
@@ -390,7 +404,7 @@ export const fetchUserPlan = async (userId: string) => {
 
     return {
       currentPlan: {
-        name: planLimits.name, // Nome correto do plano
+        name: planType, // ✅ USAR O VALOR EXATO DO BANCO ao invés do hardcoded
         type: planType, // Tipo do plano correto
         price: planLimits.price,
         isInTrial,
@@ -399,18 +413,26 @@ export const fetchUserPlan = async (userId: string) => {
         subscriptionId: user.stripeSubscriptionId,
       },
       limits: {
-        maxLeads: planLimits.maxLeads,
-        maxCampaigns: planLimits.maxCampaigns,
-        maxInstances: maxInstances, // <-- Adicionado aqui!
-        features: planLimits.features,
+        maxLeads: planLimits.maxLeads, // TODO: Adicionar ao banco se necessário
+        maxCampaigns: planLimits.maxCampaigns, // TODO: Adicionar ao banco se necessário
+        maxInstances: maxInstances, // ✅ Usando dados do banco
+        messagesPerDay: messagesPerDay, // ✅ Usando dados do banco
+        features: features, // ✅ Usando dados do banco
+        support: support, // ✅ Usando dados do banco
       },
       usage: {
         currentLeads: leadsCount,
         currentCampaigns: campaignsCount,
-        currentInstances: currentInstances, // <-- Opcional: Adicionar o uso atual de instâncias
-        leadsPercentage: (leadsCount / planLimits.maxLeads) * 100,
-        campaignsPercentage: (campaignsCount / planLimits.maxCampaigns) * 100,
-        instancesPercentage: instancesPercentage, // <-- Opcional: Adicionar a porcentagem de uso de instâncias
+        currentInstances: currentInstances,
+        leadsPercentage:
+          planLimits.maxLeads > 0
+            ? (leadsCount / planLimits.maxLeads) * 100
+            : 0,
+        campaignsPercentage:
+          planLimits.maxCampaigns > 0
+            ? (campaignsCount / planLimits.maxCampaigns) * 100
+            : 0,
+        instancesPercentage: instancesPercentage, // ✅ Usando cálculo baseado no banco
       },
       company: user.company,
     };
@@ -424,7 +446,7 @@ export const fetchUserPlan = async (userId: string) => {
 export const checkPlanLimits = async (
   userId: string,
   operation: "leads" | "campaigns" | "instances", // Adicionado 'instances'
-  quantity = 1,
+  quantity = 1
 ) => {
   const planInfo = await fetchUserPlan(userId);
 
@@ -432,7 +454,7 @@ export const checkPlanLimits = async (
     const newTotal = planInfo.usage.currentLeads + quantity;
     if (newTotal > planInfo.limits.maxLeads) {
       throw new Error(
-        `Limite de leads do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+        `Limite de leads do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`
       );
     }
   }
@@ -441,7 +463,7 @@ export const checkPlanLimits = async (
     const newTotal = planInfo.usage.currentCampaigns + quantity;
     if (newTotal > planInfo.limits.maxCampaigns) {
       throw new Error(
-        `Limite de campanhas do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+        `Limite de campanhas do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`
       );
     }
   }
@@ -450,7 +472,7 @@ export const checkPlanLimits = async (
     const newTotal = planInfo.usage.currentInstances + quantity;
     if (newTotal > planInfo.limits.maxInstances) {
       throw new Error(
-        `Limite de instâncias do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`,
+        `Limite de instâncias do plano ${planInfo.currentPlan.name} atingido. Faça upgrade para continuar.`
       );
     }
   }

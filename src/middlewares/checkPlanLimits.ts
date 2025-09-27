@@ -8,7 +8,7 @@ import type { RequestWithUser } from "../types";
 export const checkPlanLimits = async (
   req: RequestWithUser,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const userId = req.user?.id;
@@ -18,8 +18,12 @@ export const checkPlanLimits = async (
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        instances: true,
+      select: {
+        plan: true,
+        maxInstances: true, // <-- ADICIONAR: Buscar limite do banco
+        instances: {
+          select: { id: true },
+        },
       },
     });
 
@@ -31,11 +35,13 @@ export const checkPlanLimits = async (
 
     // Verifica limite de instâncias
     if (req.method === "POST" && req.path.includes("/instances")) {
-      if (user.instances.length >= planLimits.numbers) {
+      // <-- CORRIGIR: Usar limite do banco ao invés do hardcoded
+      const maxInstances = user.maxInstances || planLimits.numbers;
+      if (user.instances.length >= maxInstances) {
         return res.status(403).json({
           error: `Limite de instâncias atingido para o plano ${user.plan}`,
           currentCount: user.instances.length,
-          limit: planLimits.numbers,
+          limit: maxInstances,
         });
       }
     }
