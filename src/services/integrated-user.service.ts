@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import axios from "axios";
 import { generateToken } from "./session.service";
+import { welcomeService } from "./welcome.service";
 
 const prisma = new PrismaClient();
 
@@ -73,10 +74,10 @@ const createUserInEvoAI = async (
   } catch (error) {
     logger.error("Erro ao criar usuário na Evo AI:", error);
     if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.detail || error.message;
+      const message = error.response?.data?.detail || error.response?.data?.message || error.message;
       throw new Error(`Erro na Evo AI: ${message}`);
     }
-    throw new Error("Erro ao comunicar com a Evo AI");
+    throw new Error(`Erro ao comunicar com a Evo AI: ${error}`);
   }
 };
 
@@ -163,6 +164,21 @@ export const createIntegratedUser = async (
     };
 
     const token = generateToken(tokenUser);
+
+    // Enviar email de boas-vindas
+    try {
+      await welcomeService.sendWelcomeMessage({
+        name: result.user.name,
+        email: result.user.email,
+        login: result.user.email, // Usando email como login
+        password: result.user.email, // Senha padrão conforme template
+        phone: undefined // Pode ser adicionado posteriormente se necessário
+      });
+      logger.info(`Email de boas-vindas enviado para: ${email}`);
+    } catch (emailError) {
+      logger.error("Erro ao enviar email de boas-vindas:", emailError);
+      // Não falha a criação do usuário se o email falhar
+    }
 
     logger.info(`Usuário integrado criado com sucesso: ${email}`);
 
