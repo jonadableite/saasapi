@@ -22,6 +22,7 @@ const userSchema = yup.object().shape({
     .email("Email inválido.")
     .required("O campo 'email' é obrigatório."),
   password: yup.string().required("O campo 'password' é obrigatório."),
+  plan: yup.string().optional(), // Campo opcional para o plano
 });
 
 // Função para verificar se o erro é do tipo Prisma
