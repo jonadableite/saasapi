@@ -11,6 +11,7 @@ import {
   listUsers,
   updateUser,
 } from "../services/user.service";
+import { createIntegratedUser } from "../services/integrated-user.service";
 import type { RequestWithUser } from "../types";
 
 // Esquema de validação para criação e atualização de usuário
@@ -292,6 +293,49 @@ export const createUsersController = async (
   }
 };
 
+// Novo controlador para criação integrada de usuário
+export const createIntegratedUserController = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  try {
+    const validatedData = await userSchema.validate(req.body, {
+      abortEarly: false,
+    });
+
+    const { name, email, password, plan } = validatedData;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Dados obrigatórios ausentes" });
+    }
+
+    const result = await createIntegratedUser({
+      name,
+      email,
+      password,
+      plan,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Usuário criado com sucesso nas duas plataformas",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof yup.ValidationError) {
+      return res.status(400).json({ errors: error.errors });
+    }
+    console.error("Erro ao criar usuário integrado:", error);
+    
+    // Retornar erro mais específico
+    const errorMessage = error instanceof Error ? error.message : "Erro interno do servidor";
+    return res.status(500).json({ 
+      success: false,
+      error: errorMessage 
+    });
+  }
+};
+
 export const checkCompanyStatus = async (
   req: RequestWithUser,
   res: Response
@@ -452,6 +496,7 @@ export const routes = {
   listUsersController,
   findOneUsersController,
   createUsersController,
+  createIntegratedUserController,
   updateUserController,
   deleteUserController,
   checkPlanStatus,

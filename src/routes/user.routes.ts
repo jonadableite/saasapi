@@ -8,6 +8,7 @@ const router = Router();
 
 // Rotas públicas
 router.post("/register", routes.createUsersController);
+router.post("/register-integrated", routes.createIntegratedUserController); // Nova rota para n8n
 
 // Rota para obter o perfil do usuário atual
 router.get("/me", authMiddleware, routes.getUserProfileController);
