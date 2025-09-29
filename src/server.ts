@@ -9,7 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import setupMinioBucket from "./config/setupMinio";
 import specs from "./config/swagger";
 import { handleWebhook } from "./controllers/stripe.controller";
-import { createUsersController } from "./controllers/user.controller";
+import { createUsersController, routes } from "./controllers/user.controller";
 import { schedulePaymentReminders } from "./jobs/payment-reminder.job";
 import { updatePaymentStatuses } from "./jobs/updatePaymentStatuses";
 import { prisma } from "./lib/prisma";
@@ -97,6 +97,7 @@ app.use("/webhook", webhookRoutes);
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
+app.use("/api/users/register-integrated", routes.createIntegratedUserController);
 
 // Middleware de autenticação para todas as rotas protegidas
 app.use("/api", authMiddleware);

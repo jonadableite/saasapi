@@ -1,8 +1,8 @@
-# Integração n8n - Criação de Usuário Integrado
+# Integração n8n - Criação de Usuários Integrados
 
 ## Visão Geral
 
-Este documento descreve como usar o endpoint integrado para criar usuários simultaneamente na plataforma Evo AI e SaaSAPI através do n8n.
+Este endpoint permite criar usuários simultaneamente na **Evo AI** e **SaaSAPI** através de uma única requisição, ideal para automações via n8n.
 
 ## Endpoint
 
@@ -10,35 +10,39 @@ Este documento descreve como usar o endpoint integrado para criar usuários simu
 
 ## Descrição
 
-Este endpoint cria um usuário de forma integrada nas duas plataformas:
-1. **Evo AI**: Cria o usuário com `is_active=true` e `email_verified=true`
-2. **SaaSAPI**: Cria o usuário usando a mesma hash de senha e vincula o `client_id` da Evo AI
+O endpoint cria um usuário primeiro na **Evo AI** (plataforma de IA) e depois na **SaaSAPI** (plataforma SaaS), garantindo que ambos os sistemas tenham o mesmo usuário com dados consistentes.
+
+### Funcionalidades:
+- ✅ Criação dual de usuários (Evo AI + SaaSAPI)
+- ✅ Sincronização de senhas (mesmo hash)
+- ✅ Vinculação via `client_id` e `evoAiUserId`
+- ✅ Usuário ativo e verificado automaticamente na Evo AI
+- ✅ Criação automática de empresa temporária na SaaSAPI
+- ✅ Geração de token JWT para acesso imediato
 
 ## Parâmetros de Entrada
 
-```json
-{
-  "name": "string (obrigatório)",
-  "email": "string (obrigatório)",
-  "password": "string (obrigatório)",
-  "plan": "string (opcional, padrão: 'free')"
-}
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------||
+| `name` | string | ✅ | Nome completo do usuário |
+| `email` | string | ✅ | Email válido (único) |
+| `password` | string | ✅ | Senha (mínimo 8 caracteres) |
+| `plan` | string | ❌ | Plano desejado (padrão: "basic") |
+
+## Exemplo de Requisição
+
+```bash
+curl -X POST http://localhost:9000/api/users/register-integrated \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "João Silva",
+    "email": "joao@exemplo.com",
+    "password": "minhasenha123",
+    "plan": "basic"
+  }'
 ```
 
-### Exemplo de Requisição
-
-```json
-{
-  "name": "João Silva",
-  "email": "joao.silva@exemplo.com",
-  "password": "minhasenha123",
-  "plan": "premium"
-}
-```
-
-## Resposta de Sucesso
-
-**Status Code:** `201 Created`
+## Resposta de Sucesso (200)
 
 ```json
 {
@@ -46,46 +50,62 @@ Este endpoint cria um usuário de forma integrada nas duas plataformas:
   "message": "Usuário criado com sucesso nas duas plataformas",
   "data": {
     "user": {
-      "id": "uuid-saasapi",
+      "id": "cedf0eb3-a3bb-449e-a9a0-cbf81aaf3436",
       "name": "João Silva",
-      "email": "joao.silva@exemplo.com",
-      "plan": "premium",
-      "evoAiUserId": "uuid-evo-ai",
-      "client_Id": "uuid-client-evo-ai"
+      "email": "joao@exemplo.com",
+      "plan": "basic",
+      "evoAiUserId": "6490d873-a1af-4ce9-9e12-308d983cafc0",
+      "client_Id": "0b20ec21-cde3-4285-b8eb-1588f3ea1f71"
     },
-    "companyId": "uuid-company",
-    "token": "jwt-token"
+    "companyId": "f7b81810-e3d3-4510-a760-34c749cbf815",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 ```
 
-## Resposta de Erro
+## Respostas de Erro
 
-**Status Code:** `400 Bad Request` ou `500 Internal Server Error`
-
+### 400 - Dados Inválidos
 ```json
 {
   "success": false,
-  "error": "Mensagem de erro específica"
+  "error": "Dados de entrada inválidos: [detalhes]"
 }
 ```
 
-### Possíveis Erros
+### 409 - Usuário Já Existe
+```json
+{
+  "success": false,
+  "error": "Usuário já cadastrado com este email"
+}
+```
 
-- `400`: Dados obrigatórios ausentes
-- `400`: Email já cadastrado
-- `500`: Erro ao comunicar com a Evo AI
-- `500`: Erro interno do servidor
+### 500 - Erro na Evo AI
+```json
+{
+  "success": false,
+  "error": "Erro na Evo AI: [detalhes]"
+}
+```
+
+### 500 - Erro Interno
+```json
+{
+  "success": false,
+  "error": "Erro interno do servidor"
+}
+```
 
 ## Configuração no n8n
 
 ### 1. Nó HTTP Request
 
-Configure um nó HTTP Request com as seguintes configurações:
+Configure um nó **HTTP Request** com:
 
 - **Method**: POST
-- **URL**: `http://seu-servidor/api/users/register-integrated`
-- **Headers**:
+- **URL**: `https://seu-dominio.com/api/users/register-integrated`
+- **Headers**: 
   ```json
   {
     "Content-Type": "application/json"
@@ -93,31 +113,27 @@ Configure um nó HTTP Request com as seguintes configurações:
   ```
 - **Body**: JSON com os dados do usuário
 
-### 2. Exemplo de Workflow n8n
+### 2. Exemplo de Workflow
 
 ```json
 {
   "nodes": [
     {
+      "name": "Criar Usuário Integrado",
+      "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:3000/api/users/register-integrated",
-        "options": {
-          "headers": {
-            "Content-Type": "application/json"
-          }
+        "url": "https://seu-dominio.com/api/users/register-integrated",
+        "headers": {
+          "Content-Type": "application/json"
         },
         "body": {
-          "name": "{{ $json.name }}",
+          "name": "{{ $json.nome }}",
           "email": "{{ $json.email }}",
-          "password": "{{ $json.password }}",
-          "plan": "{{ $json.plan || 'free' }}"
+          "password": "{{ $json.senha }}",
+          "plan": "basic"
         }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [250, 300],
-      "name": "Create Integrated User"
+      }
     }
   ]
 }
@@ -125,14 +141,8 @@ Configure um nó HTTP Request com as seguintes configurações:
 
 ## Variáveis de Ambiente Necessárias
 
-Certifique-se de que as seguintes variáveis estejam configuradas no seu ambiente:
-
 ```env
-# URL base da Evo AI
-EVO_AI_BASE_URL=http://localhost:8000
-
-# Outras configurações necessárias...
-DATABASE_URL=postgresql://...
+EVO_AI_BASE_URL=https://evoai.whatlead.com.br
 ```
 
 ## Fluxo de Funcionamento

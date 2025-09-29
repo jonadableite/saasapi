@@ -57,7 +57,7 @@ const createUserInEvoAI = async (
   try {
     const evoAIBaseURL = process.env.EVO_AI_BASE_URL || "http://localhost:8000";
     
-    const response = await axios.post(`${evoAIBaseURL}/auth/register`, {
+    const response = await axios.post(`${evoAIBaseURL}/api/v1/auth/register`, {
       email: userData.email,
       password: userData.password, // Enviamos a senha original para a Evo AI processar
       name: userData.name,
