@@ -796,47 +796,6 @@ export default class CampaignController {
         throw new BadRequestError("Campanha não possui leads cadastrados");
       }
 
-      // Resetar status dos leads para PENDING
-      const resetResult = await prisma.campaignLead.updateMany({
-        where: {
-          campaignId,
-          NOT: { status: "PENDING" },
-        },
-        data: {
-          status: "PENDING",
-          sentAt: null,
-          deliveredAt: null,
-          readAt: null,
-          failedAt: null,
-          failureReason: null,
-          messageId: null,
-        },
-      });
-
-      startLogger.info(`Leads resetados para PENDING: ${resetResult.count}`);
-
-      // Verificar leads disponíveis após o reset
-      const availableLeads = await prisma.campaignLead.findMany({
-        where: {
-          campaignId,
-          status: "PENDING",
-          phone: {
-            not: "",
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-
-      if (availableLeads.length === 0) {
-        throw new BadRequestError(
-          "Não há leads disponíveis para disparo após reset de status",
-        );
-      }
-
-      startLogger.info(
-        `Leads disponíveis para disparo: ${availableLeads.length}`,
-      );
-
       // Verificar instância
       const instance = await prisma.instance.findUnique({
         where: { instanceName },
@@ -875,34 +834,127 @@ export default class CampaignController {
         },
       });
 
-      // Iniciar processos de envio
-      await messageDispatcherService.startDispatch({
-        campaignId,
-        instanceName,
-        message: message || "",
-        media: media
-          ? {
-              type: media.type,
-              base64: media.base64,
-              fileName: media.fileName,
-              mimetype: media.mimetype,
-              caption: media.caption,
-            }
-          : undefined,
-        minDelay: Number(minDelay) || 5,
-        maxDelay: Number(maxDelay) || 30,
-      });
-
-      startLogger.success("✅ Campanha iniciada com sucesso", {
-        campaignId,
-        dispatchId: dispatch.id,
-      });
-
+      // Responder imediatamente ao frontend
       res.json({
         success: true,
         message: "Campanha iniciada com sucesso",
         dispatch,
       });
+
+      // Processar campanha de forma assíncrona (não bloquear resposta)
+      setImmediate(async () => {
+        try {
+          startLogger.info("🔄 Iniciando processamento assíncrono da campanha");
+
+          // Resetar status dos leads para PENDING
+          const resetResult = await prisma.campaignLead.updateMany({
+            where: {
+              campaignId,
+              NOT: { status: "PENDING" },
+            },
+            data: {
+              status: "PENDING",
+              sentAt: null,
+              deliveredAt: null,
+              readAt: null,
+              failedAt: null,
+              failureReason: null,
+              messageId: null,
+            },
+          });
+
+          startLogger.info(`Leads resetados para PENDING: ${resetResult.count}`);
+
+          // Verificar leads disponíveis após o reset
+          const availableLeads = await prisma.campaignLead.findMany({
+            where: {
+              campaignId,
+              status: "PENDING",
+              phone: {
+                not: "",
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          });
+
+          if (availableLeads.length === 0) {
+            startLogger.error("Não há leads disponíveis para disparo após reset de status");
+            
+            // Atualizar status da campanha para erro
+            await prisma.campaign.update({
+              where: { id: campaignId },
+              data: {
+                status: "failed",
+              },
+            });
+
+            await prisma.campaignDispatch.update({
+              where: { id: dispatch.id },
+              data: {
+                status: "failed",
+                endedAt: new Date(),
+              },
+            });
+            return;
+          }
+
+          startLogger.info(
+            `Leads disponíveis para disparo: ${availableLeads.length}`,
+          );
+
+          // Iniciar processos de envio
+          await messageDispatcherService.startDispatch({
+            campaignId,
+            instanceName,
+            message: message || "",
+            media: media
+              ? {
+                  type: media.type,
+                  base64: media.base64,
+                  fileName: media.fileName,
+                  mimetype: media.mimetype,
+                  caption: media.caption,
+                }
+              : undefined,
+            minDelay: Number(minDelay) || 5,
+            maxDelay: Number(maxDelay) || 30,
+          });
+
+          startLogger.success("✅ Processamento assíncrono da campanha concluído", {
+            campaignId,
+            dispatchId: dispatch.id,
+          });
+
+        } catch (asyncError) {
+          startLogger.error("❌ Erro no processamento assíncrono da campanha", {
+            error: asyncError instanceof Error ? asyncError.message : "Erro desconhecido",
+            campaignId,
+            dispatchId: dispatch.id,
+            stack: asyncError instanceof Error ? asyncError.stack : undefined,
+          });
+
+          // Atualizar status da campanha para erro
+          try {
+            await prisma.campaign.update({
+              where: { id: campaignId },
+              data: {
+                status: "failed",
+              },
+            });
+
+            await prisma.campaignDispatch.update({
+              where: { id: dispatch.id },
+              data: {
+                status: "failed",
+                endedAt: new Date(),
+              },
+            });
+          } catch (updateError) {
+            startLogger.error("Erro ao atualizar status da campanha após falha", updateError);
+          }
+        }
+      });
+
     } catch (error) {
       startLogger.error("❌ Erro ao iniciar campanha", {
         error: error instanceof Error ? error.message : "Erro desconhecido",
@@ -1122,6 +1174,128 @@ export default class CampaignController {
     } catch (error) {
       logger.error("Erro ao finalizar campanha:", error);
       res.status(500).json({ error: "Erro ao finalizar campanha" });
+    }
+  }
+
+  public async getAvailableInstances(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
+
+      const instances = await prisma.instance.findMany({
+        where: {
+          userId,
+          connectionStatus: "OPEN",
+        },
+        select: {
+          id: true,
+          instanceName: true,
+          connectionStatus: true,
+        },
+      });
+
+      res.json({
+        success: true,
+        data: instances,
+      });
+    } catch (error) {
+      logger.error("Erro ao buscar instâncias disponíveis:", error);
+      res.status(500).json({ error: "Erro ao buscar instâncias disponíveis" });
+    }
+  }
+
+  public async getCampaignInstanceStats(
+    req: RequestWithUser,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { id: campaignId } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
+
+      // Verificar se a campanha pertence ao usuário
+      const campaign = await prisma.campaign.findFirst({
+        where: {
+          id: campaignId,
+          userId,
+        },
+      });
+
+      if (!campaign) {
+        res.status(404).json({ error: "Campanha não encontrada" });
+        return;
+      }
+
+      // Buscar estatísticas das instâncias para esta campanha
+      const dispatches = await prisma.campaignDispatch.findMany({
+        where: {
+          campaignId,
+        },
+        include: {
+          instance: {
+            select: {
+              instanceName: true,
+              connectionStatus: true,
+            },
+          },
+        },
+      });
+
+      // Buscar estatísticas de mensagens para esta campanha
+      const messageStats = await prisma.messageLog.findMany({
+        where: {
+          campaignId,
+        },
+        select: {
+          id: true,
+          sentAt: true,
+          deliveredAt: true,
+          readAt: true,
+          failedAt: true,
+          status: true,
+        },
+      });
+
+      const instanceStats = dispatches.map(dispatch => {
+        // Calculate stats for this specific instance
+        const instanceMessages = messageStats.filter(msg => 
+          // Since MessageLog doesn't have instanceName, we'll count all messages for the campaign
+          // This is a simplified approach - you might need to add instanceName to MessageLog model
+          true
+        );
+        
+        return {
+          instanceName: dispatch.instanceName,
+          connectionStatus: dispatch.instance.connectionStatus,
+          status: dispatch.status,
+          startedAt: dispatch.startedAt,
+          completedAt: dispatch.completedAt,
+          messageCount: instanceMessages.length,
+          sentCount: instanceMessages.filter(msg => msg.sentAt).length,
+          deliveredCount: instanceMessages.filter(msg => msg.deliveredAt).length,
+          readCount: instanceMessages.filter(msg => msg.readAt).length,
+          failedCount: instanceMessages.filter(msg => msg.failedAt).length,
+        };
+      });
+
+      res.json({
+        success: true,
+        data: instanceStats,
+      });
+    } catch (error) {
+      logger.error("Erro ao buscar estatísticas de instâncias da campanha:", error);
+      res.status(500).json({ error: "Erro ao buscar estatísticas de instâncias" });
     }
   }
 }

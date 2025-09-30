@@ -55,12 +55,20 @@ router
     controller.deleteCampaign(req as CampaignRequestWithId, res),
   );
 
+// Rota para instâncias disponíveis
+router.get("/instances/available", (req: Request, res: Response) =>
+  controller.getAvailableInstances(req as RequestWithUser, res),
+);
+
 // Rotas de estatísticas e progresso
 router.get("/:id/stats", validateCampaignId, (req: Request, res: Response) =>
   controller.getCampaignStats(req as CampaignRequestWithId, res),
 );
 router.get("/:id/progress", validateCampaignId, (req: Request, res: Response) =>
   controller.getCampaignProgress(req as CampaignRequestWithId, res),
+);
+router.get("/:id/instances/stats", validateCampaignId, (req: Request, res: Response) =>
+  controller.getCampaignInstanceStats(req as RequestWithUser, res),
 );
 
 // Rotas de controle de estado da campanha
