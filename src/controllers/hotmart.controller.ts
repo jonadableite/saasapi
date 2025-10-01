@@ -489,6 +489,15 @@ export class HotmartController {
         where.OR = [
           { name: { contains: search as string, mode: "insensitive" } },
           { email: { contains: search as string, mode: "insensitive" } },
+          { hotmartCustomerId: { contains: search as string, mode: "insensitive" } },
+          { hotmartSubscriberCode: { contains: search as string, mode: "insensitive" } },
+          { 
+            hotmartTransactions: {
+              some: {
+                transactionId: { contains: search as string, mode: "insensitive" }
+              }
+            }
+          },
         ];
       }
 
