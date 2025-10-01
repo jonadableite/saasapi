@@ -1,10 +1,18 @@
 import { EventEmitter } from "node:events";
 // src/services/warmup.service.ts
 import axios from "axios";
+import {
+  DEFAULT_EXTERNAL_NUMBERS_CHANCE,
+  DEFAULT_GROUP_CHANCE,
+  DEFAULT_GROUP_ID,
+  EXTERNAL_NUMBERS,
+} from "../constants/externalNumbers";
 import { PLAN_LIMITS } from "../constants/planLimits";
 import { prisma } from "../lib/prisma";
 import type { MessageType } from "../types/messageTypes";
 import type { MediaContent, WarmupConfig } from "../types/warmup";
+import { redisService } from "./redis.service";
+import { groupVerificationService } from "./groupVerification.service";
 
 const URL_API = "https://evo.whatlead.com.br";
 const API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
@@ -123,6 +131,27 @@ export class WarmupService {
   async startWarmup(config: WarmupConfig): Promise<void> {
     this.stop = false;
 
+    // Verificar e adicionar instâncias ao grupo padrão antes de iniciar o aquecimento
+    console.log('Verificando se todas as instâncias estão no grupo padrão...');
+    const instanceIds = config.phoneInstances.map(instance => instance.instanceId);
+    
+    try {
+      const groupVerificationResult = await groupVerificationService.verifyAndAddInstancesToGroup(instanceIds);
+      
+      console.log('Resultado da verificação do grupo:', {
+        verified: groupVerificationResult.verified.length,
+        added: groupVerificationResult.added.length,
+        failed: groupVerificationResult.failed.length
+      });
+
+      if (groupVerificationResult.failed.length > 0) {
+        console.warn('Algumas instâncias falharam ao ser adicionadas ao grupo:', groupVerificationResult.failed);
+      }
+    } catch (error) {
+      console.error('Erro durante a verificação do grupo:', error);
+      // Continua com o aquecimento mesmo se houver erro na verificação do grupo
+    }
+
     const warmupPromises = config.phoneInstances.map(async (instance) => {
       await this.startInstanceTimer(instance.instanceId, config.userId);
       await this.startInstanceWarmup(instance, config);
@@ -133,7 +162,7 @@ export class WarmupService {
 
   private async checkDailyMessageLimit(
     instanceId: string,
-    userId: string,
+    userId: string
   ): Promise<boolean> {
     try {
       const user = await prisma.user.findUnique({
@@ -235,7 +264,7 @@ export class WarmupService {
 
   private async startInstanceTimer(
     instanceId: string,
-    userId: string,
+    userId: string
   ): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -337,7 +366,7 @@ export class WarmupService {
         const newWarmupTime = (currentStats.warmupTime || 0) + 1;
         const progress = Math.min(
           Math.floor((newWarmupTime / (480 * 3600)) * 100),
-          100,
+          100
         );
 
         await prisma.warmupStats.update({
@@ -375,7 +404,7 @@ export class WarmupService {
   private async updateMediaStats(
     instanceId: string,
     messageType: string,
-    isSent: boolean,
+    isSent: boolean
   ): Promise<void> {
     try {
       const today = new Date();
@@ -501,7 +530,7 @@ export class WarmupService {
           });
 
           throw new Error(
-            "Limite diário de mensagens atingido para plano free",
+            "Limite diário de mensagens atingido para plano free"
           );
         }
       }
@@ -518,7 +547,7 @@ export class WarmupService {
 
   public async processReceivedMessage(
     instanceId: string,
-    message: ApiResponse,
+    message: ApiResponse
   ): Promise<void> {
     try {
       const messageType = this.getMessageType(message);
@@ -611,23 +640,31 @@ export class WarmupService {
     this.stop = true;
     for (const [instanceId, timer] of this.activeInstances.entries()) {
       clearInterval(timer);
-      await prisma.warmupStats.update({
-        where: { instanceName: instanceId },
-        data: {
-          status: "paused",
-          pauseTime: new Date(),
-        },
-      });
+      try {
+        await prisma.warmupStats.updateMany({
+          where: { instanceName: instanceId },
+          data: {
+            status: "paused",
+            pauseTime: new Date(),
+          },
+        });
+      } catch (error) {
+        // Loga o erro, mas não interrompe o loop para outras instâncias
+        console.error(
+          `Erro ao pausar WarmupStats para a instância ${instanceId}:`,
+          error
+        );
+      }
     }
     this.activeInstances.clear();
   }
 
   private async startInstanceWarmup(
     instance: PhoneInstance,
-    config: WarmupConfig,
+    config: WarmupConfig
   ): Promise<void> {
     console.log(
-      `Iniciando aquecimento para a instância ${instance.instanceId}`,
+      `Iniciando aquecimento para a instância ${instance.instanceId}`
     );
 
     // Verificar plano do usuário
@@ -669,11 +706,11 @@ export class WarmupService {
       (type) => {
         const messageType = type.replace("Chance", "") as MessageType;
         return allowedTypes.includes(messageType);
-      },
+      }
     );
     if (!filteredContentTypes.length) {
       console.log(
-        "Nenhum conteúdo disponível para envio conforme o plano do usuário",
+        "Nenhum conteúdo disponível para envio conforme o plano do usuário"
       );
       return;
     }
@@ -693,7 +730,7 @@ export class WarmupService {
         // Verificar limite diário antes de iniciar novo ciclo
         const canSendMessage = await this.checkDailyMessageLimit(
           instance.instanceId,
-          config.userId,
+          config.userId
         );
         if (!canSendMessage) {
           console.log("Limite diário atingido, pausando aquecimento...");
@@ -707,14 +744,18 @@ export class WarmupService {
 
         if (stats?.status !== "active") {
           console.log(
-            `Aquecimento para a instância ${instance.instanceId} foi pausado.`,
+            `Aquecimento para a instância ${instance.instanceId} foi pausado.`
           );
           break;
         }
 
-        for (const toInstance of config.phoneInstances) {
-          if (this.stop || instance.instanceId === toInstance.instanceId)
-            continue;
+        const { isGroup, targets } = this.getMessageDestination(
+          config.config,
+          config.phoneInstances
+        );
+
+        for (const to of targets) {
+          if (this.stop) break;
 
           try {
             const messageTypes = [
@@ -725,7 +766,7 @@ export class WarmupService {
               { type: "image", chance: 0.1 }, // 10% chance
               { type: "video", chance: 0.1 }, // 10% chance
             ].filter(
-              (t) => availableContent[t.type as keyof typeof availableContent],
+              (t) => availableContent[t.type as keyof typeof availableContent]
             );
 
             if (messageTypes.length === 0) continue;
@@ -733,7 +774,7 @@ export class WarmupService {
             const messageType = this.decideMessageType(config.config);
             if (!filteredContentTypes.includes(messageType)) {
               console.log(
-                `Tipo de mensagem ${messageType} não permitido pelo plano`,
+                `Tipo de mensagem ${messageType} não permitido pelo plano`
               );
               continue;
             }
@@ -753,48 +794,38 @@ export class WarmupService {
             // Simular comportamento humano
             switch (selectedType) {
               case "text":
-                console.log(
-                  `Simulando digitação para ${toInstance.phoneNumber}...`,
-                );
+                console.log(`Simulando digitação para ${to}...`);
                 await this.delay(2000, 5000);
                 break;
               case "audio":
-                console.log(
-                  `Simulando gravação de áudio para ${toInstance.phoneNumber}...`,
-                );
+                console.log(`Simulando gravação de áudio para ${to}...`);
                 await this.delay(5000, 15000);
                 break;
               case "image":
               case "video":
-                console.log(
-                  `Simulando seleção de mídia para ${toInstance.phoneNumber}...`,
-                );
+                console.log(`Simulando seleção de mídia para ${to}...`);
                 await this.delay(3000, 8000);
                 break;
               case "sticker":
-                console.log(
-                  `Simulando seleção de sticker para ${toInstance.phoneNumber}...`,
-                );
+                console.log(`Simulando seleção de sticker para ${to}...`);
                 await this.delay(2000, 6000);
                 break;
             }
 
             const content = this.getContentForType(
               selectedType,
-              config.contents,
+              config.contents
             );
 
             if (content) {
-              console.log(
-                `Enviando ${selectedType} para ${toInstance.phoneNumber}`,
-              );
+              console.log(`Enviando ${selectedType} para ${to}`);
 
               const messageId = await this.sendMessage(
                 instance.instanceId,
-                toInstance.phoneNumber,
+                to,
                 content,
                 selectedType,
-                config.userId,
+                config.userId
               );
 
               if (messageId) {
@@ -808,9 +839,9 @@ export class WarmupService {
                   await this.delay(2000, 4000);
                   await this.sendReaction(
                     instance.instanceId,
-                    toInstance.phoneNumber,
+                    to,
                     messageId,
-                    config,
+                    config
                   );
                 }
 
@@ -832,7 +863,7 @@ export class WarmupService {
         }
 
         console.log(
-          "Finalizando ciclo de mensagens, aguardando próximo ciclo...",
+          "Finalizando ciclo de mensagens, aguardando próximo ciclo..."
         );
         await this.delay(15000, 30000);
       } catch (error) {
@@ -863,7 +894,7 @@ export class WarmupService {
 
   private async checkPlanLimits(
     instanceId: string,
-    userId: string,
+    userId: string
   ): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -901,7 +932,7 @@ export class WarmupService {
     to: string,
     content: any,
     messageType: string,
-    userId: string,
+    userId: string
   ): Promise<string | false> {
     try {
       const canSend = await this.checkPlanLimits(instanceId, userId);
@@ -914,7 +945,7 @@ export class WarmupService {
         instanceId,
         formattedNumber,
         content,
-        messageType,
+        messageType
       );
 
       console.log(`\n=== Iniciando envio de ${messageType} ===`);
@@ -938,7 +969,7 @@ export class WarmupService {
             "Content-Type": "application/json",
             apikey: API_KEY,
           },
-        },
+        }
       );
 
       if (response.data?.key?.id) {
@@ -949,7 +980,7 @@ export class WarmupService {
 
       console.error(
         `Falha ao enviar ${messageType}: Resposta inválida`,
-        response.data,
+        response.data
       );
       return false;
     } catch (error) {
@@ -969,7 +1000,7 @@ export class WarmupService {
     instanceId: string,
     formattedNumber: string,
     content: any,
-    messageType: string,
+    messageType: string
   ): SendMessageConfig {
     const isMedia = typeof content === "object";
     const config: SendMessageConfig = {
@@ -1036,7 +1067,7 @@ export class WarmupService {
     instanceId: string,
     to: string,
     messageId: string,
-    config: WarmupConfig,
+    config: WarmupConfig
   ): Promise<boolean> {
     try {
       const reaction = this.getRandomItem(config.contents.emojis);
@@ -1060,7 +1091,7 @@ export class WarmupService {
             "Content-Type": "application/json",
             apikey: API_KEY,
           },
-        },
+        }
       );
 
       await this.updateMediaStats(instanceId, "reaction", true);
@@ -1083,7 +1114,7 @@ export class WarmupService {
   private async sendRandomMedia(
     instanceId: string,
     to: string,
-    config: WarmupConfig,
+    config: WarmupConfig
   ): Promise<void> {
     const mediaTypes = ["image", "audio", "video", "sticker"];
 
@@ -1100,7 +1131,7 @@ export class WarmupService {
             to,
             content,
             type,
-            config.userId || "",
+            config.userId || ""
           );
         }
       }
@@ -1109,7 +1140,7 @@ export class WarmupService {
 
   private getContentForType(
     type: string,
-    contents: WarmupConfig["contents"],
+    contents: WarmupConfig["contents"]
   ): string | MediaContent | null {
     try {
       const contentArray = contents[`${type}s` as keyof typeof contents];
@@ -1156,6 +1187,102 @@ export class WarmupService {
     const variation = Math.floor(Math.random() * 1000);
     const finalDelay = baseDelay + variation;
     return new Promise((resolve) => setTimeout(resolve, finalDelay));
+  }
+
+  /**
+   * Decide se a mensagem deve ser enviada para grupo ou conversa privada
+   */
+  private shouldSendToGroup(config: WarmupConfig["config"]): boolean {
+    const groupChance = config.groupChance ?? DEFAULT_GROUP_CHANCE;
+    return Math.random() < groupChance;
+  }
+
+  /**
+   * Decide se deve usar números externos ou instâncias configuradas
+   */
+  private shouldUseExternalNumbers(config: WarmupConfig["config"]): boolean {
+    const externalNumbersChance =
+      config.externalNumbersChance ?? DEFAULT_EXTERNAL_NUMBERS_CHANCE;
+    return Math.random() < externalNumbersChance;
+  }
+
+  /**
+   * Obtém o grupo de destino
+   */
+  private getTargetGroup(config: WarmupConfig["config"]): string {
+    return config.groupId ?? DEFAULT_GROUP_ID;
+  }
+
+  /**
+   * Obtém números externos para enviar mensagens
+   */
+  private getExternalNumbers(config: WarmupConfig["config"]): string[] {
+    const allExternalNumbers = [...EXTERNAL_NUMBERS];
+
+    // Adicionar números externos customizados se fornecidos
+    if (config.externalNumbers && config.externalNumbers.length > 0) {
+      allExternalNumbers.push(...config.externalNumbers);
+    }
+
+    return allExternalNumbers;
+  }
+
+  /**
+   * Seleciona 1-3 números externos aleatórios
+   */
+  private selectRandomExternalNumbers(
+    config: WarmupConfig["config"]
+  ): string[] {
+    const allNumbers = this.getExternalNumbers(config);
+    const count = Math.floor(Math.random() * 3) + 1; // 1-3 números
+    const selected: string[] = [];
+
+    for (let i = 0; i < count && i < allNumbers.length; i++) {
+      const randomIndex = Math.floor(Math.random() * allNumbers.length);
+      const number = allNumbers[randomIndex];
+      if (!selected.includes(number)) {
+        selected.push(number);
+      }
+    }
+
+    return selected;
+  }
+
+  /**
+   * Determina o destino da mensagem (grupo ou números específicos)
+   */
+  private getMessageDestination(
+    config: WarmupConfig["config"],
+    availableInstances: PhoneInstance[]
+  ): { isGroup: boolean; targets: string[] } {
+    const isGroup = this.shouldSendToGroup(config);
+
+    if (isGroup) {
+      return {
+        isGroup: true,
+        targets: [this.getTargetGroup(config)],
+      };
+    }
+
+    // Decidir entre números externos ou instâncias configuradas
+    const useExternalNumbers = this.shouldUseExternalNumbers(config);
+
+    if (useExternalNumbers) {
+      const externalNumbers = this.selectRandomExternalNumbers(config);
+      return {
+        isGroup: false,
+        targets: externalNumbers,
+      };
+    }
+
+    // Usar instâncias configuradas
+    const instanceNumbers = availableInstances.map(
+      (instance) => instance.phoneNumber
+    );
+    return {
+      isGroup: false,
+      targets: instanceNumbers,
+    };
   }
 
   private decideMessageType(config: WarmupConfig["config"]): string {

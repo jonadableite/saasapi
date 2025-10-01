@@ -9,6 +9,7 @@ import type {
 import { prisma } from "../lib/prisma";
 import { logger } from "../utils/logger";
 import { MessageLogService } from "./message-log.service";
+import { metadataCleanerService } from "./metadataCleaner.service";
 
 interface AxiosErrorResponse {
   message: any;
@@ -718,6 +719,35 @@ export class MessageDispatcherService implements IMessageDispatcherService {
     const formattedNumber = phone.startsWith("55") ? phone : `55${phone}`;
 
     try {
+      // Limpeza automática de metadados antes do envio
+      const cleanResult = await metadataCleanerService.cleanMediaMetadata(
+        media.base64,
+        media.fileName || `${media.type}.${media.type === 'image' ? 'jpg' : media.type === 'video' ? 'mp4' : 'mp3'}`,
+        media.mimetype || `${media.type}/${media.type === 'image' ? 'jpeg' : media.type}`
+      );
+
+      let cleanedMedia = media.base64;
+      let cleanedFileName = media.fileName;
+      let cleanedMimetype = media.mimetype;
+
+      if (cleanResult.success && cleanResult.cleanedMedia) {
+        cleanedMedia = cleanResult.cleanedMedia.data;
+        cleanedFileName = cleanResult.cleanedMedia.fileName;
+        cleanedMimetype = cleanResult.cleanedMedia.mimetype;
+        
+        const metadataLogger = logger.setContext("MetadataCleaner");
+        metadataLogger.info(`Metadados removidos com sucesso para ${media.fileName}`, {
+          originalSize: cleanResult.data?.originalSize,
+          cleanedSize: cleanResult.data?.cleanedSize,
+          reduction: cleanResult.data?.reduction,
+          reductionPercentage: cleanResult.data?.reductionPercentage
+        });
+      } else if (!cleanResult.success) {
+        const metadataLogger = logger.setContext("MetadataCleaner");
+        metadataLogger.warn(`Falha na limpeza de metadados para ${media.fileName}: ${cleanResult.error}`);
+        // Continua com a mídia original se a limpeza falhar
+      }
+
       let endpoint = "";
       let payload: any = {
         number: formattedNumber,
@@ -730,10 +760,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           payload = {
             ...payload,
             mediatype: "image",
-            media: media.base64,
+            media: cleanedMedia,
             caption: media.caption,
-            fileName: media.fileName || "image.jpg",
-            mimetype: media.mimetype || "image/jpeg",
+            fileName: cleanedFileName || "image.jpg",
+            mimetype: cleanedMimetype || "image/jpeg",
           };
           break;
 
@@ -742,10 +772,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           payload = {
             ...payload,
             mediatype: "video",
-            media: media.base64,
+            media: cleanedMedia,
             caption: media.caption,
-            fileName: media.fileName || "video.mp4",
-            mimetype: media.mimetype || "video/mp4",
+            fileName: cleanedFileName || "video.mp4",
+            mimetype: cleanedMimetype || "video/mp4",
           };
           break;
 
@@ -753,7 +783,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
           endpoint = `/message/sendWhatsAppAudio/${instanceName}`;
           payload = {
             ...payload,
-            audio: media.base64,
+            audio: cleanedMedia,
             encoding: true,
           };
           break;

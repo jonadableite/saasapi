@@ -29,6 +29,7 @@ import groupsRoutes from "./routes/groups.routes";
 import instanceRoutes from "./routes/instance.routes";
 import leadRoutes from "./routes/lead.routes";
 import messageLogRoutes from "./routes/message-log.routes";
+import metadataCleanerRoutes from "./routes/metadataCleaner.routes";
 import passwordRoutes from "./routes/password.routes";
 import paymentRoutes from "./routes/payment.routes";
 import reportsRoutes from "./routes/reports.routes";
@@ -124,6 +125,7 @@ const protectedRoutes = [
   { path: "/api/companies", route: companyRoutes },
   { path: "/api/dashboards", route: dashboardsRoutes },
   { path: "/api/message-logs", route: messageLogRoutes },
+  { path: "/api/metadata-cleaner", route: metadataCleanerRoutes },
   { path: "/api/groups", route: groupsRoutes },
 ];
 

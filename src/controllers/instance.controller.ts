@@ -109,6 +109,58 @@ export const updateProxyConfigController = async (
   }
 };
 
+// Função temporária para limpar cache de instâncias
+export const clearInstanceCacheController = async (
+  req: Request,
+  res: Response,
+) => {
+  const instanceLogger = logger.setContext("ClearInstanceCache");
+  
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    const cacheKey = `user:${userId}:instances`;
+    await redisClient.del(cacheKey);
+    
+    // Resetar dados de warmup incorretos no banco de dados
+    await prismaClient.warmupStats.updateMany({
+      where: {
+        userId: userId,
+        OR: [
+          { warmupTime: { lte: 0 } },
+          { messagesSent: { lte: 0 } },
+          { messagesReceived: { lte: 0 } }
+        ]
+      },
+      data: {
+        progress: 0,
+        warmupTime: 0,
+        messagesSent: 0,
+        messagesReceived: 0,
+        status: "inactive"
+      }
+    });
+    
+    instanceLogger.info(`Cache de instâncias e dados de warmup resetados para usuário ${userId}`);
+    
+    return res.json({
+      success: true,
+      message: "Cache de instâncias e dados de warmup resetados com sucesso",
+    });
+  } catch (error) {
+    instanceLogger.error("Erro ao limpar cache de instâncias:", error);
+    
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao limpar cache de instâncias",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
+};
+
 export const updateTypebotConfigController = async (
   req: TypebotRequest,
   res: Response
@@ -302,7 +354,22 @@ export const listInstancesController = async (
 
     const processedInstances = user.instances.map((instance) => {
       const warmupStats = instance.warmupStats;
-      const warmupTime = warmupStats?.warmupTime || 0;
+      
+      // Se não tiver warmupStats ou warmupTime, retorna progresso 0
+      if (!warmupStats || !warmupStats.warmupTime) {
+        return {
+          ...instance,
+          warmupStatus: {
+            progress: 0,
+            isRecommended: false,
+            warmupHours: 0,
+            status: "inactive",
+            lastUpdate: warmupStats?.createdAt || null,
+          },
+        };
+      }
+
+      const warmupTime = warmupStats.warmupTime;
       const warmupHours = warmupTime / 3600;
       const progress = Math.min((warmupHours / 400) * 100, 100);
 

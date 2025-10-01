@@ -29,6 +29,9 @@ router.put(
   instanceController.updateInstanceStatusController,
 );
 
+// Rota temporária para limpar cache de instâncias
+router.delete("/clear-cache", instanceController.clearInstanceCacheController);
+
 // Rotas de Media Stats
 router.delete("/instances/:id/media-stats", deleteMediaStats);
 
