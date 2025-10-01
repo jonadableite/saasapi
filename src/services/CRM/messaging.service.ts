@@ -75,7 +75,6 @@ export class CRMMessagingService {
           sender: "me",
           status: MessageStatus.PENDING,
           timestamp: new Date(),
-          userId,
         },
       });
 
@@ -180,8 +179,6 @@ export class CRMMessagingService {
           sender: "me",
           status: MessageStatus.PENDING,
           timestamp: new Date(),
-          userId,
-          mediaType,
           attachments: {
             create: {
               type: mediaType,
@@ -297,7 +294,6 @@ export class CRMMessagingService {
           sender: "me",
           status: MessageStatus.PENDING,
           timestamp: new Date(),
-          userId,
         },
       });
 
@@ -641,7 +637,7 @@ export class CRMMessagingService {
         instanceName,
         number: cleanPhone, // Change here
         messageId,
-        emoji,
+        reaction: emoji,
       });
 
       if (!response?.success) {
@@ -655,7 +651,7 @@ export class CRMMessagingService {
       // Registrar a reação no banco usando transação
       await prisma.$transaction(async (tx) => {
         // Verificar se a mensagem original existe
-        const originalMessage = await tx.message.findUnique({
+        const originalMessage = await tx.message.findFirst({
           where: { messageId },
         });
 
@@ -667,10 +663,8 @@ export class CRMMessagingService {
         await tx.messageReaction.create({
           data: {
             messageId: originalMessage.id, // Usar o ID interno da mensagem
-            conversationId: conversation.id,
-            reaction: emoji,
+            emoji: emoji,
             userId,
-            createdAt: new Date(),
           },
         });
 
@@ -1066,11 +1060,8 @@ export class CRMMessagingService {
       const newReaction = await prisma.messageReaction.create({
         data: {
           messageId: params.messageId,
-          reaction: params.reaction,
+          emoji: params.reaction,
           userId: params.userId,
-          conversation: {
-            connect: { id: params.conversationId },
-          },
         },
       });
 

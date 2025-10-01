@@ -190,26 +190,26 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     const attachments: { url: string; type: string }[] = [];
 
     // Criar a mensagem no banco de dados
+    const messageData: any = {
+      conversationId: conversation.id,
+      messageId: key.id,
+      content: messageContent.text,
+      type: messageType || messageContent.type,
+      sender: isFromMe ? "me" : contactPhone,
+      status: isFromMe ? MessageStatus.SENT : MessageStatus.DELIVERED,
+      timestamp,
+    };
+
+    if (attachments.length > 0) {
+      messageData.attachments = {
+        createMany: {
+          data: attachments,
+        },
+      };
+    }
+
     const newMessage = await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        messageId: key.id,
-        content: messageContent.text,
-        type: messageType || messageContent.type,
-        sender: isFromMe ? "me" : contactPhone,
-        status: isFromMe ? MessageStatus.SENT : MessageStatus.DELIVERED,
-        timestamp,
-        mediaUrl: messageContent.mediaUrl,
-        mediaType: messageContent.mediaType,
-        userId: instance.userId,
-        ...(attachments.length > 0 && {
-          attachments: {
-            createMany: {
-              data: attachments,
-            },
-          },
-        }),
-      },
+      data: messageData,
       include: {
         attachments: true,
       },

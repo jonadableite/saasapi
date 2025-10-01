@@ -11,7 +11,7 @@ import { v4 as uuid } from "uuid";
 type ConversationWithDetails = Prisma.ConversationGetPayload<{
   include: {
     _count: {
-      select: { messages: { where: { status: MessageStatus } } };
+      select: { messages: true };
     };
     messages: {
       take: number;
@@ -310,7 +310,6 @@ export const sendMessage = async (req: RequestWithUser, res: Response) => {
         sender: "me",
         status: MessageStatus.PENDING,
         timestamp: new Date(),
-        userId, // Este campo não pode ser undefined
       },
     });
 
@@ -451,7 +450,6 @@ export const sendMediaMessage = async (req: RequestWithUser, res: Response) => {
         sender: "me",
         status: MessageStatus.PENDING,
         timestamp: new Date(),
-        userId,
       },
     });
 

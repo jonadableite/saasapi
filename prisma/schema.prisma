@@ -490,15 +490,18 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   conversationId String
   content        String
-  type           String   @default("text")
-  isFromUser     Boolean  @default(false)
-  timestamp      DateTime @default(now())
-  status         String   @default("sent")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  type           String        @default("text")
+  isFromUser     Boolean       @default(false)
+  timestamp      DateTime      @default(now())
+  status         MessageStatus @default(SENT)
+  messageId      String?       // Campo para compatibilidade com o código existente
+  sender         String?       // Campo para identificar o remetente
+  failureReason  String?       // Campo para armazenar motivo de falha
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   attachments  MessageAttachment[]
@@ -516,6 +519,8 @@ model MessageAttachment {
   url       String
   type      String
   size      Int?
+  name      String?  // Campo para compatibilidade com o código existente
+  mimeType  String?  // Campo para tipo MIME
   createdAt DateTime @default(now())
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)

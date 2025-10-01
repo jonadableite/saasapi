@@ -176,8 +176,8 @@ export class EvolutionApiService {
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/message/sendText/${params.instanceName}`,
         "POST",
+        `/message/sendText/${params.instanceName}`,
         {
           number: params.number,
           text: params.text,
@@ -206,8 +206,8 @@ export class EvolutionApiService {
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/message/sendMedia/${params.instanceName}`,
         "POST",
+        `/message/sendMedia/${params.instanceName}`,
         {
           number: params.number,
           mediatype: params.mediatype,
@@ -234,8 +234,8 @@ export class EvolutionApiService {
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/message/sendButton/${params.instanceName}`,
         "POST",
+        `/message/sendButton/${params.instanceName}`,
         {
           number: params.number,
           text: params.text,
@@ -257,8 +257,9 @@ export class EvolutionApiService {
     instanceName: string;
     number: string;
     title: string;
-    text: string;
+    description: string;
     buttonText: string;
+    footerText: string;
     sections: Array<{
       title: string;
       rows: Array<{ rowId: string; title: string; description: string }>;
@@ -266,13 +267,14 @@ export class EvolutionApiService {
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/message/sendList/${params.instanceName}`,
         "POST",
+        `/message/sendList/${params.instanceName}`,
         {
           number: params.number,
           title: params.title,
-          text: params.text,
+          description: params.description,
           buttonText: params.buttonText,
+          footerText: params.footerText,
           sections: params.sections,
         }
       );
@@ -290,16 +292,16 @@ export class EvolutionApiService {
     instanceName: string;
     number: string;
     messageId: string;
-    emoji: string;
+    reaction: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/message/sendReaction/${params.instanceName}`,
         "POST",
+        `/message/sendReaction/${params.instanceName}`,
         {
           number: params.number,
           messageId: params.messageId,
-          emoji: params.emoji,
+          reaction: params.reaction,
         }
       );
       return response;
@@ -339,8 +341,8 @@ export class EvolutionApiService {
   ) {
     try {
       const response = await this.makeRequest(
-        `/chat/findMessages/${instanceName}`,
         "POST",
+        `/chat/findMessages/${instanceName}`,
         {
           where: {
             key: {
@@ -370,8 +372,8 @@ export class EvolutionApiService {
   ): Promise<{ success: boolean; url?: string; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/chat/fetchProfilePictureUrl/${instanceName}`,
         "POST",
+        `/chat/fetchProfilePictureUrl/${instanceName}`,
         {
           number: number,
         }
@@ -403,8 +405,8 @@ export class EvolutionApiService {
       }
 
       const response = await this.makeRequest(
-        `/chat/findContacts/${instanceName}`,
         "POST",
+        `/chat/findContacts/${instanceName}`,
         data
       );
       return response;
@@ -425,8 +427,8 @@ export class EvolutionApiService {
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const response = await this.makeRequest(
-        `/webhook/set/${instanceName}`,
         "POST",
+        `/webhook/set/${instanceName}`,
         {
           webhook: {
             enabled: true,
