@@ -67,17 +67,17 @@ model User {
   payments                 Payment[]
   warmupStats              WarmupStats[]
   Campaign                 Campaign[]
-  company                  Company        @relation(fields: [whatleadCompanyId], references: [id])
+  company                  Company        @relation(fields: [whatleadCompanyId], references: [id], onDelete: Cascade)
   CampaignLead             CampaignLead[]
   referredBy               String?
-  affiliate                User?          @relation("AffiliateReferral", fields: [referredBy], references: [id])
+  affiliate                User?          @relation("AffiliateReferral", fields: [referredBy], references: [id], onDelete: SetNull)
   role                     String         @default("user") // Valores: "admin", "affiliate", "manager", "user"
   // Relação para o campo affiliate
   affiliates               User[]         @relation("AffiliateReferral")
-  Message                  Message[]
   Conversation             Conversation[]
   contacts                 Contact[]
   contactNotes             ContactNote[]
+  MessageReaction          MessageReaction[]
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
   @@map("whatlead_users")
@@ -107,7 +107,7 @@ model CompaniesUnites {
   whitelabel_config          String
   whatleadCompanyId          String?
   leads                      Lead[]
-  company                    Company?  @relation(fields: [whatleadCompanyId], references: [id])
+  company                    Company?  @relation(fields: [whatleadCompanyId], references: [id], onDelete: Cascade)
 
   @@map("whatleadparceiroconfigs")
 }
@@ -143,7 +143,7 @@ model Lead {
   createdat               DateTime        @default(now())
   updatedat               DateTime        @updatedAt
   curation                Json?
-  config                  CompaniesUnites @relation(fields: [configid], references: [id])
+  config                  CompaniesUnites @relation(fields: [configid], references: [id], onDelete: Cascade)
 
   @@index([phone, configid])
   @@map("whatleadleads")
@@ -164,7 +164,7 @@ model Payment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   userId          String?
-  user            User?    @relation(fields: [userId], references: [id])
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
   @@index([status])
@@ -192,7 +192,7 @@ model Instance {
   typebot                 Json?
 
   // Relações
-  user               User               @relation(fields: [userId], references: [id])
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   campaigns          Campaign[]
   campaignSchedules  CampaignSchedule[]
   campaignDispatches CampaignDispatch[]
@@ -221,7 +221,7 @@ model MediaStats {
   totalReceived       Int           @default(0)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @default(now())
-  instance            Instance      @relation(fields: [instanceName], references: [instanceName])
+  instance            Instance      @relation(fields: [instanceName], references: [instanceName], onDelete: Cascade)
   warmupStatsReceived WarmupStats[] @relation("WarmupStatsToMediaStatsReceived")
   warmupStatsSent     WarmupStats[] @relation("WarmupStatsToMediaStatsSent")
 
@@ -246,10 +246,10 @@ model WarmupStats {
   mediaStatsId     String?
   mediaReceivedId  String?
 
-  instance      Instance    @relation(fields: [instanceName], references: [instanceName])
-  mediaReceived MediaStats? @relation("WarmupStatsToMediaStatsReceived", fields: [mediaReceivedId], references: [id])
-  mediaStats    MediaStats? @relation("WarmupStatsToMediaStatsSent", fields: [mediaStatsId], references: [id])
-  user          User        @relation(fields: [userId], references: [id])
+  instance      Instance    @relation(fields: [instanceName], references: [instanceName], onDelete: Cascade)
+  mediaReceived MediaStats? @relation("WarmupStatsToMediaStatsReceived", fields: [mediaReceivedId], references: [id], onDelete: SetNull)
+  mediaStats    MediaStats? @relation("WarmupStatsToMediaStatsSent", fields: [mediaStatsId], references: [id], onDelete: SetNull)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([instanceName])
@@ -284,8 +284,8 @@ model Campaign {
   messages         CampaignMessage[]
   statistics       CampaignStatistics?
   dispatches       CampaignDispatch[]
-  user             User                @relation(fields: [userId], references: [id])
-  instance         Instance?           @relation(fields: [instanceId], references: [id])
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instance         Instance?           @relation(fields: [instanceId], references: [id], onDelete: SetNull)
   CampaignErrorLog CampaignErrorLog[]
   CampaignSchedule CampaignSchedule[]
   MessageAnalytics MessageAnalytics[]
@@ -305,8 +305,8 @@ model CampaignDispatch {
   startedAt    DateTime?
   completedAt  DateTime?
 
-  campaign  Campaign @relation(fields: [campaignId], references: [id])
-  instance  Instance @relation(fields: [instanceName], references: [instanceName])
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  instance  Instance @relation(fields: [instanceName], references: [instanceName], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
 }
@@ -314,13 +314,13 @@ model CampaignDispatch {
 model CampaignMessage {
   id         String   @id @default(uuid())
   campaignId String
-  type       String
   content    String
-  order      Int
-  caption    String?
+  type       String   @default("text")
+  order      Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@map("whatlead_campaign_messages")
@@ -329,7 +329,7 @@ model CampaignMessage {
 model CampaignLead {
   id            String       @id @default(uuid())
   userId        String
-  user          User         @relation(fields: [userId], references: [id])
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   campaignId    String
   name          String?
   phone         String
@@ -347,7 +347,7 @@ model CampaignLead {
   syncedAt      DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now())
-  campaign      Campaign     @relation(fields: [campaignId], references: [id])
+  campaign      Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, phone], name: "unique_campaign_phone")
   @@index([campaignId])
@@ -373,7 +373,7 @@ model CampaignSchedule {
   startedAt     DateTime?
   completedAt   DateTime?
 
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   instance Instance @relation(fields: [instanceName], references: [instanceName])
 
   @@index([campaignId])
@@ -394,7 +394,7 @@ model CampaignStatistics {
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @default(now())
-  campaign       Campaign  @relation(fields: [campaignId], references: [id])
+  campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@map("whatlead_campaign_statistics")
@@ -403,7 +403,7 @@ model CampaignStatistics {
 model MessageLog {
   id             String       @id @default(uuid())
   campaignId     String
-  campaign       Campaign     @relation(fields: [campaignId], references: [id])
+  campaign       Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignLeadId String
   campaignLead   CampaignLead @relation(fields: [campaignLeadId], references: [id])
   leadId         String?
@@ -437,7 +437,7 @@ model MessageAnalytics {
   readCount      Int      @default(0)
   respondedCount Int      @default(0)
   failedCount    Int      @default(0)
-  campaign       Campaign @relation(fields: [campaignId], references: [id])
+  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, date])
 }
@@ -451,7 +451,7 @@ model Contact {
   notes             String?
   tags              String[]       @default([])
   userId            String
-  user              User           @relation(fields: [userId], references: [id])
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   lastInteractionAt DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -477,55 +477,51 @@ model Conversation {
   isActive        Boolean           @default(true)
   messages        Message[]
   contactId       String?
-  contact         Contact?          @relation(fields: [contactId], references: [id])
+  contact         Contact?          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   userId          String
-  user            User              @relation(fields: [userId], references: [id])
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   isGroup         Boolean           @default(false)
   groupMetadata   Json?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
-  MessageReaction MessageReaction[]
 
   @@unique([instanceName, contactPhone], name: "Conversation_instanceName_contactPhone")
   @@index([userId, lastMessageAt])
 }
 
 model Message {
-  id             String              @id @default(uuid())
+  id             String   @id @default(uuid())
   conversationId String
-  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  messageId      String              @unique
   content        String
-  type           String              @default("text") // text, image, audio, video, document
-  sender         String // fromMe ou contact phone
-  status         MessageStatus       @default(PENDING)
-  timestamp      DateTime
-  mediaUrl       String?
-  mediaType      String?
-  replyTo        Json?
-  userId         String
-  user           User                @relation(fields: [userId], references: [id])
-  failureReason  String?
-  createdAt      DateTime            @default(now())
-  attachments    MessageAttachment[]
+  type           String   @default("text")
+  isFromUser     Boolean  @default(false)
+  timestamp      DateTime @default(now())
+  status         String   @default("sent")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@index([conversationId, timestamp])
-  @@index([userId, timestamp])
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments  MessageAttachment[]
+  reactions    MessageReaction[]
+
+  @@index([conversationId])
+  @@index([timestamp])
+  @@map("whatlead_messages")
 }
 
 model MessageAttachment {
   id        String   @id @default(uuid())
   messageId String
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  type      String // image, video, audio, document
+  filename  String
   url       String
-  name      String?
-  mimeType  String?
-  filename  String?
+  type      String
   size      Int?
   createdAt DateTime @default(now())
 
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
   @@index([messageId])
+  @@map("whatlead_message_attachments")
 }
 
 model CampaignErrorLog {
@@ -534,29 +530,37 @@ model CampaignErrorLog {
   errorMessage String
   errorDetails Json?
   createdAt    DateTime @default(now())
-  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("whatlead_campaign_error_logs")
 }
 
 model ContactNote {
   id        String   @id @default(uuid())
   contactId String
-  contact   Contact  @relation(fields: [contactId], references: [id])
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([contactId])
+  @@map("whatlead_contact_notes")
 }
 
 model MessageReaction {
-  id             String       @id @default(uuid())
-  messageId      String
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  reaction       String // emoji usado como reação
-  userId         String // ID do usuário que reagiu
-  createdAt      DateTime     @default(now())
+  id        String   @id @default(uuid())
+  messageId String
+  emoji     String
+  userId    String
+  createdAt DateTime @default(now())
 
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
   @@index([messageId])
-  @@index([conversationId])
+  @@map("whatlead_message_reactions")
 }

@@ -25,6 +25,7 @@ import { campaignRoutes } from "./routes/campaign.routes";
 import { companyRoutes } from "./routes/company.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import dashboardsRoutes from "./routes/dashboards.routes";
+import groupsRoutes from "./routes/groups.routes";
 import instanceRoutes from "./routes/instance.routes";
 import leadRoutes from "./routes/lead.routes";
 import messageLogRoutes from "./routes/message-log.routes";
@@ -123,6 +124,7 @@ const protectedRoutes = [
   { path: "/api/companies", route: companyRoutes },
   { path: "/api/dashboards", route: dashboardsRoutes },
   { path: "/api/message-logs", route: messageLogRoutes },
+  { path: "/api/groups", route: groupsRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {

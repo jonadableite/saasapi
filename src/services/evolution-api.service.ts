@@ -9,40 +9,161 @@ export class EvolutionApiService {
   private apiKey: string;
 
   constructor() {
-    this.apiUrl =
-      process.env.EVOLUTION_API_URL || "https://evo.whatlead.com.br";
-    this.apiKey = process.env.EVOLUTION_API_KEY || "";
+    this.apiUrl = process.env.API_EVO_URL || "https://evo.whatlead.com.br";
+    this.apiKey = process.env.EVO_API_KEY || "";
+
+    // Log para debug
+    evolutionLogger.log(`Evolution API URL: ${this.apiUrl}`);
+    evolutionLogger.log(
+      `Evolution API Key configurada: ${this.apiKey ? "Sim" : "Não"}`
+    );
   }
 
   private async makeRequest(
+    method: "GET" | "POST" | "PUT" | "DELETE",
     endpoint: string,
-    method: string,
-    data: any
-  ): Promise<any> {
+    data?: any
+  ): Promise<{
+    success: boolean;
+    data?: any;
+    messageId?: string;
+    error?: string;
+  }> {
+    const url = `${this.apiUrl}${endpoint}`;
+    logger.log(`Fazendo requisição para: ${url}`);
+    logger.log(`Headers sendo enviados:`, {
+      "Content-Type": "application/json",
+      apikey: this.apiKey ? `${this.apiKey.substring(0, 8)}...` : "undefined",
+    });
+
     try {
       const response = await axios({
         method,
-        url: `${this.apiUrl}${endpoint}`,
+        url,
+        data,
         headers: {
           "Content-Type": "application/json",
           apikey: this.apiKey,
         },
-        data,
+        timeout: 30000,
+        // Adicionar validação de resposta
+        validateStatus: (status) => status < 500, // Aceitar códigos de status < 500
+        // Tratar respostas inválidas da Evolution API
+        transformResponse: [
+          (data) => {
+            if (!data || data === "null" || data.trim() === "null") {
+              logger.warn("Evolution API retornou resposta null ou vazia");
+              return null;
+            }
+
+            try {
+              return JSON.parse(data);
+            } catch (error) {
+              logger.error(
+                "Erro ao fazer parsing da resposta da Evolution API",
+                {
+                  data: data,
+                  error: error.message,
+                }
+              );
+              // Retornar um objeto de erro ao invés de lançar exceção
+              return {
+                error: "Invalid JSON response",
+                originalData: data,
+              };
+            }
+          },
+        ],
       });
+
+      logger.log(`Resposta recebida - Status: ${response.status}`);
+      logger.log(`Tipo de dados da resposta: ${typeof response.data}`);
+
+      // Verificar se a resposta é null ou undefined
+      if (response.data === null || response.data === undefined) {
+        logger.error("Resposta da API é null ou undefined");
+        return {
+          success: false,
+          error: "API retornou resposta vazia",
+        };
+      }
+
+      // Verificar se houve erro no parsing JSON
+      if (response.data && response.data.error === "Invalid JSON response") {
+        logger.error("Erro de parsing JSON detectado", {
+          originalData: response.data.originalData,
+        });
+        return {
+          success: false,
+          error: "Formato de resposta inválido da Evolution API",
+        };
+      }
+
+      // Verificar se a resposta é uma string "null"
+      if (
+        typeof response.data === "string" &&
+        response.data.trim() === "null"
+      ) {
+        logger.error("Resposta da API é string 'null'");
+        return {
+          success: false,
+          error: "API retornou null como string",
+        };
+      }
+
+      // Verificar se há erro na resposta
+      if (response.status >= 400) {
+        logger.error(`Erro na requisição: ${endpoint}`, {
+          status: response.status,
+          statusText: response.statusText,
+          data: response.data,
+          message: response.data?.message || "Erro desconhecido",
+          code: response.data?.code,
+        });
+
+        return {
+          success: false,
+          error:
+            response.data?.message ||
+            `Erro ${response.status}: ${response.statusText}`,
+        };
+      }
+
+      logger.log("Requisição bem-sucedida");
       return {
         success: true,
-        messageId: response.data?.id || response.data?.messageId,
         data: response.data,
+        messageId: response.data?.key?.id,
       };
     } catch (error: any) {
-      evolutionLogger.error(
-        `Erro na requisição: ${endpoint}`,
-        error.response?.data || error.message
-      );
+      // Tratamento específico para erros de parsing JSON
+      if (error.message && error.message.includes("Unexpected token")) {
+        logger.error(`Erro de parsing JSON na requisição: ${endpoint}`, {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+
+        return {
+          success: false,
+          error: "Erro de formato de dados da API externa",
+        };
+      }
+
+      logger.error(`Erro na requisição: ${endpoint}`, {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        code: error.code,
+      });
+
       return {
         success: false,
         error:
-          error.response?.data?.message || error.message || "Erro desconhecido",
+          error.response?.data?.message ||
+          error.message ||
+          "Erro na comunicação com a API",
       };
     }
   }
@@ -333,6 +454,39 @@ export class EvolutionApiService {
       return {
         success: false,
         error: error.message || "Falha ao configurar webhook",
+      };
+    }
+  }
+
+  async fetchGroups(
+    instanceName: string,
+    getParticipants: boolean = true
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      evolutionLogger.log(
+        `Buscando grupos para instância ${instanceName} com participantes: ${getParticipants}`
+      );
+
+      const response = await this.makeRequest(
+        "GET",
+        `/group/fetchAllGroups/${instanceName}?getParticipants=${getParticipants}`,
+        null
+      );
+
+      evolutionLogger.log(`Resposta do makeRequest:`, response);
+
+      // Retornar a resposta diretamente, sem fallback automático
+      return response;
+    } catch (error: any) {
+      evolutionLogger.error(
+        `Erro ao buscar grupos para instância ${instanceName}`,
+        error
+      );
+
+      // Só implementar fallback em caso de erro real (não de resposta da API)
+      return {
+        success: false,
+        error: `Erro ao conectar com a API: ${error.message}`,
       };
     }
   }
