@@ -41,6 +41,7 @@ import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
 import { crmRoutes } from "./routes/CRM/crm.routes";
 import { botRoutes } from "./routes/Chatbot/bot.routes";
+import hotmartRoutes from "./routes/hotmart.routes";
 import { campaignService } from "./services/campaign.service";
 import socketService from "./services/socket.service";
 import { logger } from "./utils/logger";
@@ -98,6 +99,7 @@ app.use("/api/stripe", stripeRoutes);
 
 // Rotas públicas (sem autenticação)
 app.use("/webhook", webhookRoutes);
+app.use("/api/hotmart", hotmartRoutes);
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);

@@ -52,6 +52,12 @@ model User {
   stripeCustomerId         String?
   stripeSubscriptionId     String?
   stripeSubscriptionStatus String?
+  // Campos para integração com Hotmart
+  hotmartCustomerId        String?
+  hotmartSubscriberCode    String?
+  subscriptionStatus       String? // ACTIVE, CANCELLED, SUSPENDED
+  subscriptionEndDate      DateTime?
+  isActive                 Boolean?       @default(true)
   active                   Boolean?       @default(true)
   createdAt                DateTime       @default(now())
   updatedAt                DateTime       @updatedAt
@@ -78,8 +84,11 @@ model User {
   contacts                 Contact[]
   contactNotes             ContactNote[]
   MessageReaction          MessageReaction[]
+  hotmartTransactions      HotmartTransaction[]
 
   @@index([email, profile, phone, createdAt(sort: Desc)])
+  @@index([hotmartCustomerId])
+  @@index([subscriptionStatus])
   @@map("whatlead_users")
 }
 
@@ -574,4 +583,38 @@ model MessageReaction {
   @@unique([messageId, userId])
   @@index([messageId])
   @@map("whatlead_message_reactions")
+}
+
+model HotmartTransaction {
+  id              String    @id @default(uuid())
+  userId          String
+  transactionId   String    @unique
+  event           String    // Tipo do evento (PURCHASE_APPROVED, SUBSCRIPTION_CANCELLATION, etc.)
+  status          String    // Status da transação (APPROVED, CANCELLED, REFUNDED, etc.)
+  amount          Float
+  currency        String
+  productName     String
+  productId       String
+  buyerEmail      String
+  buyerName       String
+  orderDate       DateTime
+  approvedDate    DateTime?
+  paymentMethod   String
+  installments    Int
+  subscriberCode  String?
+  planName        String?
+  nextChargeDate  DateTime?
+  rawData         Json      // Dados completos do webhook para auditoria
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([transactionId])
+  @@index([event])
+  @@index([status])
+  @@index([buyerEmail])
+  @@index([subscriberCode])
+  @@map("whatlead_hotmart_transactions")
 }
