@@ -35,6 +35,154 @@ export class MessageDispatcherService implements IMessageDispatcherService {
     this.messageLogService = new MessageLogService();
   }
 
+  public async startDispatchWithLeads(params: {
+    campaignId: string;
+    instanceName: string;
+    message: string;
+    leads: any[];
+    media?: MediaContent;
+    minDelay: number;
+    maxDelay: number;
+  }): Promise<void> {
+    try {
+      const campaignLogger = logger.setContext("Campaign");
+      
+      campaignLogger.info(`Iniciando dispatch com ${params.leads.length} leads para instância ${params.instanceName}`);
+
+      if (params.leads.length === 0) {
+        campaignLogger.info("Nenhum lead para processar nesta instância");
+        return;
+      }
+
+      // Processar leads específicos desta instância
+      let processedCount = 0;
+      const totalLeadsToProcess = params.leads.length;
+
+      for (const lead of params.leads) {
+        if (this.stop) {
+          const interrompidoLogger = logger.setContext("Interrompido");
+          interrompidoLogger.info("Processo interrompido manualmente");
+          break;
+        }
+
+        try {
+          const leadLogger = logger.setContext("Lead");
+          leadLogger.info(`Processando lead ${lead.id} (${lead.phone}) na instância ${params.instanceName}`);
+
+          // Atualizar status para processando
+          await prisma.campaignLead.update({
+            where: { id: lead.id },
+            data: {
+              status: "processing",
+              updatedAt: new Date(),
+            },
+          });
+
+          let response: EvolutionApiResponse | undefined;
+
+          // **Enviar mídia primeiro, se houver**
+          if (params.media) {
+            const mediaLogger = logger.setContext("Mídia");
+            mediaLogger.info("Enviando mídia...");
+            response = await this.sendMedia(
+              params.instanceName,
+              lead.phone,
+              params.media,
+            );
+          }
+
+          // **Enviar mensagem de texto, mesmo que não haja mídia**
+          if (params.message && params.message.trim().length > 0) {
+            const textLogger = logger.setContext("Texto");
+            textLogger.info("Enviando mensagem de texto...");
+            response = await this.sendText(
+              params.instanceName,
+              lead.phone,
+              params.message,
+            );
+          }
+
+          if (response) {
+            await this.saveEvolutionResponse(
+              response,
+              params.campaignId,
+              lead.id,
+            );
+
+            // Atualizar status para SENT
+            await prisma.campaignLead.update({
+              where: { id: lead.id },
+              data: {
+                status: "SENT",
+                sentAt: new Date(),
+              },
+            });
+          }
+
+          processedCount++;
+
+          // Calcular progresso geral da campanha
+          const totalCampaignLeads = await prisma.campaignLead.count({
+            where: { campaignId: params.campaignId },
+          });
+
+          const sentCampaignLeads = await prisma.campaignLead.count({
+            where: { 
+              campaignId: params.campaignId,
+              status: "SENT"
+            },
+          });
+
+          const progress = Math.floor((sentCampaignLeads / totalCampaignLeads) * 100);
+
+          await prisma.campaign.update({
+            where: { id: params.campaignId },
+            data: { progress },
+          });
+
+          await prisma.campaignStatistics.upsert({
+            where: { campaignId: params.campaignId },
+            create: {
+              campaignId: params.campaignId,
+              totalLeads: totalCampaignLeads,
+              sentCount: sentCampaignLeads,
+            },
+            update: {
+              sentCount: sentCampaignLeads,
+            },
+          });
+
+          const delay = Math.floor(
+            Math.random() * (params.maxDelay - params.minDelay + 1) + params.minDelay,
+          ) * 1000;
+
+          campaignLogger.info(`Aguardando ${delay / 1000}s antes do próximo envio...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+
+        } catch (error) {
+          const errorLogger = logger.setContext("Erro");
+          errorLogger.error(`Erro ao processar lead ${lead.id}:`, error);
+
+          await prisma.campaignLead.update({
+            where: { id: lead.id },
+            data: {
+              status: "FAILED",
+              failedAt: new Date(),
+              failureReason: error instanceof Error ? error.message : "Erro desconhecido",
+            },
+          });
+        }
+      }
+
+      campaignLogger.info(`Dispatch concluído para instância ${params.instanceName}. Processados: ${processedCount}/${totalLeadsToProcess}`);
+
+    } catch (error) {
+      const errorLogger = logger.setContext("Erro");
+      errorLogger.error("Erro no startDispatchWithLeads:", error);
+      throw error;
+    }
+  }
+
   public async startDispatch(params: {
     campaignId: string;
     instanceName: string;

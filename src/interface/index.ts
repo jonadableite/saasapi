@@ -221,6 +221,24 @@ export interface IMessageDispatcherService {
     maxDelay: number;
   }): Promise<void>;
 
+  startDispatchWithLeads(params: {
+    campaignId: string;
+    instanceName: string;
+    message: string;
+    leads: any[];
+    media?: {
+      type: "image" | "video" | "audio";
+      base64: string;
+      url?: string;
+      caption?: string;
+      fileName?: string;
+      mimetype?: string;
+      preview?: string;
+    };
+    minDelay: number;
+    maxDelay: number;
+  }): Promise<void>;
+
   resumeDispatch(params: {
     campaignId: string;
     instanceName: string;

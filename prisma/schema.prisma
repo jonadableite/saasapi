@@ -256,28 +256,34 @@ model WarmupStats {
 }
 
 model Campaign {
-  id              String    @id @default(uuid())
-  name            String
-  description     String?
-  status          String    @default("draft")
-  type            String
-  message         String?
-  mediaUrl        String?
-  mediaType       String?
-  mediaCaption    String?
-  scheduledDate   DateTime?
-  scheduledStatus String?   @default("pending")
-  startedAt       DateTime?
-  completedAt     DateTime?
-  pausedAt        DateTime?
-  progress        Int       @default(0)
-  minDelay        Int       @default(5)
-  maxDelay        Int       @default(30)
-  userId          String
-  instanceId      String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  isAiResponder   Json?
+  id                     String    @id @default(uuid())
+  name                   String
+  description            String?
+  status                 String    @default("draft")
+  type                   String
+  message                String?
+  mediaUrl               String?
+  mediaType              String?
+  mediaCaption           String?
+  scheduledDate          DateTime?
+  scheduledStatus        String?   @default("pending")
+  startedAt              DateTime?
+  completedAt            DateTime?
+  pausedAt               DateTime?
+  progress               Int       @default(0)
+  minDelay               Int       @default(5)
+  maxDelay               Int       @default(30)
+  userId                 String
+  instanceId             String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  isAiResponder          Json?
+  
+  // Campos para rotação de instâncias
+  useRotation            Boolean   @default(false)
+  rotationStrategy       String?   // RANDOM, SEQUENTIAL, LOAD_BALANCED
+  maxMessagesPerInstance Int?
+  selectedInstances      String[]  @default([])
 
   MessageLog       MessageLog[]
   leads            CampaignLead[]

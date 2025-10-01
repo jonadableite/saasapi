@@ -1298,6 +1298,135 @@ export default class CampaignController {
       res.status(500).json({ error: "Erro ao buscar estatísticas de instâncias" });
     }
   }
+
+  public async configureInstanceRotation(
+    req: CampaignRequestWithId,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { id: campaignId } = req.params;
+      const userId = req.user?.id;
+      const { 
+        selectedInstances, 
+        rotationStrategy, 
+        maxMessagesPerInstance 
+      } = req.body;
+
+      if (!userId) {
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
+
+      // Verificar se a campanha pertence ao usuário
+      const campaign = await prisma.campaign.findFirst({
+        where: {
+          id: campaignId,
+          userId,
+        },
+      });
+
+      if (!campaign) {
+        res.status(404).json({ error: "Campanha não encontrada" });
+        return;
+      }
+
+      // Validar instâncias selecionadas
+      if (!selectedInstances || !Array.isArray(selectedInstances) || selectedInstances.length === 0) {
+        res.status(400).json({ error: "Pelo menos uma instância deve ser selecionada" });
+        return;
+      }
+
+      // Verificar se as instâncias pertencem ao usuário
+      const userInstances = await prisma.instance.findMany({
+        where: {
+          userId,
+          instanceName: { in: selectedInstances },
+        },
+      });
+
+      if (userInstances.length !== selectedInstances.length) {
+        res.status(400).json({ error: "Uma ou mais instâncias não pertencem ao usuário" });
+        return;
+      }
+
+      // Atualizar a campanha com configurações de rotação
+      const updatedCampaign = await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          useRotation: true,
+          rotationStrategy: rotationStrategy || 'RANDOM',
+          maxMessagesPerInstance: maxMessagesPerInstance || 100,
+          selectedInstances: selectedInstances,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Rotação de instâncias configurada com sucesso",
+        data: {
+          campaignId,
+          useRotation: true,
+          rotationStrategy: updatedCampaign.rotationStrategy,
+          maxMessagesPerInstance: updatedCampaign.maxMessagesPerInstance,
+          selectedInstances: updatedCampaign.selectedInstances,
+        },
+      });
+    } catch (error) {
+      logger.error("Erro ao configurar rotação de instâncias:", error);
+      res.status(500).json({ error: "Erro ao configurar rotação de instâncias" });
+    }
+  }
+
+  public async removeInstanceRotation(
+    req: CampaignRequestWithId,
+    res: Response,
+  ): Promise<void> {
+    try {
+      const { id: campaignId } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({ error: "Usuário não autenticado" });
+        return;
+      }
+
+      // Verificar se a campanha pertence ao usuário
+      const campaign = await prisma.campaign.findFirst({
+        where: {
+          id: campaignId,
+          userId,
+        },
+      });
+
+      if (!campaign) {
+        res.status(404).json({ error: "Campanha não encontrada" });
+        return;
+      }
+
+      // Remover configurações de rotação
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          useRotation: false,
+          rotationStrategy: null,
+          maxMessagesPerInstance: null,
+          selectedInstances: [],
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Rotação de instâncias removida com sucesso",
+        data: {
+          campaignId,
+          useRotation: false,
+        },
+      });
+    } catch (error) {
+      logger.error("Erro ao remover rotação de instâncias:", error);
+      res.status(500).json({ error: "Erro ao remover rotação de instâncias" });
+    }
+  }
 }
 
 export type {

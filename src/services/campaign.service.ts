@@ -255,6 +255,27 @@ export class CampaignService {
   }
 
   public async startCampaign(params: CampaignParams): Promise<void> {
+    // Buscar a campanha para verificar se usa rotação
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: params.campaignId },
+      select: {
+        useRotation: true,
+        rotationStrategy: true,
+        selectedInstances: true,
+        maxMessagesPerInstance: true,
+      },
+    });
+
+    if (!campaign) {
+      throw new Error(`Campanha ${params.campaignId} não encontrada`);
+    }
+
+    // Se usa rotação, usar as instâncias selecionadas
+    if (campaign.useRotation && campaign.selectedInstances.length > 0) {
+      return this.startCampaignWithRotation(params, campaign);
+    }
+
+    // Caso contrário, usar a lógica original com instância única
     const instance = await this.prisma.instance.findUnique({
       where: { instanceName: params.instanceName },
     });
@@ -298,6 +319,173 @@ export class CampaignService {
       minDelay: params.minDelay,
       maxDelay: params.maxDelay,
     });
+  }
+
+  private async startCampaignWithRotation(
+    params: CampaignParams,
+    campaign: {
+      useRotation: boolean;
+      rotationStrategy: string | null;
+      selectedInstances: string[];
+      maxMessagesPerInstance: number | null;
+    }
+  ): Promise<void> {
+    // Verificar se as instâncias selecionadas estão conectadas
+    const instances = await this.prisma.instance.findMany({
+      where: {
+        instanceName: { in: campaign.selectedInstances },
+        connectionStatus: "OPEN",
+      },
+    });
+
+    if (instances.length === 0) {
+      throw new Error("Nenhuma instância selecionada está conectada");
+    }
+
+    // Resetar o status de todos os leads da campanha para PENDING
+    await this.prisma.campaignLead.updateMany({
+      where: { campaignId: params.campaignId },
+      data: {
+        status: "PENDING",
+        sentAt: null,
+        deliveredAt: null,
+        readAt: null,
+        failedAt: null,
+        failureReason: null,
+        messageId: null,
+      },
+    });
+
+    // Buscar todos os leads da campanha
+    const leads = await this.prisma.campaignLead.findMany({
+      where: { 
+        campaignId: params.campaignId,
+        status: "PENDING"
+      },
+    });
+
+    // Distribuir leads entre as instâncias baseado na estratégia
+    const leadDistribution = this.distributeLeads(
+      leads,
+      instances,
+      campaign.rotationStrategy || 'RANDOM',
+      campaign.maxMessagesPerInstance || 100
+    );
+
+    // Iniciar dispatch para cada instância com seus leads
+    const dispatchPromises = leadDistribution.map(({ instance, leads: instanceLeads }) => {
+      return messageDispatcherService.startDispatchWithLeads({
+        campaignId: params.campaignId,
+        instanceName: instance.instanceName,
+        message: params.message,
+        leads: instanceLeads,
+        media: params.media
+          ? {
+              type: params.media.type,
+              base64: params.media.content,
+              caption: params.media.caption || undefined,
+              fileName: `file_${Date.now()}`,
+              mimetype: this.getMimeType(params.media.type),
+            }
+          : undefined,
+        minDelay: params.minDelay,
+        maxDelay: params.maxDelay,
+      });
+    });
+
+    await Promise.all(dispatchPromises);
+  }
+
+  private distributeLeads(
+    leads: any[],
+    instances: any[],
+    strategy: string,
+    maxMessagesPerInstance: number
+  ) {
+    const distribution: { instance: any; leads: any[] }[] = [];
+    
+    // Inicializar distribuição
+    instances.forEach(instance => {
+      distribution.push({ instance, leads: [] });
+    });
+
+    switch (strategy) {
+      case 'SEQUENTIAL':
+        return this.distributeSequential(leads, distribution, maxMessagesPerInstance);
+      case 'LOAD_BALANCED':
+        return this.distributeLoadBalanced(leads, distribution, maxMessagesPerInstance);
+      case 'RANDOM':
+      default:
+        return this.distributeRandom(leads, distribution, maxMessagesPerInstance);
+    }
+  }
+
+  private distributeRandom(
+    leads: any[],
+    distribution: { instance: any; leads: any[] }[],
+    maxMessagesPerInstance: number
+  ) {
+    leads.forEach(lead => {
+      // Filtrar instâncias que ainda podem receber leads
+      const availableInstances = distribution.filter(
+        d => d.leads.length < maxMessagesPerInstance
+      );
+      
+      if (availableInstances.length > 0) {
+        const randomIndex = Math.floor(Math.random() * availableInstances.length);
+        availableInstances[randomIndex].leads.push(lead);
+      }
+    });
+    
+    return distribution.filter(d => d.leads.length > 0);
+  }
+
+  private distributeSequential(
+    leads: any[],
+    distribution: { instance: any; leads: any[] }[],
+    maxMessagesPerInstance: number
+  ) {
+    let currentInstanceIndex = 0;
+    
+    leads.forEach(lead => {
+      // Encontrar próxima instância disponível
+      let attempts = 0;
+      while (attempts < distribution.length) {
+        const currentDistribution = distribution[currentInstanceIndex];
+        
+        if (currentDistribution.leads.length < maxMessagesPerInstance) {
+          currentDistribution.leads.push(lead);
+          break;
+        }
+        
+        currentInstanceIndex = (currentInstanceIndex + 1) % distribution.length;
+        attempts++;
+      }
+    });
+    
+    return distribution.filter(d => d.leads.length > 0);
+  }
+
+  private distributeLoadBalanced(
+    leads: any[],
+    distribution: { instance: any; leads: any[] }[],
+    maxMessagesPerInstance: number
+  ) {
+    leads.forEach(lead => {
+      // Encontrar instância com menor número de leads
+      const availableInstances = distribution.filter(
+        d => d.leads.length < maxMessagesPerInstance
+      );
+      
+      if (availableInstances.length > 0) {
+        const leastLoadedInstance = availableInstances.reduce((min, current) =>
+          current.leads.length < min.leads.length ? current : min
+        );
+        leastLoadedInstance.leads.push(lead);
+      }
+    });
+    
+    return distribution.filter(d => d.leads.length > 0);
   }
 
   // Método auxiliar

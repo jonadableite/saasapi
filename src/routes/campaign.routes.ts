@@ -88,6 +88,14 @@ router.patch("/:id", validateCampaignId, (req: Request, res: Response) =>
   controller.updateCampaignStatus(req as CampaignRequestWithId, res),
 );
 
+// Rotas de rotação de instâncias
+router.post("/:id/instances", validateCampaignId, (req: Request, res: Response) =>
+  controller.configureInstanceRotation(req as CampaignRequestWithId, res),
+);
+router.delete("/:id/instances", validateCampaignId, (req: Request, res: Response) =>
+  controller.removeInstanceRotation(req as CampaignRequestWithId, res),
+);
+
 // Rotas de importação de leads
 router.post(
   "/:id/leads/import",
