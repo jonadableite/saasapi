@@ -9,17 +9,17 @@ interface CleanResult {
   success: boolean;
   message?: string;
   error?: string;
+  cleanedMedia?: {
+    data: string;
+    fileName: string;
+    mimetype: string;
+    size: number;
+  };
   data?: {
     originalSize: number;
     cleanedSize: number;
     reduction: number;
     reductionPercentage: number;
-    cleanedMedia?: {
-      data: string;
-      fileName: string;
-      mimetype: string;
-      size: number;
-    };
   };
 }
 
@@ -121,7 +121,7 @@ class MetadataCleanerService {
       // Converter de volta para base64
       const cleanedBase64 = `data:${cleanedMimetype};base64,${cleanedBuffer.toString('base64')}`;
 
-      logger.log('MetadataCleaner', `Metadados removidos com sucesso: ${fileName}`, {
+      logger.log(`Metadados removidos com sucesso: ${fileName}`, {
         originalSize,
         cleanedSize,
         reduction
@@ -130,17 +130,17 @@ class MetadataCleanerService {
       return {
         success: true,
         message: 'Metadados removidos com sucesso',
+        cleanedMedia: {
+          data: cleanedBase64,
+          fileName: cleanedFileName,
+          mimetype: cleanedMimetype,
+          size: cleanedSize
+        },
         data: {
           originalSize,
           cleanedSize,
           reduction,
-          reductionPercentage,
-          cleanedMedia: {
-            data: cleanedBase64,
-            fileName: cleanedFileName,
-            mimetype: cleanedMimetype,
-            size: cleanedSize
-          }
+          reductionPercentage
         }
       };
 

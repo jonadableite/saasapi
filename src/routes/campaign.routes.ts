@@ -26,11 +26,65 @@ const upload = multer({
 // Middleware de autenticação para todas as rotas
 router.use(authMiddleware);
 
+/**
+ * @swagger
+ * tags:
+ *   name: Campaigns
+ *   description: Gerenciamento de campanhas de marketing
+ */
+
+/**
+ * @swagger
+ * /api/campaigns/scheduled:
+ *   get:
+ *     summary: Buscar campanhas agendadas
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de campanhas agendadas
+ *       401:
+ *         description: Não autorizado
+ */
 // Rota para campanhas agendadas
 router.get("/scheduled", (req: Request, res: Response) =>
   controller.getScheduledCampaigns(req as RequestWithUser, res),
 );
 
+/**
+ * @swagger
+ * /api/campaigns:
+ *   post:
+ *     summary: Criar nova campanha
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Campanha criada com sucesso
+ *       400:
+ *         description: Dados inválidos
+ *   get:
+ *     summary: Listar campanhas
+ *     tags: [Campaigns]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de campanhas
+ */
 // Rotas básicas de campanha
 router
   .route("/")

@@ -39,6 +39,8 @@ import uploadRoutes from "./routes/upload.routes";
 import userRoutes from "./routes/user.routes";
 import warmupRoutes from "./routes/warmup.routes";
 import { webhookRoutes } from "./routes/webhook.routes";
+import { crmRoutes } from "./routes/CRM/crm.routes";
+import { botRoutes } from "./routes/Chatbot/bot.routes";
 import { campaignService } from "./services/campaign.service";
 import socketService from "./services/socket.service";
 import { logger } from "./utils/logger";
@@ -127,6 +129,8 @@ const protectedRoutes = [
   { path: "/api/message-logs", route: messageLogRoutes },
   { path: "/api/metadata-cleaner", route: metadataCleanerRoutes },
   { path: "/api/groups", route: groupsRoutes },
+  { path: "/api/crm", route: crmRoutes },
+  { path: "/api/bot", route: botRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {
