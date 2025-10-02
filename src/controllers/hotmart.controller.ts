@@ -6,6 +6,76 @@ import { logger } from "../utils/logger";
 const prisma = new PrismaClient();
 const hotmartLogger = logger.setContext("HotmartController");
 
+// Cache para o token da Hotmart
+let cachedHotmartToken: string | null = null;
+let tokenExpirationTime: number = 0;
+
+// Função para renovar o token da Hotmart
+async function refreshHotmartToken(): Promise<string> {
+  try {
+    const clientId = process.env.HOTMART_CLIENT_ID;
+    const clientSecret = process.env.HOTMART_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      throw new Error('HOTMART_CLIENT_ID e HOTMART_CLIENT_SECRET são obrigatórios');
+    }
+
+    // Criar Basic Auth header
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    
+    const response = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${basicAuth}`
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Erro ao renovar token da Hotmart: ${response.status} - ${errorText}`);
+    }
+
+    const tokenData = await response.json();
+    
+    if (!tokenData.access_token) {
+      throw new Error('Token de acesso não encontrado na resposta da Hotmart');
+    }
+
+    // Cache do token com tempo de expiração (expires_in em segundos)
+    cachedHotmartToken = tokenData.access_token;
+    tokenExpirationTime = Date.now() + (tokenData.expires_in * 1000) - 60000; // 1 minuto de margem
+    
+    hotmartLogger.info('Token da Hotmart renovado com sucesso');
+    
+    return tokenData.access_token;
+  } catch (error) {
+    hotmartLogger.error('Erro ao renovar token da Hotmart:', error);
+    throw error;
+  }
+}
+
+// Função para obter token válido (usa cache ou renova se necessário)
+async function getValidHotmartToken(): Promise<string> {
+  // Se temos um token em cache e ainda não expirou, usa ele
+  if (cachedHotmartToken && Date.now() < tokenExpirationTime) {
+    return cachedHotmartToken;
+  }
+  
+  // Tenta usar o token do .env primeiro
+  const envToken = process.env.HOTMART_ACCESS_TOKEN;
+  if (envToken && !cachedHotmartToken) {
+    cachedHotmartToken = envToken;
+    // Define um tempo de expiração padrão de 1 hora se não temos informação
+    tokenExpirationTime = Date.now() + (3600 * 1000);
+    return envToken;
+  }
+  
+  // Se chegou aqui, precisa renovar o token
+  return await refreshHotmartToken();
+}
+
 export interface HotmartWebhookData {
   id: string;
   event: string;
@@ -719,16 +789,8 @@ export class HotmartController {
         return;
       }
 
-      // Verificar se o token da Hotmart está configurado
-      const hotmartToken = process.env.HOTMART_ACCESS_TOKEN;
-      if (!hotmartToken) {
-        hotmartLogger.error("Token da Hotmart não configurado");
-        res.status(500).json({
-          error: "Token da Hotmart não configurado",
-          message: "Configure HOTMART_ACCESS_TOKEN no arquivo .env"
-        });
-        return;
-      }
+      // Obter token válido (renovando se necessário)
+      const hotmartToken = await getValidHotmartToken();
 
       // Construir URL da Hotmart
       const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
@@ -742,14 +804,28 @@ export class HotmartController {
 
       hotmartLogger.info(`Fazendo requisição para Hotmart: ${apiUrl}`);
 
-      // Fazer requisição para API da Hotmart
-      const response = await fetch(apiUrl, {
+      // Fazer requisição para API da Hotmart com retry em caso de token inválido
+      let response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      // Se receber 401, tenta renovar o token e fazer nova requisição
+      if (response.status === 401) {
+        hotmartLogger.info('Token expirado, renovando...');
+        const newToken = await refreshHotmartToken();
+        
+        response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -801,13 +877,30 @@ export class HotmartController {
       if (product_id) apiUrl += `&product_id=${product_id}`;
       if (currency_code) apiUrl += `&currency_code=${currency_code}`;
 
-      const response = await fetch(apiUrl, {
+      // Obter token válido (renovando se necessário)
+      const hotmartToken = await getValidHotmartToken();
+
+      let response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      // Se receber 401, tenta renovar o token e fazer nova requisição
+      if (response.status === 401) {
+        hotmartLogger.info('Token expirado, renovando...');
+        const newToken = await refreshHotmartToken();
+        
+        response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Erro na API da Hotmart: ${response.status}`);
@@ -861,13 +954,30 @@ export class HotmartController {
       if (max_results) apiUrl += `&max_results=${max_results}`;
       if (page_token) apiUrl += `&page_token=${page_token}`;
 
-      const response = await fetch(apiUrl, {
+      // Obter token válido (renovando se necessário)
+      const hotmartToken = await getValidHotmartToken();
+
+      let response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      // Se receber 401, tenta renovar o token e fazer nova requisição
+      if (response.status === 401) {
+        hotmartLogger.info('Token expirado, renovando...');
+        const newToken = await refreshHotmartToken();
+        
+        response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Erro na API da Hotmart: ${response.status}`);
@@ -919,13 +1029,30 @@ export class HotmartController {
       if (max_results) apiUrl += `&max_results=${max_results}`;
       if (page_token) apiUrl += `&page_token=${page_token}`;
 
-      const response = await fetch(apiUrl, {
+      // Obter token válido (renovando se necessário)
+      const hotmartToken = await getValidHotmartToken();
+
+      let response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      // Se receber 401, tenta renovar o token e fazer nova requisição
+      if (response.status === 401) {
+        hotmartLogger.info('Token expirado, renovando...');
+        const newToken = await refreshHotmartToken();
+        
+        response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Erro na API da Hotmart: ${response.status}`);
@@ -979,13 +1106,30 @@ export class HotmartController {
       if (max_results) apiUrl += `&max_results=${max_results}`;
       if (page_token) apiUrl += `&page_token=${page_token}`;
 
-      const response = await fetch(apiUrl, {
+      // Obter token válido (renovando se necessário)
+      const hotmartToken = await getValidHotmartToken();
+
+      let response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
+
+      // Se receber 401, tenta renovar o token e fazer nova requisição
+      if (response.status === 401) {
+        hotmartLogger.info('Token expirado, renovando...');
+        const newToken = await refreshHotmartToken();
+        
+        response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${newToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Erro na API da Hotmart: ${response.status}`);
