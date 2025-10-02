@@ -339,14 +339,13 @@ router.get("/export", authMiddleware, hotmartController.exportCustomers);
  * @swagger
  * /api/hotmart/sync:
  *   post:
- *     summary: Sincronizar com Hotmart
- *     description: Executar sincronização manual com a Hotmart (se necessário)
- *     tags: [Hotmart Admin]
+ *     summary: Sincronizar dados com Hotmart
+ *     tags: [Hotmart]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Sincronização executada
+ *         description: Sincronização realizada com sucesso
  *         content:
  *           application/json:
  *             schema:
@@ -364,5 +363,264 @@ router.get("/export", authMiddleware, hotmartController.exportCustomers);
  *         description: Erro interno do servidor
  */
 router.post("/sync", authMiddleware, hotmartController.syncWithHotmart);
+
+/**
+ * @swagger
+ * /api/hotmart/sales/history:
+ *   get:
+ *     summary: Buscar histórico de vendas da Hotmart
+ *     tags: [Hotmart Sales]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de início (timestamp)
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de fim (timestamp)
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: string
+ *         description: ID do produto
+ *       - in: query
+ *         name: buyer_email
+ *         schema:
+ *           type: string
+ *         description: Email do comprador
+ *       - in: query
+ *         name: transaction_status
+ *         schema:
+ *           type: string
+ *         description: Status da transação
+ *       - in: query
+ *         name: max_results
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Número máximo de resultados
+ *       - in: query
+ *         name: page_token
+ *         schema:
+ *           type: string
+ *         description: Token de paginação
+ *     responses:
+ *       200:
+ *         description: Histórico de vendas recuperado com sucesso
+ *       400:
+ *         description: Parâmetros obrigatórios não fornecidos
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get("/sales/history", authMiddleware, hotmartController.getSalesHistory);
+
+/**
+ * @swagger
+ * /api/hotmart/sales/summary:
+ *   get:
+ *     summary: Buscar sumário de vendas da Hotmart
+ *     tags: [Hotmart Sales]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de início (timestamp)
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de fim (timestamp)
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: string
+ *         description: ID do produto
+ *       - in: query
+ *         name: currency_code
+ *         schema:
+ *           type: string
+ *         description: Código da moeda
+ *     responses:
+ *       200:
+ *         description: Sumário de vendas recuperado com sucesso
+ *       400:
+ *         description: Parâmetros obrigatórios não fornecidos
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get("/sales/summary", authMiddleware, hotmartController.getSalesSummary);
+
+/**
+ * @swagger
+ * /api/hotmart/sales/users:
+ *   get:
+ *     summary: Buscar participantes de vendas da Hotmart
+ *     tags: [Hotmart Sales]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de início (timestamp)
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de fim (timestamp)
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: string
+ *         description: ID do produto
+ *       - in: query
+ *         name: buyer_email
+ *         schema:
+ *           type: string
+ *         description: Email do comprador
+ *       - in: query
+ *         name: max_results
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Número máximo de resultados
+ *       - in: query
+ *         name: page_token
+ *         schema:
+ *           type: string
+ *         description: Token de paginação
+ *     responses:
+ *       200:
+ *         description: Participantes de vendas recuperados com sucesso
+ *       400:
+ *         description: Parâmetros obrigatórios não fornecidos
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get("/sales/users", authMiddleware, hotmartController.getSalesUsers);
+
+/**
+ * @swagger
+ * /api/hotmart/sales/commissions:
+ *   get:
+ *     summary: Buscar comissões de vendas da Hotmart
+ *     tags: [Hotmart Sales]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de início (timestamp)
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de fim (timestamp)
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: string
+ *         description: ID do produto
+ *       - in: query
+ *         name: max_results
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Número máximo de resultados
+ *       - in: query
+ *         name: page_token
+ *         schema:
+ *           type: string
+ *         description: Token de paginação
+ *     responses:
+ *       200:
+ *         description: Comissões de vendas recuperadas com sucesso
+ *       400:
+ *         description: Parâmetros obrigatórios não fornecidos
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get("/sales/commissions", authMiddleware, hotmartController.getSalesCommissions);
+
+/**
+ * @swagger
+ * /api/hotmart/sales/price-details:
+ *   get:
+ *     summary: Buscar detalhes de preços de vendas da Hotmart
+ *     tags: [Hotmart Sales]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: start_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de início (timestamp)
+ *       - in: query
+ *         name: end_date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Data de fim (timestamp)
+ *       - in: query
+ *         name: product_id
+ *         schema:
+ *           type: string
+ *         description: ID do produto
+ *       - in: query
+ *         name: transaction_id
+ *         schema:
+ *           type: string
+ *         description: ID da transação
+ *       - in: query
+ *         name: max_results
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Número máximo de resultados
+ *       - in: query
+ *         name: page_token
+ *         schema:
+ *           type: string
+ *         description: Token de paginação
+ *     responses:
+ *       200:
+ *         description: Detalhes de preços recuperados com sucesso
+ *       400:
+ *         description: Parâmetros obrigatórios não fornecidos
+ *       401:
+ *         description: Não autorizado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+router.get("/sales/price-details", authMiddleware, hotmartController.getSalesPriceDetails);
 
 export default router;

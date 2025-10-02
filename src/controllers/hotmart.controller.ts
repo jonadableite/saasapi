@@ -505,7 +505,7 @@ export class HotmartController {
         where.subscriptionStatus = status;
       }
 
-      const customers = await prisma.user.findMany({
+      const users = await prisma.user.findMany({
         where: {
           ...where,
           hotmartCustomerId: { not: null },
@@ -526,6 +526,36 @@ export class HotmartController {
           ...where,
           hotmartCustomerId: { not: null },
         },
+      });
+
+      // Transformar os dados para o formato esperado pelo frontend
+      const customers = users.map(user => {
+        const latestTransaction = user.hotmartTransactions[0];
+        
+        return {
+          id: user.id,
+          subscriberCode: user.hotmartSubscriberCode || 'N/A',
+          transaction: user.hotmartCustomerId || 'N/A',
+          productId: latestTransaction?.productId || 'N/A',
+          productName: latestTransaction?.productName || 'N/A',
+          customerName: user.name,
+          customerEmail: user.email,
+          customerPhone: user.phone || '',
+          paymentType: latestTransaction?.paymentMethod || 'N/A',
+          paymentMethod: latestTransaction?.paymentMethod || 'N/A',
+          paymentStatus: latestTransaction?.status || 'N/A',
+          subscriptionStatus: user.subscriptionStatus || 'ACTIVE',
+          subscriptionValue: latestTransaction?.amount || 0,
+          subscriptionCurrency: latestTransaction?.currency || 'BRL',
+          subscriptionFrequency: latestTransaction?.planName || 'N/A',
+          nextChargeDate: latestTransaction?.nextChargeDate?.toISOString() || null,
+          isActive: user.isActive || false,
+          isTrial: false,
+          tags: [],
+          createdAt: user.createdAt.toISOString(),
+          updatedAt: user.updatedAt.toISOString(),
+          hotmartTransactions: user.hotmartTransactions
+        };
       });
 
       res.json({
@@ -662,6 +692,306 @@ export class HotmartController {
     } catch (error) {
       hotmartLogger.error("Erro na sincronização:", error);
       res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  };
+
+  // Novos métodos para integração com API de vendas da Hotmart
+  public getSalesHistory = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const {
+        start_date,
+        end_date,
+        product_id,
+        buyer_email,
+        transaction_status,
+        max_results = 50,
+        page_token
+      } = req.query;
+
+      // Validação de parâmetros obrigatórios
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          error: "Parâmetros start_date e end_date são obrigatórios"
+        });
+        return;
+      }
+
+      // Construir URL da Hotmart
+      const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
+      let apiUrl = `${baseUrl}/sales/history?start_date=${start_date}&end_date=${end_date}`;
+      
+      if (product_id) apiUrl += `&product_id=${product_id}`;
+      if (buyer_email) apiUrl += `&buyer_email=${buyer_email}`;
+      if (transaction_status) apiUrl += `&transaction_status=${transaction_status}`;
+      if (max_results) apiUrl += `&max_results=${max_results}`;
+      if (page_token) apiUrl += `&page_token=${page_token}`;
+
+      // Fazer requisição para API da Hotmart
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+      }
+
+      const salesData = await response.json();
+
+      hotmartLogger.info(`Histórico de vendas recuperado: ${salesData.items?.length || 0} itens`);
+      
+      res.json({
+        success: true,
+        data: salesData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      hotmartLogger.error("Erro ao buscar histórico de vendas:", error);
+      res.status(500).json({ 
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido"
+      });
+    }
+  };
+
+  public getSalesSummary = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const {
+        start_date,
+        end_date,
+        product_id,
+        currency_code
+      } = req.query;
+
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          error: "Parâmetros start_date e end_date são obrigatórios"
+        });
+        return;
+      }
+
+      const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
+      let apiUrl = `${baseUrl}/sales/summary?start_date=${start_date}&end_date=${end_date}`;
+      
+      if (product_id) apiUrl += `&product_id=${product_id}`;
+      if (currency_code) apiUrl += `&currency_code=${currency_code}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+      }
+
+      const summaryData = await response.json();
+
+      hotmartLogger.info("Sumário de vendas recuperado com sucesso");
+      
+      res.json({
+        success: true,
+        data: summaryData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      hotmartLogger.error("Erro ao buscar sumário de vendas:", error);
+      res.status(500).json({ 
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido"
+      });
+    }
+  };
+
+  public getSalesUsers = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const {
+        start_date,
+        end_date,
+        product_id,
+        buyer_email,
+        max_results = 50,
+        page_token
+      } = req.query;
+
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          error: "Parâmetros start_date e end_date são obrigatórios"
+        });
+        return;
+      }
+
+      const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
+      let apiUrl = `${baseUrl}/sales/users?start_date=${start_date}&end_date=${end_date}`;
+      
+      if (product_id) apiUrl += `&product_id=${product_id}`;
+      if (buyer_email) apiUrl += `&buyer_email=${buyer_email}`;
+      if (max_results) apiUrl += `&max_results=${max_results}`;
+      if (page_token) apiUrl += `&page_token=${page_token}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+      }
+
+      const usersData = await response.json();
+
+      hotmartLogger.info(`Participantes de vendas recuperados: ${usersData.items?.length || 0} itens`);
+      
+      res.json({
+        success: true,
+        data: usersData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      hotmartLogger.error("Erro ao buscar participantes de vendas:", error);
+      res.status(500).json({ 
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido"
+      });
+    }
+  };
+
+  public getSalesCommissions = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const {
+        start_date,
+        end_date,
+        product_id,
+        max_results = 50,
+        page_token
+      } = req.query;
+
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          error: "Parâmetros start_date e end_date são obrigatórios"
+        });
+        return;
+      }
+
+      const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
+      let apiUrl = `${baseUrl}/sales/commissions?start_date=${start_date}&end_date=${end_date}`;
+      
+      if (product_id) apiUrl += `&product_id=${product_id}`;
+      if (max_results) apiUrl += `&max_results=${max_results}`;
+      if (page_token) apiUrl += `&page_token=${page_token}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+      }
+
+      const commissionsData = await response.json();
+
+      hotmartLogger.info(`Comissões de vendas recuperadas: ${commissionsData.items?.length || 0} itens`);
+      
+      res.json({
+        success: true,
+        data: commissionsData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      hotmartLogger.error("Erro ao buscar comissões de vendas:", error);
+      res.status(500).json({ 
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido"
+      });
+    }
+  };
+
+  public getSalesPriceDetails = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const {
+        start_date,
+        end_date,
+        product_id,
+        transaction_id,
+        max_results = 50,
+        page_token
+      } = req.query;
+
+      if (!start_date || !end_date) {
+        res.status(400).json({
+          error: "Parâmetros start_date e end_date são obrigatórios"
+        });
+        return;
+      }
+
+      const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
+      let apiUrl = `${baseUrl}/sales/price-details?start_date=${start_date}&end_date=${end_date}`;
+      
+      if (product_id) apiUrl += `&product_id=${product_id}`;
+      if (transaction_id) apiUrl += `&transaction_id=${transaction_id}`;
+      if (max_results) apiUrl += `&max_results=${max_results}`;
+      if (page_token) apiUrl += `&page_token=${page_token}`;
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+      }
+
+      const priceDetailsData = await response.json();
+
+      hotmartLogger.info(`Detalhes de preços recuperados: ${priceDetailsData.items?.length || 0} itens`);
+      
+      res.json({
+        success: true,
+        data: priceDetailsData,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      hotmartLogger.error("Erro ao buscar detalhes de preços:", error);
+      res.status(500).json({ 
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido"
+      });
     }
   };
 }
