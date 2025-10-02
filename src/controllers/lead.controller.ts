@@ -152,7 +152,7 @@ export class LeadController {
       // Criar uma campanha para os leads importados
       const campaign = await prisma.campaign.create({
         data: {
-          name: `Importação ${new Date().toLocaleString()}`,
+          name: `Importação ${new Date().toLocaleString('pt-BR')}`,
           description: "Importação de leads",
           type: "import",
           userId,

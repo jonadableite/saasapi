@@ -154,7 +154,7 @@ export class Logger {
   }
 
   private formatMessage(type: Type, message: any, typeValue?: string): string {
-    const timestamp = dayjs().format("ddd MMM DD YYYY HH:mm:ss");
+    const timestamp = dayjs().format("DD/MM/YYYY HH:mm:ss");
     const pid = process.pid.toString();
     const colors = this.getColorConfig(type);
     const emoji = LogEmoji[type];
