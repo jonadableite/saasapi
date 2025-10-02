@@ -719,6 +719,17 @@ export class HotmartController {
         return;
       }
 
+      // Verificar se o token da Hotmart está configurado
+      const hotmartToken = process.env.HOTMART_ACCESS_TOKEN;
+      if (!hotmartToken) {
+        hotmartLogger.error("Token da Hotmart não configurado");
+        res.status(500).json({
+          error: "Token da Hotmart não configurado",
+          message: "Configure HOTMART_ACCESS_TOKEN no arquivo .env"
+        });
+        return;
+      }
+
       // Construir URL da Hotmart
       const baseUrl = process.env.HOTMART_API_URL || 'https://developers.hotmart.com/payments/api/v1';
       let apiUrl = `${baseUrl}/sales/history?start_date=${start_date}&end_date=${end_date}`;
@@ -729,17 +740,21 @@ export class HotmartController {
       if (max_results) apiUrl += `&max_results=${max_results}`;
       if (page_token) apiUrl += `&page_token=${page_token}`;
 
+      hotmartLogger.info(`Fazendo requisição para Hotmart: ${apiUrl}`);
+
       // Fazer requisição para API da Hotmart
       const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.HOTMART_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${hotmartToken}`,
           'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        throw new Error(`Erro na API da Hotmart: ${response.status}`);
+        const errorText = await response.text();
+        hotmartLogger.error(`Erro na API da Hotmart: ${response.status} - ${errorText}`);
+        throw new Error(`Erro na API da Hotmart: ${response.status} - ${errorText}`);
       }
 
       const salesData = await response.json();
