@@ -40,7 +40,7 @@ export class CampaignSchedulerController {
     res: Response,
   ): Promise<void> {
     const scheduleLogger = logger.setContext("CampaignScheduler");
-    const campaignId = req.params.id || "N/A";
+    const campaignId = req.params.campaignId || "N/A";
 
     try {
       scheduleLogger.info("Recebendo requisição de agendamento", {

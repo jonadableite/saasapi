@@ -61,12 +61,21 @@ export class CampaignSchedulerService {
   }
 
   /**
-   * Valida se a data de agendamento é futura.
+   * Valida se a data de agendamento é válida.
    */
   private validateScheduleDate(scheduledDate: Date): void {
     const now = new Date();
-    if (scheduledDate <= now) {
-      throw new BadRequestError("Data de agendamento deve ser futura");
+    
+    // Permitir agendamentos para hoje, mas com pelo menos 2 minutos no futuro
+    const twoMinutesFromNow = new Date(now.getTime() + 2 * 60 * 1000);
+    if (scheduledDate < twoMinutesFromNow) {
+      throw new BadRequestError("O agendamento deve ser pelo menos 2 minutos no futuro");
+    }
+
+    // Verificar se a data não é muito no passado (mais de 1 dia)
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    if (scheduledDate < oneDayAgo) {
+      throw new BadRequestError("Não é possível agendar para datas muito antigas");
     }
   }
 
@@ -75,7 +84,7 @@ export class CampaignSchedulerService {
    */
   private async handleScheduleError(
     scheduleId: string,
-    error: unknown,
+    error: unknown
   ): Promise<void> {
     try {
       await prisma.campaignSchedule.update({
@@ -337,7 +346,7 @@ export class CampaignSchedulerService {
     });
 
     const scheduledJobs = Array.from(this.scheduledJobs.entries()).filter(
-      ([_, job]) => job.name === campaignId,
+      ([_, job]) => job.name === campaignId
     );
 
     scheduledJobs.forEach(([id, job]) => {
@@ -362,7 +371,7 @@ export class CampaignSchedulerService {
    */
   public async resumeCampaign(
     campaignId: string,
-    instanceName: string,
+    instanceName: string
   ): Promise<void> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
