@@ -89,6 +89,7 @@ interface ReactionPayload {
 interface PhoneInstance {
   instanceId: string;
   phoneNumber: string;
+  ownerJid?: string; // Adicionando ownerJid para identificar o número da instância
 }
 
 interface ApiResponse {
@@ -751,7 +752,8 @@ export class WarmupService {
 
         const { isGroup, targets } = this.getMessageDestination(
           config.config,
-          config.phoneInstances
+          config.phoneInstances,
+          instance // Passando a instância atual como parâmetro
         );
 
         for (const to of targets) {
@@ -1253,7 +1255,8 @@ export class WarmupService {
    */
   private getMessageDestination(
     config: WarmupConfig["config"],
-    availableInstances: PhoneInstance[]
+    availableInstances: PhoneInstance[],
+    senderInstance?: PhoneInstance // Adicionando parâmetro para a instância que está enviando
   ): { isGroup: boolean; targets: string[] } {
     const isGroup = this.shouldSendToGroup(config);
 
@@ -1269,16 +1272,40 @@ export class WarmupService {
 
     if (useExternalNumbers) {
       const externalNumbers = this.selectRandomExternalNumbers(config);
+      
+      // Filtrar números externos para evitar auto-envio
+      const filteredExternalNumbers = senderInstance?.ownerJid 
+        ? externalNumbers.filter(number => {
+            // Normalizar números para comparação (remover caracteres especiais)
+            const normalizedExternal = number.replace(/\D/g, '');
+            const normalizedSender = senderInstance.ownerJid!.replace(/\D/g, '');
+            return normalizedExternal !== normalizedSender;
+          })
+        : externalNumbers;
+      
       return {
         isGroup: false,
-        targets: externalNumbers,
+        targets: filteredExternalNumbers,
       };
     }
 
-    // Usar instâncias configuradas
-    const instanceNumbers = availableInstances.map(
+    // Usar instâncias configuradas - filtrar para evitar auto-envio
+    let instanceNumbers = availableInstances.map(
       (instance) => instance.phoneNumber
     );
+
+    // Se temos informação da instância que está enviando, filtrar para evitar auto-envio
+    if (senderInstance?.ownerJid) {
+      instanceNumbers = instanceNumbers.filter(phoneNumber => {
+        // Normalizar números para comparação (remover caracteres especiais)
+        const normalizedTarget = phoneNumber.replace(/\D/g, '');
+        const normalizedSender = senderInstance.ownerJid!.replace(/\D/g, '');
+        return normalizedTarget !== normalizedSender;
+      });
+      
+      console.log(`Instância ${senderInstance.instanceId} (${senderInstance.ownerJid}) - Destinatários filtrados:`, instanceNumbers);
+    }
+
     return {
       isGroup: false,
       targets: instanceNumbers,

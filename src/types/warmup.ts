@@ -14,6 +14,7 @@ export interface WarmupConfig {
   phoneInstances: Array<{
     instanceId: string;
     phoneNumber: string;
+    ownerJid?: string; // Adicionando ownerJid para identificar o número da instância
   }>;
   contents: {
     texts: string[];
