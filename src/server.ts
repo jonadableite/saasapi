@@ -42,6 +42,7 @@ import { webhookRoutes } from "./routes/webhook.routes";
 import { crmRoutes } from "./routes/CRM/crm.routes";
 import { botRoutes } from "./routes/Chatbot/bot.routes";
 import hotmartRoutes from "./routes/hotmart.routes";
+import { spinTaxRoutes } from "./routes/spintax.routes";
 import { campaignService } from "./services/campaign.service";
 import socketService from "./services/socket.service";
 import { logger } from "./utils/logger";
@@ -133,6 +134,7 @@ const protectedRoutes = [
   { path: "/api/groups", route: groupsRoutes },
   { path: "/api/crm", route: crmRoutes },
   { path: "/api/bot", route: botRoutes },
+  { path: "/api/spintax", route: spinTaxRoutes },
 ];
 
 protectedRoutes.forEach(({ path, route }) => {

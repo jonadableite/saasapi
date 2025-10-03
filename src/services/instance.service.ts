@@ -501,8 +501,8 @@ export const syncInstancesWithExternalApi = async (
       instanceLogger.error("Erro ao buscar dados em cache", cacheError);
     }
     
-    // Se não há cache disponível, retornar array vazio ao invés de lançar erro
-    instanceLogger.warn("API externa indisponível e sem cache. Retornando lista vazia.");
-    return [];
+    // Se não há cache disponível, apenas logar o aviso
+    instanceLogger.warn("API externa indisponível e sem cache.");
+    return;
   }
 };

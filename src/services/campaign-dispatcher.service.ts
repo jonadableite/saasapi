@@ -10,6 +10,7 @@ import { prisma } from "../lib/prisma";
 import { logger } from "../utils/logger";
 import { MessageLogService } from "./message-log.service";
 import { metadataCleanerService } from "./metadataCleaner.service";
+import { spinTaxService } from "./spintax.service";
 
 interface AxiosErrorResponse {
   message: any;
@@ -655,6 +656,10 @@ export class MessageDispatcherService implements IMessageDispatcherService {
   ): Promise<EvolutionApiResponse> {
     try {
       const formattedNumber = phone.startsWith("55") ? phone : `55${phone}`;
+      
+      // Processar SpinTax antes do envio
+      const processedText = spinTaxService.process(text).processedText;
+      
       const disparoLogger = logger.setContext("Disparo");
       disparoLogger.info(
         `Enviando mensagem para ${formattedNumber} usando instância ${instanceName}`,
@@ -662,7 +667,7 @@ export class MessageDispatcherService implements IMessageDispatcherService {
 
       const payload = {
         number: formattedNumber,
-        text,
+        text: processedText,
         options: {
           delay: 1000,
           presence: "composing",

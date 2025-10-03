@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { pubsub } from "../../lib/pubsub";
 import { logger } from "../../utils/logger";
 import { EvolutionApiService } from "../evolution-api.service";
+import { spinTaxService } from "../spintax.service";
 
 const messagingLogger = logger.setContext("CRMMessaging");
 
@@ -58,6 +59,9 @@ export class CRMMessagingService {
         return { success: false, error: "Número de telefone inválido" };
       }
 
+      // Processar SpinTax antes do envio
+      const processedMessage = spinTaxService.process(message).processedText;
+
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
@@ -70,7 +74,7 @@ export class CRMMessagingService {
           messageId: `pending_${Date.now()}_${Math.random()
             .toString(36)
             .substring(2, 9)}`, // ID temporário
-          content: message,
+          content: processedMessage,
           type: "text",
           sender: "me",
           status: MessageStatus.PENDING,
@@ -81,7 +85,7 @@ export class CRMMessagingService {
       const response = await this.evolutionApiService.sendMessage({
         instanceName,
         number: cleanPhone, // Use 'number' instead of 'to'
-        text: message,
+        text: processedMessage,
         options: {
           delay: 0,
         },
@@ -160,6 +164,9 @@ export class CRMMessagingService {
         return { success: false, error: "Número de telefone inválido" };
       }
 
+      // Processar SpinTax na caption se fornecida
+      const processedCaption = caption ? spinTaxService.process(caption).processedText : undefined;
+
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
@@ -174,7 +181,7 @@ export class CRMMessagingService {
         data: {
           conversationId: conversation.id,
           messageId: tempMessageId,
-          content: caption || `[${mediaType.toUpperCase()}]`,
+          content: processedCaption || `[${mediaType.toUpperCase()}]`,
           type: mediaType,
           sender: "me",
           status: MessageStatus.PENDING,
@@ -200,7 +207,7 @@ export class CRMMessagingService {
         number: cleanPhone, // Change here
         media: mediaUrl,
         mediatype: mediaType,
-        caption,
+        caption: processedCaption,
       });
 
       if (!response?.success) {
@@ -378,6 +385,10 @@ export class CRMMessagingService {
         return { success: false, error: "Número de telefone inválido" };
       }
 
+      // Processar SpinTax na mensagem e título
+      const processedMessage = spinTaxService.process(message).processedText;
+      const processedTitle = spinTaxService.process(title).processedText;
+
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
@@ -397,14 +408,14 @@ export class CRMMessagingService {
         data: {
           conversationId: conversation.id,
           messageId: tempMessageId,
-          content: message,
+          content: processedMessage,
           type: "button",
           sender: "me",
           status: MessageStatus.PENDING,
           timestamp: new Date(),
           userId,
           metadata: JSON.stringify({
-            title,
+            title: processedTitle,
             buttons: metadataButtons,
           }),
         } as any,
@@ -413,8 +424,8 @@ export class CRMMessagingService {
       const response = await this.evolutionApiService.sendButton({
         instanceName,
         number: cleanPhone, // Change here
-        title,
-        text: message,
+        title: processedTitle,
+        text: processedMessage,
         buttons: buttons.map((b) => ({ id: b.buttonId, text: b.buttonText })),
       });
 
@@ -506,6 +517,11 @@ export class CRMMessagingService {
         return { success: false, error: "Número de telefone inválido" };
       }
 
+      // Processar SpinTax no título, descrição e texto do botão
+      const processedTitle = spinTaxService.process(title).processedText;
+      const processedDescription = spinTaxService.process(description).processedText;
+      const processedButtonText = spinTaxService.process(buttonText).processedText;
+
       const conversation = await this.findOrCreateConversation({
         instanceName,
         contactPhone: cleanPhone,
@@ -520,15 +536,15 @@ export class CRMMessagingService {
         data: {
           conversationId: conversation.id,
           messageId: tempMessageId,
-          content: description,
+          content: processedDescription,
           type: "list",
           sender: "me",
           status: MessageStatus.PENDING,
           timestamp: new Date(),
           userId,
           metadata: JSON.stringify({
-            title,
-            buttonText,
+            title: processedTitle,
+            buttonText: processedButtonText,
             sections,
           }),
         } as any,
@@ -537,9 +553,9 @@ export class CRMMessagingService {
       const response = await this.evolutionApiService.sendList({
         instanceName,
         number: cleanPhone, // Change here
-        title,
-        text: description,
-        buttonText,
+        title: processedTitle,
+        text: processedDescription,
+        buttonText: processedButtonText,
         sections: sections.map((s) => ({
           title: s.title,
           rows: s.rows.map((r) => ({
