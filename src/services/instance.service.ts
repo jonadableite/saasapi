@@ -489,6 +489,20 @@ export const syncInstancesWithExternalApi = async (
       "Erro ao sincronizar instâncias com a API externa",
       error
     );
-    throw new Error("Erro ao sincronizar instâncias com a API externa.");
+    
+    // Tentar buscar dados em cache como fallback
+    try {
+      const cachedData = await redisClient.get(cacheKey);
+      if (cachedData) {
+        instanceLogger.info("Usando dados em cache devido a erro na API externa");
+        return JSON.parse(cachedData);
+      }
+    } catch (cacheError) {
+      instanceLogger.error("Erro ao buscar dados em cache", cacheError);
+    }
+    
+    // Se não há cache disponível, retornar array vazio ao invés de lançar erro
+    instanceLogger.warn("API externa indisponível e sem cache. Retornando lista vazia.");
+    return [];
   }
 };

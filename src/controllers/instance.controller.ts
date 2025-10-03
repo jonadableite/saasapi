@@ -318,7 +318,12 @@ export const listInstancesController = async (
       return res.status(200).json(JSON.parse(cachedData));
     }
 
-    await syncInstancesWithExternalApi(userId);
+    // Tenta sincronizar com a API externa, mas não falha se não conseguir
+    try {
+      await syncInstancesWithExternalApi(userId);
+    } catch (syncError) {
+      instanceLogger.warn("Falha na sincronização com API externa, continuando com dados locais", syncError);
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
