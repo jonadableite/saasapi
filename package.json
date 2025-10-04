@@ -59,6 +59,7 @@
     "swagger-jsdoc": "^6.2.5",
     "swagger-parser": "^10.0.3",
     "swagger-ui-express": "^5.0.1",
+    "swr": "^2.3.6",
     "tsx": "^4.19.2",
     "uuid": "^11.0.5",
     "validator": "^13.11.0",
