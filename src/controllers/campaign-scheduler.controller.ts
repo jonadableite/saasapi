@@ -227,12 +227,6 @@ export class CampaignSchedulerController {
           campaign: {
             userId: userId,
           },
-          status: {
-            in: ["pending", "running"],
-          },
-          scheduledDate: {
-            gte: new Date(),
-          },
         },
         include: {
           campaign: {
@@ -259,7 +253,7 @@ export class CampaignSchedulerController {
           },
         },
         orderBy: {
-          scheduledDate: "asc",
+          scheduledDate: "desc",
         },
       });
 
@@ -270,6 +264,7 @@ export class CampaignSchedulerController {
         scheduledDate: schedule.scheduledDate,
         status: schedule.status,
         instance: schedule.instance.instanceName,
+        instanceName: schedule.instanceName,
         message: schedule.message || schedule.campaign.description,
         mediaType: schedule.mediaType || schedule.campaign.mediaType,
         mediaUrl: schedule.campaign.mediaUrl,
@@ -278,7 +273,19 @@ export class CampaignSchedulerController {
         maxDelay: schedule.maxDelay,
         startedAt: schedule.startedAt,
         completedAt: schedule.completedAt,
+        createdAt: schedule.createdAt,
+        updatedAt: schedule.updatedAt,
         totalLeads: schedule.campaign.leads?.length || 0,
+        campaign: {
+          id: schedule.campaign.id,
+          name: schedule.campaign.name,
+          description: schedule.campaign.description,
+          type: schedule.campaign.type,
+          mediaType: schedule.campaign.mediaType,
+          mediaUrl: schedule.campaign.mediaUrl,
+          mediaCaption: schedule.campaign.mediaCaption,
+          leads: schedule.campaign.leads,
+        },
       }));
 
       scheduledCampaignsLogger.log("Agendamentos recuperados com sucesso", {
