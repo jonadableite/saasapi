@@ -267,18 +267,26 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
       instanceName,
       keyId,
       status,
+      timestamp: new Date().toISOString(),
+      remoteJid: data.remoteJid || data.key?.remoteJid,
+      fromMe: data.fromMe || data.key?.fromMe,
       dataCompleto: data
     });
 
     if (!keyId || !status) {
-      webhookLogger.warn("⚠️ Atualização de status ignorada: dados incompletos", { keyId, status });
+      webhookLogger.warn("⚠️ Atualização de status ignorada: dados incompletos", { 
+        keyId, 
+        status,
+        instanceName,
+        availableFields: Object.keys(data)
+      });
       return;
     }
 
     // Mapear status para o enum correto
     const mappedStatus = mapMessageStatus(status);
     
-    webhookLogger.info(`🔄 Status mapeado: ${status} -> ${mappedStatus}`);
+    webhookLogger.info(`🔄 Status mapeado: ${status} -> ${mappedStatus} para messageId: ${keyId}`);
 
     // Primeiro, vamos verificar se a mensagem existe no banco
     const existingMessage = await prisma.message.findFirst({
@@ -286,49 +294,103 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
       include: { conversation: true },
     });
 
-    webhookLogger.info(`🔍 Busca por mensagem com messageId: ${keyId} - Encontrada: ${existingMessage ? 'SIM' : 'NÃO'}`);
+    webhookLogger.info(`🔍 Busca por mensagem com messageId: ${keyId}`, {
+      encontrada: existingMessage ? 'SIM' : 'NÃO',
+      conversationId: existingMessage?.conversationId,
+      instanceName: existingMessage?.conversation?.instanceName,
+      statusAtual: existingMessage?.status
+    });
 
     if (!existingMessage) {
-      // Vamos tentar buscar por outras possibilidades - incluindo conversas da instância
-      const conversationsCount = await prisma.conversation.count({
-        where: { instanceName: instanceName }
-      });
-
-      const messagesCount = await prisma.message.count();
+      webhookLogger.warn(`⚠️ Mensagem não encontrada com messageId: ${keyId}. Tentando criar registro básico...`);
       
-      const messagesByContent = await prisma.message.findMany({
-        where: {
-          conversation: {
-            instanceName: instanceName
-          }
-        },
-        take: 5,
-        orderBy: { timestamp: 'desc' },
-        select: { id: true, messageId: true, content: true, timestamp: true, conversation: { select: { instanceName: true } } }
-      });
-
-      webhookLogger.info(`🔍 Debug da instância ${instanceName}:`);
-      webhookLogger.info(`📊 Total de conversas da instância: ${conversationsCount}`);
-      webhookLogger.info(`📊 Total de mensagens no sistema: ${messagesCount}`);
-      webhookLogger.info(`🔍 Últimas 5 mensagens da instância:`, messagesByContent);
+      // Tentar extrair informações do data para criar uma mensagem básica
+      const remoteJid = data.remoteJid || data.key?.remoteJid;
+      const fromMe = data.fromMe || data.key?.fromMe || false;
       
-      // Tentar buscar mensagem por padrões similares
-      const similarMessages = await prisma.message.findMany({
-        where: {
-          messageId: {
-            contains: keyId.substring(0, 10) // Primeiros 10 caracteres
-          }
-        },
-        take: 3,
-        select: { id: true, messageId: true, content: true, timestamp: true }
-      });
-
-      if (similarMessages.length > 0) {
-        webhookLogger.info(`🔍 Mensagens com padrão similar encontradas:`, similarMessages);
+      if (!remoteJid) {
+        webhookLogger.error(`❌ Não foi possível criar mensagem: remoteJid não encontrado`, { data });
+        return;
       }
+
+      // Extrair telefone do remoteJid
+      const contactPhone = remoteJid.split('@')[0];
+      const isGroup = remoteJid.includes('@g.us');
       
-      webhookLogger.warn(`⚠️ Nenhuma mensagem encontrada com messageId: ${keyId}`);
-      return;
+      try {
+        // Buscar ou criar conversa
+        let conversation;
+        
+        if (isGroup) {
+          // Para grupos, usar o remoteJid como groupPhone
+          conversation = await prisma.conversation.upsert({
+            where: {
+              Conversation_instanceName_contactPhone: {
+                instanceName: instanceName,
+                contactPhone: contactPhone
+              }
+            },
+            update: {},
+            create: {
+              instanceName: instanceName,
+              contactPhone: contactPhone,
+              groupPhone: contactPhone,
+              isGroup: true,
+              lastMessageAt: new Date(),
+            }
+          });
+        } else {
+          // Para conversas individuais
+          conversation = await prisma.conversation.upsert({
+            where: {
+              Conversation_instanceName_contactPhone: {
+                instanceName: instanceName,
+                contactPhone: contactPhone
+              }
+            },
+            update: {},
+            create: {
+              instanceName: instanceName,
+              contactPhone: contactPhone,
+              isGroup: false,
+              lastMessageAt: new Date(),
+            }
+          });
+        }
+
+        // Criar mensagem básica
+        const newMessage = await prisma.message.create({
+          data: {
+            messageId: keyId,
+            conversationId: conversation.id,
+            content: '[Mensagem não sincronizada - apenas status]',
+            fromMe: fromMe,
+            timestamp: new Date(),
+            status: mappedStatus,
+            messageType: 'text'
+          }
+        });
+
+        webhookLogger.info(`✅ Mensagem básica criada com sucesso:`, {
+          messageId: keyId,
+          conversationId: conversation.id,
+          status: mappedStatus
+        });
+
+        // Emitir evento para o frontend
+        socketService.emitToAll('message_status_update', {
+          phone: contactPhone,
+          messageId: keyId,
+          status: mappedStatus,
+          isNewMessage: true
+        });
+
+        return;
+        
+      } catch (createError) {
+        webhookLogger.error(`❌ Erro ao criar mensagem básica:`, createError);
+        return;
+      }
     }
 
     // Atualizar status da mensagem

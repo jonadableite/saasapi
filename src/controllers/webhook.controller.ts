@@ -218,6 +218,16 @@ export class WebhookController {
       const status = data.status || data.receipt?.status;
       const remoteJid = data.remoteJid || data.key?.remoteJid;
 
+      WebhookControllerLogger.log("🔄 Iniciando handleMessageUpdate", {
+        messageId,
+        status,
+        remoteJid,
+        timestamp: new Date().toISOString(),
+        instanceName: data.instanceName,
+        fromMe: data.fromMe,
+        availableDataFields: Object.keys(data)
+      });
+
       if (!messageId || !status) {
         WebhookControllerLogger.warn(
           "Dados insuficientes para atualizar mensagem",
@@ -225,6 +235,11 @@ export class WebhookController {
             messageId,
             status,
             remoteJid,
+            instanceName: data.instanceName,
+            missingFields: {
+              messageId: !messageId,
+              status: !status
+            }
           }
         );
         return;
@@ -234,10 +249,23 @@ export class WebhookController {
       const cachedMessage = this.messageCache.get(cacheKey);
       const phone = remoteJid?.split("@")[0].split(":")[0];
 
+      WebhookControllerLogger.log("🔍 Verificando cache e extraindo telefone", {
+        cacheKey,
+        hasCachedMessage: !!cachedMessage,
+        phone,
+        remoteJid
+      });
+
       const messageLog = await prisma.messageLog.findFirst({
         where: {
           messageId: messageId,
         },
+      });
+
+      WebhookControllerLogger.log("🔍 Busca no banco de dados", {
+        messageId,
+        messageLogFound: !!messageLog,
+        messageLogId: messageLog?.id
       });
 
       if (!messageLog && cachedMessage) {
@@ -245,6 +273,58 @@ export class WebhookController {
           ...cachedMessage.data,
           status: this.mapWhatsAppStatus(status),
         });
+      }
+
+      if (!messageLog && !cachedMessage) {
+        // Tentar criar um messageLog básico se não existir
+        WebhookControllerLogger.warn(
+          `Mensagem não encontrada no cache nem no banco. Tentando criar registro básico para messageId: ${messageId}`
+        );
+        
+        if (phone && remoteJid) {
+          try {
+            const basicMessageLog = await prisma.messageLog.create({
+              data: {
+                messageId: messageId,
+                phone: phone,
+                content: '[Mensagem não sincronizada - apenas status]',
+                status: this.mapWhatsAppStatus(status),
+                fromMe: data.fromMe || false,
+                timestamp: new Date(),
+                instanceName: data.instanceName || 'unknown',
+                remoteJid: remoteJid,
+              }
+            });
+
+            WebhookControllerLogger.log(
+              `Registro básico criado para messageId: ${messageId}`,
+              { messageLogId: basicMessageLog.id }
+            );
+
+            // Emitir evento de atualização de status da mensagem
+            if (phone) {
+              socketService.emitToAll("message_status_update", {
+                phone,
+                messageId: cacheKey,
+                status: this.mapWhatsAppStatus(status),
+                isNewMessage: true,
+              });
+            }
+
+            return;
+          } catch (createError) {
+            WebhookControllerLogger.error(
+              `Erro ao criar registro básico para messageId: ${messageId}`,
+              createError
+            );
+            return;
+          }
+        } else {
+          WebhookControllerLogger.warn(
+            `Dados insuficientes para criar registro básico. Phone: ${phone}, RemoteJid: ${remoteJid}`
+          );
+          return;
+        }
       }
 
       if (messageLog) {

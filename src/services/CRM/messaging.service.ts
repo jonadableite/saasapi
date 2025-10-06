@@ -672,7 +672,21 @@ export class CRMMessagingService {
         });
 
         if (!originalMessage) {
-          throw new Error("Mensagem original não encontrada");
+          messagingLogger.warn(`Mensagem original não encontrada para messageId: ${messageId}. Tentando buscar por ID interno...`);
+          
+          // Tentar buscar por ID interno se messageId não funcionar
+          const messageById = await tx.message.findFirst({
+            where: { id: parseInt(messageId) || 0 },
+          });
+          
+          if (!messageById) {
+            messagingLogger.error(`Nenhuma mensagem encontrada para messageId: ${messageId}`);
+            throw new Error(`Mensagem original não encontrada para messageId: ${messageId}. Verifique se a mensagem existe no banco de dados.`);
+          }
+          
+          messagingLogger.info(`Mensagem encontrada por ID interno: ${messageById.id}`);
+          // Usar a mensagem encontrada por ID
+          originalMessage = messageById;
         }
 
         // Criar registro de reação
@@ -1082,7 +1096,24 @@ export class CRMMessagingService {
       });
 
       if (!message) {
-        return { success: false, error: "Mensagem não encontrada" };
+        messagingLogger.warn(`Mensagem não encontrada para ID: ${params.messageId}. Tentando buscar por messageId...`);
+        
+        // Tentar buscar por messageId se busca por ID interno falhar
+        const messageByMessageId = await prisma.message.findFirst({
+          where: { messageId: params.messageId.toString() },
+          include: { conversation: true },
+        });
+        
+        if (!messageByMessageId) {
+          messagingLogger.error(`Nenhuma mensagem encontrada para ID: ${params.messageId}`);
+          return { 
+            success: false, 
+            error: `Mensagem não encontrada para ID: ${params.messageId}. Verifique se a mensagem existe no banco de dados.` 
+          };
+        }
+        
+        messagingLogger.info(`Mensagem encontrada por messageId: ${messageByMessageId.messageId}`);
+        message = messageByMessageId;
       }
 
       // Criar registro da reação no banco de dados
