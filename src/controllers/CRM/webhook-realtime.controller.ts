@@ -99,12 +99,15 @@ function mapMessageStatus(rawStatus: string): MessageStatus {
     case "pending":
       return MessageStatus.PENDING;
     case "sent":
+    case "server_ack":
       return MessageStatus.SENT;
     case "delivered":
+    case "delivery_ack":
       return MessageStatus.DELIVERED;
     case "read":
       return MessageStatus.READ;
     case "failed":
+    case "error":
       return MessageStatus.FAILED;
     default:
       return MessageStatus.PENDING;
