@@ -322,41 +322,46 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
         let conversation;
         
         if (isGroup) {
-          // Para grupos, usar o remoteJid como groupPhone
-          conversation = await prisma.conversation.upsert({
-            where: {
-              Conversation_instanceName_contactPhone: {
-                instanceName: instanceName,
-                contactPhone: contactPhone
-              }
-            },
-            update: {},
-            create: {
-              instanceName: instanceName,
-              contactPhone: contactPhone,
-              groupPhone: contactPhone,
-              isGroup: true,
-              lastMessageAt: new Date(),
-            }
-          });
-        } else {
-          // Para conversas individuais
-          conversation = await prisma.conversation.upsert({
-            where: {
-              Conversation_instanceName_contactPhone: {
-                instanceName: instanceName,
-                contactPhone: contactPhone
-              }
-            },
-            update: {},
-            create: {
-              instanceName: instanceName,
-              contactPhone: contactPhone,
-              isGroup: false,
-              lastMessageAt: new Date(),
-            }
-          });
-        }
+           // Para grupos, usar o remoteJid como contactPhone
+           conversation = await prisma.conversation.upsert({
+             where: {
+               Conversation_instanceName_contactPhone: {
+                 instanceName: instanceName,
+                 contactPhone: contactPhone
+               }
+             },
+             update: {},
+             create: {
+               instanceName: instanceName,
+               contactPhone: contactPhone,
+               isGroup: true,
+               lastMessageAt: new Date(),
+               user: {
+                 connect: { id: 'system-user-id' } // Usar um ID de usuário padrão do sistema
+               }
+             }
+           });
+         } else {
+           // Para conversas individuais
+           conversation = await prisma.conversation.upsert({
+             where: {
+               Conversation_instanceName_contactPhone: {
+                 instanceName: instanceName,
+                 contactPhone: contactPhone
+               }
+             },
+             update: {},
+             create: {
+               instanceName: instanceName,
+               contactPhone: contactPhone,
+               isGroup: false,
+               lastMessageAt: new Date(),
+               user: {
+                 connect: { id: 'system-user-id' } // Usar um ID de usuário padrão do sistema
+               }
+             }
+           });
+         }
 
         // Criar mensagem básica
         const newMessage = await prisma.message.create({
@@ -364,10 +369,9 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
             messageId: keyId,
             conversationId: conversation.id,
             content: '[Mensagem não sincronizada - apenas status]',
-            fromMe: fromMe,
             timestamp: new Date(),
             status: mappedStatus,
-            messageType: 'text'
+            type: 'text'
           }
         });
 

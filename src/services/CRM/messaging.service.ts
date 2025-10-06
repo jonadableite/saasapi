@@ -667,7 +667,7 @@ export class CRMMessagingService {
       // Registrar a reação no banco usando transação
       await prisma.$transaction(async (tx) => {
         // Verificar se a mensagem original existe
-        const originalMessage = await tx.message.findFirst({
+        let originalMessage = await tx.message.findFirst({
           where: { messageId },
         });
 
@@ -676,7 +676,7 @@ export class CRMMessagingService {
           
           // Tentar buscar por ID interno se messageId não funcionar
           const messageById = await tx.message.findFirst({
-            where: { id: parseInt(messageId) || 0 },
+            where: { id: messageId },
           });
           
           if (!messageById) {
@@ -1090,7 +1090,7 @@ export class CRMMessagingService {
   }): Promise<{ success: boolean; reactionId?: string; error?: string }> {
     try {
       // Buscar informações da mensagem e conversa
-      const message = await prisma.message.findUnique({
+      let message = await prisma.message.findUnique({
         where: { id: params.messageId },
         include: { conversation: true },
       });
@@ -1119,7 +1119,7 @@ export class CRMMessagingService {
       // Criar registro da reação no banco de dados
       const newReaction = await prisma.messageReaction.create({
         data: {
-          messageId: params.messageId,
+          messageId: message.id, // Usar o ID interno da mensagem encontrada
           emoji: params.reaction,
           userId: params.userId,
         },

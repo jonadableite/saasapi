@@ -286,13 +286,17 @@ export class WebhookController {
             const basicMessageLog = await prisma.messageLog.create({
               data: {
                 messageId: messageId,
-                phone: phone,
+                messageDate: new Date(),
+                messageType: 'text',
                 content: '[Mensagem não sincronizada - apenas status]',
                 status: this.mapWhatsAppStatus(status),
-                fromMe: data.fromMe || false,
-                timestamp: new Date(),
-                instanceName: data.instanceName || 'unknown',
-                remoteJid: remoteJid,
+                statusHistory: [{ status: this.mapWhatsAppStatus(status), timestamp: new Date() }],
+                campaign: {
+                  connect: { id: 'default-campaign-id' } // Usar um ID de campanha padrão
+                },
+                campaignLead: {
+                  connect: { id: 'default-lead-id' } // Usar um ID de lead padrão
+                }
               }
             });
 
