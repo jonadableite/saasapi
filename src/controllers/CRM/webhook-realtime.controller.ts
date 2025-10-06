@@ -274,6 +274,33 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
     
     webhookLogger.info(`🔄 Status mapeado: ${status} -> ${mappedStatus}`);
 
+    // Primeiro, vamos verificar se a mensagem existe no banco
+    const existingMessage = await prisma.message.findFirst({
+      where: { messageId: keyId },
+      include: { conversation: true },
+    });
+
+    webhookLogger.info(`🔍 Busca por mensagem com messageId: ${keyId} - Encontrada: ${existingMessage ? 'SIM' : 'NÃO'}`);
+
+    if (!existingMessage) {
+      // Vamos tentar buscar por outras possibilidades
+      const messagesByContent = await prisma.message.findMany({
+        where: {
+          conversation: {
+            instanceName: instanceName
+          }
+        },
+        take: 5,
+        orderBy: { timestamp: 'desc' },
+        select: { id: true, messageId: true, content: true, timestamp: true }
+      });
+
+      webhookLogger.info(`🔍 Últimas 5 mensagens da instância ${instanceName}:`, messagesByContent);
+      
+      webhookLogger.warn(`⚠️ Nenhuma mensagem encontrada com messageId: ${keyId}`);
+      return;
+    }
+
     // Atualizar status da mensagem
     const updatedMessage = await prisma.message.updateMany({
       where: { messageId: keyId },
@@ -284,33 +311,25 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
 
     // Se a mensagem foi encontrada, emitir evento
     if (updatedMessage.count > 0) {
-      const message = await prisma.message.findFirst({
-        where: { messageId: keyId },
-        include: { conversation: true },
+      webhookLogger.info(`📤 Emitindo evento Socket.IO para messageId: ${keyId}, status: ${mappedStatus}`);
+      
+      pubsub.publish(`message:${keyId}:status_update`, {
+        messageId: keyId,
+        status: mappedStatus,
+        conversationId: existingMessage.conversationId,
       });
 
-      if (message) {
-        webhookLogger.info(`📤 Emitindo evento Socket.IO para messageId: ${keyId}, status: ${mappedStatus}`);
-        
-        pubsub.publish(`message:${keyId}:status_update`, {
-          messageId: keyId,
-          status: mappedStatus,
-          conversationId: message.conversationId,
-        });
-
-        // Emitir evento Socket.IO
-        socketService.emitToAll("message_status_update", {
-          phone: message.conversation.contactPhone,
-          messageId: keyId,
-          status: mappedStatus,
-        });
-        
-        webhookLogger.info(`✅ Evento Socket.IO emitido com sucesso`);
-      } else {
-        webhookLogger.warn(`⚠️ Mensagem não encontrada após atualização: ${keyId}`);
-      }
+      // Emitir evento Socket.IO
+      socketService.emitToAll("message_status_update", {
+        phone: existingMessage.conversation.contactPhone,
+        messageId: keyId,
+        status: mappedStatus,
+        instanceName: instanceName,
+      });
+      
+      webhookLogger.info(`✅ Evento Socket.IO emitido com sucesso para ${existingMessage.conversation.contactPhone}`);
     } else {
-      webhookLogger.warn(`⚠️ Nenhuma mensagem encontrada com messageId: ${keyId}`);
+      webhookLogger.warn(`⚠️ Falha ao atualizar mensagem: ${keyId}`);
     }
   } catch (error) {
     webhookLogger.error("❌ Erro ao processar atualização de mensagem:", error);
