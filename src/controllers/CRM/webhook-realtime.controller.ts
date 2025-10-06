@@ -283,7 +283,13 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
     webhookLogger.info(`🔍 Busca por mensagem com messageId: ${keyId} - Encontrada: ${existingMessage ? 'SIM' : 'NÃO'}`);
 
     if (!existingMessage) {
-      // Vamos tentar buscar por outras possibilidades
+      // Vamos tentar buscar por outras possibilidades - incluindo conversas da instância
+      const conversationsCount = await prisma.conversation.count({
+        where: { instanceName: instanceName }
+      });
+
+      const messagesCount = await prisma.message.count();
+      
       const messagesByContent = await prisma.message.findMany({
         where: {
           conversation: {
@@ -292,10 +298,28 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
         },
         take: 5,
         orderBy: { timestamp: 'desc' },
+        select: { id: true, messageId: true, content: true, timestamp: true, conversation: { select: { instanceName: true } } }
+      });
+
+      webhookLogger.info(`🔍 Debug da instância ${instanceName}:`);
+      webhookLogger.info(`📊 Total de conversas da instância: ${conversationsCount}`);
+      webhookLogger.info(`📊 Total de mensagens no sistema: ${messagesCount}`);
+      webhookLogger.info(`🔍 Últimas 5 mensagens da instância:`, messagesByContent);
+      
+      // Tentar buscar mensagem por padrões similares
+      const similarMessages = await prisma.message.findMany({
+        where: {
+          messageId: {
+            contains: keyId.substring(0, 10) // Primeiros 10 caracteres
+          }
+        },
+        take: 3,
         select: { id: true, messageId: true, content: true, timestamp: true }
       });
 
-      webhookLogger.info(`🔍 Últimas 5 mensagens da instância ${instanceName}:`, messagesByContent);
+      if (similarMessages.length > 0) {
+        webhookLogger.info(`🔍 Mensagens com padrão similar encontradas:`, similarMessages);
+      }
       
       webhookLogger.warn(`⚠️ Nenhuma mensagem encontrada com messageId: ${keyId}`);
       return;
