@@ -763,9 +763,22 @@ export class CRMMessagingService {
     });
 
     // Use o ID da conversa existente ou deixe indefinido para criar uma nova
+    // Validar dados necessários antes do upsert
+    if (!validInstanceName || !contactPhone || !userId) {
+      messagingLogger.error("Dados insuficientes para upsert da conversa", {
+        validInstanceName,
+        contactPhone,
+        userId,
+      });
+      throw new Error("Dados insuficientes para criar/atualizar conversa");
+    }
+
     return prisma.conversation.upsert({
       where: {
-        id: existingConversation?.id || undefined,
+        Conversation_instanceName_contactPhone: {
+          instanceName: validInstanceName,
+          contactPhone: contactPhone,
+        },
       },
       update: {
         lastMessageAt: new Date(),

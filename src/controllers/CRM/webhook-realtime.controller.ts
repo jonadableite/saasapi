@@ -162,18 +162,24 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     const validInstanceName = instance.instanceName;
 
     // Upsert Conversation
+    const cleanContactPhone = contactPhone.replace("@s.whatsapp.net", "");
+    
+    // Validar dados necessários antes do upsert
+    if (!validInstanceName || !cleanContactPhone) {
+      webhookLogger.error("Dados insuficientes para upsert da conversa", {
+        instanceName: validInstanceName,
+        contactPhone: cleanContactPhone,
+        originalContactPhone: contactPhone,
+      });
+      return;
+    }
+
     const conversation = await prisma.conversation.upsert({
       where: {
-        id:
-          (
-            await prisma.conversation.findFirst({
-              where: {
-                instanceName: validInstanceName,
-                contactPhone: contactPhone.replace("@s.whatsapp.net", ""),
-              },
-              select: { id: true },
-            })
-          )?.id || undefined,
+        Conversation_instanceName_contactPhone: {
+          instanceName: validInstanceName,
+          contactPhone: cleanContactPhone,
+        },
       },
       update: {
         contactName: !isFromMe ? contactName : undefined,
@@ -471,19 +477,23 @@ const handleGroupUpdate = async (instanceName: string, data: any) => {
     // Encontrar ou criar conversa para o grupo
     const groupPhone = id.replace("@g.us", "");
 
+    // Validar dados necessários antes do upsert
+    if (!instanceName || !groupPhone) {
+      webhookLogger.error("Dados insuficientes para upsert da conversa do grupo", {
+        instanceName,
+        groupPhone,
+        originalId: id,
+      });
+      return;
+    }
+
     // Upsert para a conversa do grupo
     const conversation = await prisma.conversation.upsert({
       where: {
-        id:
-          (
-            await prisma.conversation.findFirst({
-              where: {
-                instanceName,
-                contactPhone: groupPhone,
-              },
-              select: { id: true },
-            })
-          )?.id || undefined,
+        Conversation_instanceName_contactPhone: {
+          instanceName,
+          contactPhone: groupPhone,
+        },
       },
       update: {
         contactName: subject || "Grupo sem nome",
