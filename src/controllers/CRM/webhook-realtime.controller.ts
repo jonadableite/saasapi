@@ -55,14 +55,19 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
   try {
     const { event, instance, data } = req.body;
 
-    webhookLogger.info(`Recebido webhook: ${event} para instância ${instance}`);
-    webhookLogger.verbose(
-      `Dados do webhook: ${JSON.stringify({
+    webhookLogger.info(`🔔 WEBHOOK RECEBIDO: ${event} para instância ${instance}`);
+    webhookLogger.info(`📊 Dados completos do webhook:`, JSON.stringify(req.body, null, 2));
+    
+    // Log específico para debug de status de mensagem
+    if (event === "messages.update") {
+      webhookLogger.info(`📱 STATUS DE MENSAGEM DETECTADO:`, {
         event,
         instance,
-        dataSnippet: JSON.stringify(data).slice(0, 200),
-      })}`
-    );
+        keyId: data?.keyId,
+        status: data?.status,
+        dataComplete: data
+      });
+    }
 
     switch (event) {
       case "messages.upsert":
@@ -81,11 +86,11 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
         await handleGroupUpdate(instance, data);
         break;
       default:
-        webhookLogger.info(`Evento não processado: ${event}`);
+        webhookLogger.info(`⚠️ Evento não processado: ${event}`);
     }
 
     const processingTime = Date.now() - startTime;
-    webhookLogger.info(`Webhook processado em ${processingTime}ms`);
+    webhookLogger.info(`✅ Webhook processado em ${processingTime}ms`);
 
     res.status(200).send({
       success: true,
@@ -94,7 +99,7 @@ export const handleEvolutionWebhook = async (req: Request, res: Response) => {
     });
   } catch (error) {
     const processingTime = Date.now() - startTime;
-    webhookLogger.error(`Webhook Error (${processingTime}ms):`, error);
+    webhookLogger.error(`❌ Webhook Error (${processingTime}ms):`, error);
 
     // Sempre retorna 200 para que o webhook não seja reenviado
     res.status(200).send({
@@ -252,13 +257,22 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
   try {
     const { keyId, status } = data;
 
+    webhookLogger.info(`🔄 PROCESSANDO MESSAGE UPDATE:`, {
+      instanceName,
+      keyId,
+      status,
+      dataCompleto: data
+    });
+
     if (!keyId || !status) {
-      webhookLogger.warn("Atualização de status ignorada: dados incompletos");
+      webhookLogger.warn("⚠️ Atualização de status ignorada: dados incompletos", { keyId, status });
       return;
     }
 
     // Mapear status para o enum correto
     const mappedStatus = mapMessageStatus(status);
+    
+    webhookLogger.info(`🔄 Status mapeado: ${status} -> ${mappedStatus}`);
 
     // Atualizar status da mensagem
     const updatedMessage = await prisma.message.updateMany({
@@ -266,9 +280,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
       data: { status: mappedStatus },
     });
 
-    webhookLogger.verbose(
-      `Status da mensagem ${keyId} atualizado para ${mappedStatus}`
-    );
+    webhookLogger.info(`📝 Mensagens atualizadas no banco: ${updatedMessage.count}`);
 
     // Se a mensagem foi encontrada, emitir evento
     if (updatedMessage.count > 0) {
@@ -278,6 +290,8 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
       });
 
       if (message) {
+        webhookLogger.info(`📤 Emitindo evento Socket.IO para messageId: ${keyId}, status: ${mappedStatus}`);
+        
         pubsub.publish(`message:${keyId}:status_update`, {
           messageId: keyId,
           status: mappedStatus,
@@ -290,10 +304,16 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
           messageId: keyId,
           status: mappedStatus,
         });
+        
+        webhookLogger.info(`✅ Evento Socket.IO emitido com sucesso`);
+      } else {
+        webhookLogger.warn(`⚠️ Mensagem não encontrada após atualização: ${keyId}`);
       }
+    } else {
+      webhookLogger.warn(`⚠️ Nenhuma mensagem encontrada com messageId: ${keyId}`);
     }
   } catch (error) {
-    webhookLogger.error("Erro ao processar atualização de mensagem:", error);
+    webhookLogger.error("❌ Erro ao processar atualização de mensagem:", error);
     throw error;
   }
 };
