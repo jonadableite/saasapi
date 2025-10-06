@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../../lib/prisma";
 import { pubsub } from "../../lib/pubsub";
 import { logger } from "../../utils/logger";
-import socketService from "@/services/socket.service";
+import socketService from "../../services/socket.service";
 
 // Logger específico para o contexto
 const webhookLogger = logger.setContext("EvolutionWebhook");
@@ -222,7 +222,7 @@ const handleMessageUpsert = async (instanceName: string, data: any) => {
     });
 
     // Emitir evento Socket.IO
-    socketService.getSocketServer()?.emit("conversation_update", {
+    socketService.emitToAll("conversation_update", {
       phone: contactPhone,
       message: {
         id: newMessage.id,
@@ -285,7 +285,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
         });
 
         // Emitir evento Socket.IO
-        socketService.getSocketServer()?.emit("message_status_update", {
+        socketService.emitToAll("message_status_update", {
           phone: message.conversation.contactPhone,
           messageId: keyId,
           status: mappedStatus,

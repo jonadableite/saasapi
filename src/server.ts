@@ -8,6 +8,7 @@ import cron from "node-cron";
 import swaggerUi from "swagger-ui-express";
 import setupMinioBucket from "./config/setupMinio";
 import specs from "./config/swagger";
+import { initializeEvolutionWebSocketIfEnabled } from "./config/evolution-websocket.config";
 import { handleWebhook } from "./controllers/stripe.controller";
 import { createUsersController, routes } from "./controllers/user.controller";
 import { schedulePaymentReminders } from "./jobs/payment-reminder.job";
@@ -195,12 +196,19 @@ serverLogger.info(`Timezone configurado para: ${process.env.TZ}`);
 
 // Inicia o servidor
 setupMinioBucket()
-  .then(() => {
+  .then(async () => {
     serverLogger.info("Bucket Minio configurado com sucesso");
 
     // Iniciando o servidor HTTP
-    server = httpServer.listen(PORT, () => {
+    server = httpServer.listen(PORT, async () => {
       serverLogger.info(`Servidor rodando na porta ${PORT}`);
+      
+      // Inicializar WebSocket da Evolution API após o servidor estar rodando
+      try {
+        await initializeEvolutionWebSocketIfEnabled();
+      } catch (error) {
+        serverLogger.error("Erro ao inicializar WebSocket da Evolution API:", error);
+      }
     });
   })
   .catch((error) => {

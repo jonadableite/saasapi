@@ -55,6 +55,7 @@
     "redis": "^4.7.0",
     "sharp": "^0.34.4",
     "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "stripe": "^17.5.0",
     "swagger-jsdoc": "^6.2.5",
     "swagger-parser": "^10.0.3",

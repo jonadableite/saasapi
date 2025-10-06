@@ -8,7 +8,7 @@ import { AnalyticsService } from "../services/analytics.service";
 import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
 import { crmMessagingService } from "../services/CRM/messaging.service";
 import socketService from "../services/socket.service";
-import { logger } from "@/utils/logger";
+import { logger } from "../utils/logger";
 
 // Logger específico para o contexto
 const WebhookControllerLogger = logger.setContext("WebhookController");
@@ -100,19 +100,12 @@ export class WebhookController {
       }
 
       // Emitir evento para o frontend via Socket.IO para debugging
-      const io = socketService.getSocketServer();
-      if (io) {
-        io.emit("webhook_received", {
-          timestamp: new Date(),
-          type: webhookData.event,
-          data: webhookData.data,
-          instanceName, // Incluir o nome da instância na emissão do evento
-        });
-      } else {
-        WebhookControllerLogger.warn(
-          "Socket.io não está disponível para enviar notificações em tempo real"
-        );
-      }
+      socketService.emitToAll("webhook_received", {
+        timestamp: new Date(),
+        type: webhookData.event,
+        data: webhookData.data,
+        instanceName, // Incluir o nome da instância na emissão do evento
+      });
 
       // Processar os eventos do webhook
       if (webhookData.event === "messages.upsert") {
@@ -139,20 +132,13 @@ export class WebhookController {
   };
 
   private emitConversationUpdate(phone: string, message: any) {
-    const io = socketService.getSocketServer();
-    // Verificamos se o socket está disponível antes de usá-lo
-    if (io) {
-      io.emit("conversation_update", {
-        phone,
-        message,
-      });
-      // Também atualiza a lista de conversas
-      this.updateConversationList(phone, message);
-    } else {
-      WebhookControllerLogger.warn(
-        `Não foi possível emitir atualização de conversa para ${phone}: Socket.io não inicializado`
-      );
-    }
+    // Emitir evento de atualização de conversa
+    socketService.emitToAll("conversation_update", {
+      phone,
+      message,
+    });
+    // Também atualiza a lista de conversas
+    this.updateConversationList(phone, message);
   }
 
   private async handleMessageUpsert(data: MessageResponse) {
@@ -267,19 +253,12 @@ export class WebhookController {
 
         // Atualizar o status da mensagem no frontend
         if (phone) {
-          const io = socketService.getSocketServer();
-          // Verificamos se o socket está disponível antes de usá-lo
-          if (io) {
-            io.emit("message_status_update", {
-              phone,
-              messageId: cacheKey,
-              status: mappedStatus,
-            });
-          } else {
-            WebhookControllerLogger.warn(
-              `Não foi possível emitir atualização de status para ${phone}: Socket.io não inicializado`
-            );
-          }
+          // Emitir evento de atualização de status da mensagem
+          socketService.emitToAll("message_status_update", {
+            phone,
+            messageId: cacheKey,
+            status: mappedStatus,
+          });
         }
       }
     } catch (error) {
