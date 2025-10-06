@@ -1,6 +1,5 @@
 // src/routes/webhook.routes.ts
 import express from "express";
-import { handleEvolutionWebhook } from "../controllers/CRM/webhook-realtime.controller";
 import { WebhookController } from "../controllers/webhook.controller";
 
 const router = express.Router();
@@ -38,8 +37,7 @@ const webhookController = new WebhookController();
  */
 router.post(
   "/evolution-global",
-  webhookController.handleWebhook,
-  handleEvolutionWebhook
+  webhookController.handleWebhook
 );
 
 /**
@@ -90,6 +88,6 @@ router.post("/evolution-webhook", webhookController.handleWebhook);
  *       400:
  *         description: Dados inválidos
  */
-router.post("/evolution", handleEvolutionWebhook);
+router.post("/evolution", webhookController.handleWebhook);
 
 export { router as webhookRoutes };
