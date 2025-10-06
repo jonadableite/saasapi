@@ -95,17 +95,21 @@ app.use("/doc", swaggerUi.serve, swaggerUi.setup(specs));
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook,
+  handleWebhook
 );
 app.use("/api/stripe", stripeRoutes);
 
 // Rotas públicas (sem autenticação)
 app.use("/webhook", webhookRoutes);
+app.use("/api/webhooks", webhookRoutes);
 app.use("/api/hotmart", hotmartRoutes);
 app.use("/api/session", sessionRoutes);
 app.use("/api/password", passwordRoutes);
 app.use("/api/users/register", createUsersController);
-app.use("/api/users/register-integrated", routes.createIntegratedUserController);
+app.use(
+  "/api/users/register-integrated",
+  routes.createIntegratedUserController
+);
 
 // Middleware de autenticação para todas as rotas protegidas
 app.use("/api", authMiddleware);
@@ -202,12 +206,15 @@ setupMinioBucket()
     // Iniciando o servidor HTTP
     server = httpServer.listen(PORT, async () => {
       serverLogger.info(`Servidor rodando na porta ${PORT}`);
-      
+
       // Inicializar WebSocket da Evolution API após o servidor estar rodando
       try {
         await initializeEvolutionWebSocketIfEnabled();
       } catch (error) {
-        serverLogger.error("Erro ao inicializar WebSocket da Evolution API:", error);
+        serverLogger.error(
+          "Erro ao inicializar WebSocket da Evolution API:",
+          error
+        );
       }
     });
   })
