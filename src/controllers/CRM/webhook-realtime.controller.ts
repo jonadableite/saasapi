@@ -6,6 +6,72 @@ import { pubsub } from "../../lib/pubsub";
 import { logger } from "../../utils/logger";
 import socketService from "../../services/socket.service";
 
+// Cache para o usuário do sistema
+let systemUserId: string | null = null;
+
+/**
+ * Obtém ou cria um usuário do sistema para operações automáticas
+ */
+async function getOrCreateSystemUser(): Promise<string> {
+  if (systemUserId) {
+    return systemUserId;
+  }
+
+  try {
+    // Primeiro, tenta encontrar um usuário existente
+    let systemUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: 'system@whatleads.com' },
+          { name: 'Sistema' }
+        ]
+      },
+      select: { id: true }
+    });
+
+    if (!systemUser) {
+      // Se não encontrar, tenta pegar o primeiro usuário disponível
+      systemUser = await prisma.user.findFirst({
+        select: { id: true },
+        orderBy: { createdAt: 'asc' }
+      });
+    }
+
+    if (!systemUser) {
+      // Se ainda não houver usuários, cria um usuário do sistema
+      const company = await prisma.company.findFirst({
+        select: { id: true }
+      });
+
+      if (!company) {
+        throw new Error('Nenhuma empresa encontrada no sistema');
+      }
+
+      systemUser = await prisma.user.create({
+        data: {
+          email: 'system@whatleads.com',
+          name: 'Sistema',
+          password: 'system-generated',
+          profile: 'system',
+          phone: '0000000000',
+          whatleadCompanyId: company.id,
+          plan: 'system',
+          role: 'system'
+        },
+        select: { id: true }
+      });
+
+      webhookLogger.info('✅ Usuário do sistema criado:', { userId: systemUser.id });
+    }
+
+    systemUserId = systemUser.id;
+    return systemUserId;
+  } catch (error) {
+    webhookLogger.error('❌ Erro ao obter/criar usuário do sistema:', error);
+    throw error;
+  }
+}
+
 // Logger específico para o contexto
 const webhookLogger = logger.setContext("EvolutionWebhook");
 
@@ -318,6 +384,9 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
       const isGroup = remoteJid.includes('@g.us');
       
       try {
+        // Obter ID do usuário do sistema
+        const systemUserIdValue = await getOrCreateSystemUser();
+        
         // Buscar ou criar conversa
         let conversation;
         
@@ -336,9 +405,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
                contactPhone: contactPhone,
                isGroup: true,
                lastMessageAt: new Date(),
-               user: {
-                 connect: { id: 'system-user-id' } // Usar um ID de usuário padrão do sistema
-               }
+               userId: systemUserIdValue
              }
            });
          } else {
@@ -356,9 +423,7 @@ const handleMessageUpdate = async (instanceName: string, data: any) => {
                contactPhone: contactPhone,
                isGroup: false,
                lastMessageAt: new Date(),
-               user: {
-                 connect: { id: 'system-user-id' } // Usar um ID de usuário padrão do sistema
-               }
+               userId: systemUserIdValue
              }
            });
          }
