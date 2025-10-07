@@ -621,6 +621,20 @@ export class WebhookController {
           // Não propagar o erro para não falhar toda a operação
         }
       }
+
+      // Emitir evento de atualização de status de mensagem para o frontend
+      socketService.emitToAll("message_status_update", {
+        messageId: messageLog.id,
+        status: status,
+        timestamp: timestamp.toISOString(),
+        leadId: messageLog.campaignLeadId,
+        campaignId: messageLog.campaignId,
+        phone: messageLog.phone || "unknown",
+      });
+
+      WebhookControllerLogger.log(
+        `Evento message_status_update emitido para messageId: ${messageLog.id}, status: ${status}`
+      );
     } catch (error: any) {
       WebhookControllerLogger.error(
         `Erro crítico ao atualizar status da mensagem ${
