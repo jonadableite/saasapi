@@ -16,14 +16,12 @@ interface MessageLog {
   messageDate: Date;
   messageType: string;
   content: string;
-  statusHistory: any[];
+  statusHistory: any;
   sentAt: Date | null;
   deliveredAt: Date | null;
   readAt: Date | null;
   failedAt: Date | null;
-  failureReason: string | null;
-  lead: { phone: string } | null;
-  campaignLead: { phone: string } | null;
+  campaignLead: { phone: string; name: string } | null;
   campaign: { name: string };
 }
 
@@ -108,6 +106,7 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
           campaignLead: {
             select: {
               phone: true,
+              name: true,
             },
           },
         },
@@ -216,6 +215,7 @@ export const getDailyMessageLogs = async (
         campaignLead: {
           select: {
             phone: true,
+            name: true,
           },
         },
       },

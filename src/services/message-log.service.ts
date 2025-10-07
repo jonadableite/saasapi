@@ -40,10 +40,7 @@ export class MessageLogService {
 
     const upsertData = {
       where: {
-        messageId_messageDate: {
-          messageId: messageId,
-          messageDate: startOfDay(today),
-        },
+        messageId: messageId,
       },
       update: {
         status: newStatus,
@@ -56,7 +53,6 @@ export class MessageLogService {
         ...(newStatus === "READ" && { readAt: new Date() }),
         ...(newStatus === "FAILED" && {
           failedAt: new Date(),
-          failureReason: reason,
         }),
       },
       create: {
@@ -142,7 +138,6 @@ export class MessageLogService {
         deliveredAt: true,
         readAt: true,
         failedAt: true,
-        failureReason: true,
       },
     });
 

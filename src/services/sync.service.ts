@@ -47,10 +47,7 @@ export class SyncService {
     try {
       await prisma.messageLog.upsert({
         where: {
-          messageId_messageDate: {
-            messageId: message.id,
-            messageDate: message.sentAt,
-          },
+          messageId: message.id,
         },
         update: {
           status: message.status,

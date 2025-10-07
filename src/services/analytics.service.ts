@@ -14,7 +14,7 @@ export class AnalyticsService {
           campaignId,
         },
         include: {
-          lead: {
+          campaignLead: {
             select: {
               name: true,
               phone: true,
@@ -223,8 +223,8 @@ export class AnalyticsService {
       .map((log) => ({
         messageId: log.messageId,
         lead: {
-          name: log.lead.name,
-          phone: log.lead.phone,
+          name: log.campaignLead.name,
+          phone: log.campaignLead.phone,
         },
         events: [
           ...(log.sentAt ? [{ type: "sent", timestamp: log.sentAt }] : []),

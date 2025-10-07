@@ -638,7 +638,7 @@ export interface MessageStats {
 }
 
 export interface MessageLogWithLead extends MessageLog {
-  lead: {
+  campaignLead: {
     name: string;
     phone: string;
   };

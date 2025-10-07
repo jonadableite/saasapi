@@ -429,6 +429,7 @@ model MessageLog {
   sentAt           DateTime?
   deliveredAt      DateTime?
   readAt           DateTime?
+  failedAt         DateTime?
   statusHistory    Json      @default("[]")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

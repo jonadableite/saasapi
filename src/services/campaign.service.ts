@@ -612,12 +612,11 @@ export class CampaignService {
           deliveredAt: true,
           readAt: true,
           failedAt: true,
-          failureReason: true,
-          lead: {
+          campaignLead: {
             select: {
               name: true,
               phone: true,
-            },
+            }
           },
         },
         orderBy: {
