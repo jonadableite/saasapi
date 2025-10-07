@@ -280,27 +280,46 @@ export class WebhookController {
 
         if (phone && remoteJid) {
           try {
+            // Validação adicional dos dados antes de criar o registro
+            if (!messageId || typeof messageId !== 'string') {
+              WebhookControllerLogger.error(`MessageId inválido: ${messageId}`);
+              return;
+            }
+
+            const mappedStatus = this.mapWhatsAppStatus(status);
+            if (!mappedStatus) {
+              WebhookControllerLogger.error(`Status inválido mapeado: ${status} -> ${mappedStatus}`);
+              return;
+            }
+
+            const leadId = await this.findLeadIdByPhone(phone);
+            
             const basicMessageLog = await prisma.messageLog.create({
               data: {
                 messageId: messageId,
                 messageDate: new Date(),
                 messageType: "text",
                 content: "[Mensagem não sincronizada - apenas status]",
-                status: this.mapWhatsAppStatus(status),
+                status: mappedStatus,
                 statusHistory: [
                   {
-                    status: this.mapWhatsAppStatus(status),
+                    status: mappedStatus,
                     timestamp: new Date(),
                   },
                 ],
                 // Tentar buscar leadId através do telefone
-                leadId: await this.findLeadIdByPhone(phone),
+                leadId: leadId,
               },
             });
 
             WebhookControllerLogger.log(
               `Registro básico criado para messageId: ${messageId}`,
-              { messageLogId: basicMessageLog.id }
+              { 
+                messageLogId: basicMessageLog.id,
+                phone,
+                status: mappedStatus,
+                leadId
+              }
             );
 
             // Emitir evento de atualização de status da mensagem
@@ -308,22 +327,29 @@ export class WebhookController {
               socketService.emitToAll("message_status_update", {
                 phone,
                 messageId: cacheKey,
-                status: this.mapWhatsAppStatus(status),
+                status: mappedStatus,
                 isNewMessage: true,
               });
             }
 
             return;
-          } catch (createError) {
+          } catch (createError: any) {
             WebhookControllerLogger.error(
               `Erro ao criar registro básico para messageId: ${messageId}`,
-              createError
+              {
+                error: createError.message,
+                stack: createError.stack,
+                phone,
+                remoteJid,
+                messageId,
+                status
+              }
             );
             return;
           }
         } else {
           WebhookControllerLogger.warn(
-            `Dados insuficientes para criar registro básico. Phone: ${phone}, RemoteJid: ${remoteJid}`
+            `Dados insuficientes para criar registro básico. Phone: ${phone}, RemoteJid: ${remoteJid}, MessageId: ${messageId}`
           );
           return;
         }
@@ -455,6 +481,34 @@ export class WebhookController {
     timestamp: Date = new Date()
   ) {
     try {
+      // Validação de dados de entrada
+      if (!messageLog) {
+        throw new Error("MessageLog é obrigatório para atualização de status");
+      }
+
+      if (!messageLog.id) {
+        throw new Error("MessageLog deve ter um ID válido");
+      }
+
+      if (!statusInput) {
+        throw new Error("Status é obrigatório para atualização");
+      }
+
+      if (!timestamp || !(timestamp instanceof Date) || isNaN(timestamp.getTime())) {
+        WebhookControllerLogger.warn("Timestamp inválido fornecido, usando timestamp atual");
+        timestamp = new Date();
+      }
+
+      // Validar se o status é válido
+      const validStatuses = ["PENDING", "SENT", "DELIVERED", "READ", "FAILED"];
+      if (!validStatuses.includes(statusInput)) {
+        throw new Error(`Status inválido: ${statusInput}. Status válidos: ${validStatuses.join(", ")}`);
+      }
+
+      WebhookControllerLogger.log(
+        `Atualizando status da mensagem ${messageLog.id} para ${statusInput}`
+      );
+
       // Converter para o tipo correto esperado pelo Prisma
       const status = statusInput as PrismaMessageStatus;
 
@@ -474,27 +528,73 @@ export class WebhookController {
       if (status === "READ") updateData.readAt = timestamp;
       if (status === "FAILED") updateData.failedAt = timestamp;
 
-      await prisma.messageLog.update({
-        where: { id: messageLog.id },
-        data: updateData,
-      });
-
-      await prisma.campaignLead.update({
-        where: { id: messageLog.campaignLeadId },
-        data: {
-          status,
-          ...(status === "DELIVERED" && { deliveredAt: timestamp }),
-          ...(status === "READ" && { readAt: timestamp }),
-          ...(status === "FAILED" && { failedAt: timestamp }),
-          updatedAt: timestamp,
-        },
-      });
-
-      if (messageLog.campaignId) {
-        await this.updateCampaignStats(messageLog.campaignId);
+      // Atualizar MessageLog com validação adicional
+      try {
+        await prisma.messageLog.update({
+          where: { id: messageLog.id },
+          data: updateData,
+        });
+        WebhookControllerLogger.log(`MessageLog ${messageLog.id} atualizado com sucesso`);
+      } catch (prismaError: any) {
+        WebhookControllerLogger.error(`Erro ao atualizar MessageLog ${messageLog.id}:`, prismaError);
+        throw new Error(`Falha ao atualizar MessageLog: ${prismaError.message}`);
       }
-    } catch (error) {
-      WebhookControllerLogger.error("Erro ao atualizar status:", error);
+
+      // Só atualizar o campaignLead se o campaignLeadId existir e for válido
+      if (messageLog.campaignLeadId) {
+        try {
+          await prisma.campaignLead.update({
+            where: { id: messageLog.campaignLeadId },
+            data: {
+              status,
+              ...(status === "DELIVERED" && { deliveredAt: timestamp }),
+              ...(status === "READ" && { readAt: timestamp }),
+              ...(status === "FAILED" && { failedAt: timestamp }),
+              updatedAt: timestamp,
+            },
+          });
+          WebhookControllerLogger.log(`CampaignLead ${messageLog.campaignLeadId} atualizado com sucesso`);
+        } catch (campaignLeadError: any) {
+          WebhookControllerLogger.error(
+            `Erro ao atualizar CampaignLead ${messageLog.campaignLeadId}:`,
+            campaignLeadError
+          );
+          // Não propagar o erro para não falhar toda a operação
+          WebhookControllerLogger.warn(
+            `Continuando operação mesmo com falha na atualização do CampaignLead`
+          );
+        }
+      } else {
+        WebhookControllerLogger.warn(
+          `MessageLog ${messageLog.id} não possui campaignLeadId associado. Atualizando apenas o MessageLog.`
+        );
+      }
+
+      // Atualizar estatísticas da campanha se campaignId existir
+      if (messageLog.campaignId) {
+        try {
+          await this.updateCampaignStats(messageLog.campaignId);
+          WebhookControllerLogger.log(`Estatísticas da campanha ${messageLog.campaignId} atualizadas`);
+        } catch (statsError: any) {
+          WebhookControllerLogger.error(
+            `Erro ao atualizar estatísticas da campanha ${messageLog.campaignId}:`,
+            statsError
+          );
+          // Não propagar o erro para não falhar toda a operação
+        }
+      }
+
+    } catch (error: any) {
+      WebhookControllerLogger.error(
+        `Erro crítico ao atualizar status da mensagem ${messageLog?.id || 'ID_DESCONHECIDO'}:`,
+        {
+          error: error.message,
+          stack: error.stack,
+          messageLog: messageLog ? { id: messageLog.id, campaignLeadId: messageLog.campaignLeadId, campaignId: messageLog.campaignId } : null,
+          statusInput,
+          timestamp
+        }
+      );
       throw error;
     }
   }
@@ -556,15 +656,44 @@ export class WebhookController {
    */
   private async findLeadIdByPhone(phone: string): Promise<string | null> {
     try {
+      // Validação de entrada
+      if (!phone || typeof phone !== 'string' || phone.trim().length === 0) {
+        WebhookControllerLogger.warn(`Telefone inválido fornecido: ${phone}`);
+        return null;
+      }
+
+      // Normalizar o telefone removendo espaços e caracteres especiais
+      const normalizedPhone = phone.trim().replace(/\D/g, '');
+      
+      if (normalizedPhone.length < 10) {
+        WebhookControllerLogger.warn(`Telefone muito curto após normalização: ${normalizedPhone}`);
+        return null;
+      }
+
       const lead = await prisma.lead.findFirst({
-        where: { phone },
+        where: { 
+          phone: {
+            contains: normalizedPhone
+          }
+        },
         orderBy: { createdat: "desc" },
       });
+
+      if (lead) {
+        WebhookControllerLogger.log(`Lead encontrado para telefone ${phone}: ${lead.id}`);
+      } else {
+        WebhookControllerLogger.log(`Nenhum lead encontrado para telefone ${phone}`);
+      }
+
       return lead?.id || null;
-    } catch (error) {
-      WebhookControllerLogger.warn(
+    } catch (error: any) {
+      WebhookControllerLogger.error(
         `Erro ao buscar leadId para phone ${phone}:`,
-        error
+        {
+          error: error.message,
+          stack: error.stack,
+          phone
+        }
       );
       return null;
     }

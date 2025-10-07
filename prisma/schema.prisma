@@ -426,6 +426,7 @@ model MessageLog {
   campaignLeadId   String?
   campaignLead     CampaignLead? @relation(fields: [campaignLeadId], references: [id], onDelete: SetNull)
   leadId           String?
+  lead             Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
   sentAt           DateTime?
   deliveredAt      DateTime?
   readAt           DateTime?
@@ -433,7 +434,7 @@ model MessageLog {
   statusHistory    Json      @default("[]")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  Lead             Lead[]   
+
   @@index([campaignId])
   @@index([campaignLeadId])
   @@index([leadId])
