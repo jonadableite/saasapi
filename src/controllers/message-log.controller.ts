@@ -79,7 +79,7 @@ const calculateStats = (messageLogs: Partial<PrismaMessageLog>[]): StatsResult =
   ).length;
 
   const pending = messageLogs.filter((log) =>
-    ["PENDING", "QUEUED"].includes(log.status || ""),
+    ["PENDING", "QUEUED", "SENT"].includes(log.status || ""),
   ).length;
 
   const deliveryRate = total > 0 ? (delivered / total) * 100 : 0;
