@@ -328,7 +328,6 @@ export class WebhookController {
                 // Tentar buscar leadId através do telefone
                 leadId: leadInfo.leadId,
                 campaignLeadId: leadInfo.campaignLeadId,
-                instanceName: data.instanceName || "default",
               },
             });
 
