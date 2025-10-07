@@ -38,6 +38,32 @@ export class MessageLogService {
       reason,
     });
 
+    // Buscar o lead para obter o phone
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+    });
+
+    if (!lead) {
+      throw new Error(`Lead não encontrado: ${leadId}`);
+    }
+
+    // Buscar o campaignLead mais recente para este lead
+    const campaignLead = await prisma.campaignLead.findFirst({
+      where: {
+        phone: lead.phone,
+        status: {
+          in: ["active", "sent", "delivered", "read", "processing"],
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!campaignLead) {
+      throw new Error(`CampaignLead não encontrado para o lead: ${leadId}`);
+    }
+
     const upsertData = {
       where: {
         messageId: messageId,
@@ -63,8 +89,8 @@ export class MessageLogService {
         content: "",
         status: newStatus,
         statusHistory: [formattedUpdate],
-        campaignId: "default-campaign-id", // Você precisa fornecer um ID válido
-        campaignLeadId: "default-campaign-lead-id", // Você precisa fornecer um ID válido
+        campaignId: campaignLead.campaignId,
+        campaignLeadId: campaignLead.id,
         ...(newStatus === "SERVER_ACK" && { sentAt: new Date() }),
         ...(newStatus === "DELIVERY_ACK" && { deliveredAt: new Date() }),
         ...(newStatus === "READ" && { readAt: new Date() }),
