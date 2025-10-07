@@ -33,6 +33,7 @@ export interface WarmupConfig {
     videoChance: number;
     minDelay: number;
     maxDelay: number;
+    messageLimit?: number;          // Limite de mensagens por instância (padrão baseado no plano)
     groupChance?: number;           // Chance de enviar para grupo (0-1)
     externalNumbersChance?: number; // Chance de usar números externos (0-1)
     groupId?: string;              // ID do grupo para enviar mensagens

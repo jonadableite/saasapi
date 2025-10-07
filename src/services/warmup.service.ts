@@ -163,7 +163,8 @@ export class WarmupService {
 
   private async checkDailyMessageLimit(
     instanceId: string,
-    userId: string
+    userId: string,
+    customLimit?: number
   ): Promise<boolean> {
     try {
       const user = await prisma.user.findUnique({
@@ -183,8 +184,24 @@ export class WarmupService {
         return false;
       }
 
-      if (user.plan !== "free") {
-        return true; // Usuários de planos pagos não têm limite.
+      // Determinar o limite de mensagens
+      let messageLimit: number;
+      
+      if (customLimit && customLimit > 0) {
+        // Usar limite personalizado se fornecido
+        const planLimits = PLAN_LIMITS[user.plan as keyof typeof PLAN_LIMITS];
+        const maxAllowed = planLimits.maxMessagesPerDay || 20;
+        
+        // Garantir que o limite personalizado não exceda o máximo do plano
+        messageLimit = Math.min(customLimit, maxAllowed);
+      } else {
+        // Usar limite padrão baseado no plano
+        if (user.plan === "free") {
+          messageLimit = 20;
+        } else {
+          const planLimits = PLAN_LIMITS[user.plan as keyof typeof PLAN_LIMITS];
+          messageLimit = planLimits.maxMessagesPerDay || 100;
+        }
       }
 
       const today = new Date();
@@ -205,10 +222,11 @@ export class WarmupService {
 
       const totalMessages = stats?.totalDaily || 0;
 
-      if (totalMessages >= 20) {
+      if (totalMessages >= messageLimit) {
         console.log(`
 				Limite diário de mensagens atingido para a instância ${instanceId}
 				Total de mensagens hoje: ${totalMessages}
+				Limite configurado: ${messageLimit}
 			`);
 
         await prisma.warmupStats.updateMany({
@@ -228,7 +246,8 @@ export class WarmupService {
       console.log(`
 			Status do limite diário para a instância ${instanceId}:
 			- Mensagens enviadas hoje: ${totalMessages}
-			- Mensagens restantes: ${20 - totalMessages}
+			- Limite configurado: ${messageLimit}
+			- Mensagens restantes: ${messageLimit - totalMessages}
 		`);
 
       return true;
@@ -731,7 +750,8 @@ export class WarmupService {
         // Verificar limite diário antes de iniciar novo ciclo
         const canSendMessage = await this.checkDailyMessageLimit(
           instance.instanceId,
-          config.userId
+          config.userId,
+          config.config.messageLimit
         );
         if (!canSendMessage) {
           console.log("Limite diário atingido, pausando aquecimento...");

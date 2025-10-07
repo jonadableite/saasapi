@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { warmupService } from "../services/warmup.service";
 import type { MediaContent, WarmupConfig } from "../types/warmup";
+import { PLAN_LIMITS } from "../constants/planLimits";
 
 interface TextContent {
   text: string;
@@ -45,6 +46,41 @@ export const configureWarmup = async (
         success: false,
         message: "Necessário pelo menos um texto",
       });
+    }
+
+    // Validar messageLimit se fornecido
+    if (config.config?.messageLimit !== undefined) {
+      const messageLimit = Number(config.config.messageLimit);
+      
+      if (!Number.isInteger(messageLimit) || messageLimit <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "O limite de mensagens deve ser um número inteiro positivo",
+        });
+      }
+
+      // Buscar plano do usuário para validar limite máximo
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { plan: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Usuário não encontrado",
+        });
+      }
+
+      const planLimits = PLAN_LIMITS[user.plan as keyof typeof PLAN_LIMITS];
+      const maxAllowed = planLimits.maxMessagesPerDay || 20;
+
+      if (messageLimit > maxAllowed) {
+        return res.status(400).json({
+          success: false,
+          message: `O limite de mensagens não pode exceder ${maxAllowed} para o seu plano ${user.plan}`,
+        });
+      }
     }
 
     // Processar mídia
@@ -105,6 +141,7 @@ export const configureWarmup = async (
         videoChance: config.config.videoChance || 0.1,
         minDelay: config.config.minDelay || 3000,
         maxDelay: config.config.maxDelay || 90000,
+        messageLimit: config.config.messageLimit ? Number(config.config.messageLimit) : undefined,
       },
     };
 

@@ -36,17 +36,105 @@ router.use(authMiddleware);
  *           schema:
  *             type: object
  *             properties:
- *               instanceId:
- *                 type: string
- *                 description: ID da instância
- *               settings:
+ *               phoneInstances:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     instanceId:
+ *                       type: string
+ *                       description: ID da instância
+ *                     phoneNumber:
+ *                       type: string
+ *                       description: Número de telefone da instância
+ *               contents:
  *                 type: object
- *                 description: Configurações do aquecimento
+ *                 properties:
+ *                   texts:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     description: Lista de textos para envio
+ *                   images:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                     description: Lista de imagens para envio
+ *                   audios:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                     description: Lista de áudios para envio
+ *                   videos:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                     description: Lista de vídeos para envio
+ *                   stickers:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                     description: Lista de stickers para envio
+ *                   emojis:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     description: Lista de emojis para reações
+ *               config:
+ *                 type: object
+ *                 properties:
+ *                   textChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar texto (0-1)
+ *                   audioChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar áudio (0-1)
+ *                   reactionChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar reação (0-1)
+ *                   stickerChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar sticker (0-1)
+ *                   imageChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar imagem (0-1)
+ *                   videoChance:
+ *                     type: number
+ *                     minimum: 0
+ *                     maximum: 1
+ *                     description: Probabilidade de enviar vídeo (0-1)
+ *                   minDelay:
+ *                     type: number
+ *                     minimum: 1000
+ *                     description: Delay mínimo entre mensagens (ms)
+ *                   maxDelay:
+ *                     type: number
+ *                     minimum: 1000
+ *                     description: Delay máximo entre mensagens (ms)
+ *                   messageLimit:
+ *                     type: number
+ *                     minimum: 1
+ *                     description: Limite personalizado de mensagens por instância por dia (opcional)
+ *                     example: 50
  *     responses:
  *       200:
  *         description: Aquecimento configurado com sucesso
  *       400:
- *         description: Dados inválidos
+ *         description: Dados inválidos ou limite de mensagens excede o permitido pelo plano
+ *       401:
+ *         description: Usuário não autenticado
+ *       404:
+ *         description: Usuário não encontrado
  */
 // Rotas
 router.post("/config", configureWarmup);
