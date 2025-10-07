@@ -369,6 +369,11 @@ export class WebhookController {
 
   private async findMessageLogByAlternativeCriteria(messageId: string, phone?: string) {
     try {
+      WebhookControllerLogger.log(`🔍 Buscando messageLog com critérios alternativos`, {
+        messageId,
+        phone,
+      });
+
       // Primeiro, tentar buscar pelo messageId exato
       let messageLog = await prisma.messageLog.findFirst({
         where: {
@@ -377,11 +382,14 @@ export class WebhookController {
       });
 
       if (messageLog) {
+        WebhookControllerLogger.log(`✅ MessageLog encontrado pelo messageId exato: ${messageLog.id}`);
         return messageLog;
       }
 
       // Se não encontrar e tiver o telefone, buscar mensagens recentes deste telefone
       if (phone) {
+        WebhookControllerLogger.log(`🔍 Buscando campaignLead pelo telefone: ${phone}`);
+        
         // Buscar pelo telefone através do campaignLead
         const campaignLead = await prisma.campaignLead.findFirst({
           where: {
@@ -393,18 +401,28 @@ export class WebhookController {
         });
 
         if (campaignLead) {
+          WebhookControllerLogger.log(`✅ CampaignLead encontrado: ${campaignLead.id}`);
+          
           // Buscar mensagens recentes deste campaignLead que ainda não têm status final
           messageLog = await prisma.messageLog.findFirst({
             where: {
               campaignLeadId: campaignLead.id,
               status: {
-                in: ["PENDING", "SENT"],
+                in: ["PENDING", "SENT", "DELIVERED"], // Incluir DELIVERED para permitir atualização para READ
               },
             },
             orderBy: {
               messageDate: "desc",
             },
           });
+
+          if (messageLog) {
+            WebhookControllerLogger.log(`✅ MessageLog encontrado por campaignLead: ${messageLog.id}, status atual: ${messageLog.status}`);
+          } else {
+            WebhookControllerLogger.warn(`❌ Nenhum messageLog encontrado para campaignLead ${campaignLead.id} com status PENDING, SENT ou DELIVERED`);
+          }
+        } else {
+          WebhookControllerLogger.warn(`❌ Nenhum campaignLead encontrado para o telefone: ${phone}`);
         }
       }
 
