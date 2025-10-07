@@ -6,7 +6,6 @@ import {
 import type { Request, Response } from "express";
 import { AnalyticsService } from "../services/analytics.service";
 import { MessageDispatcherService } from "../services/campaign-dispatcher.service";
-import { crmMessagingService } from "../services/CRM/messaging.service";
 import socketService from "../services/socket.service";
 import { logger } from "../utils/logger";
 
@@ -137,8 +136,6 @@ export class WebhookController {
       phone,
       message,
     });
-    // Também atualiza a lista de conversas
-    this.updateConversationList(phone, message);
   }
 
   private async handleMessageUpsert(data: MessageResponse) {
@@ -171,18 +168,18 @@ export class WebhookController {
         },
       });
 
-      // Processar a mensagem
-      await crmMessagingService.processMessage({
-        id: messageId,
-        remoteJid: phone,
-        fromMe,
-        content,
-        timestamp,
-        messageType,
-        pushName,
-        status: this.mapWhatsAppStatus(status),
-        instanceName,
-      });
+      // Processar a mensagem - removido pois processMessage não existe mais
+      // await this.messageDispatcherService.processMessage({
+      //   id: messageId,
+      //   remoteJid: phone,
+      //   fromMe,
+      //   content,
+      //   timestamp,
+      //   messageType,
+      //   pushName,
+      //   status: this.mapWhatsAppStatus(status),
+      //   instanceName,
+      // });
 
       const messageLog = await this.findOrCreateMessageLog(messageId, phone, {
         messageType,
@@ -214,7 +211,7 @@ export class WebhookController {
   private async handleMessageUpdate(data: any) {
     try {
       // Compatibilidade com diferentes formatos de eventos de atualização de mensagem
-      const messageId = data.messageId || data.key?.id;
+      const messageId = data.messageId || data.key?.id || data.keyId; // Adicionado data.keyId
       const status = data.status || data.receipt?.status;
       const remoteJid = data.remoteJid || data.key?.remoteJid;
 
@@ -225,7 +222,7 @@ export class WebhookController {
         timestamp: new Date().toISOString(),
         instanceName: data.instanceName,
         fromMe: data.fromMe,
-        availableDataFields: Object.keys(data)
+        availableDataFields: Object.keys(data),
       });
 
       if (!messageId || !status) {
@@ -238,8 +235,8 @@ export class WebhookController {
             instanceName: data.instanceName,
             missingFields: {
               messageId: !messageId,
-              status: !status
-            }
+              status: !status,
+            },
           }
         );
         return;
@@ -253,7 +250,7 @@ export class WebhookController {
         cacheKey,
         hasCachedMessage: !!cachedMessage,
         phone,
-        remoteJid
+        remoteJid,
       });
 
       const messageLog = await prisma.messageLog.findFirst({
@@ -265,7 +262,7 @@ export class WebhookController {
       WebhookControllerLogger.log("🔍 Busca no banco de dados", {
         messageId,
         messageLogFound: !!messageLog,
-        messageLogId: messageLog?.id
+        messageLogId: messageLog?.id,
       });
 
       if (!messageLog && cachedMessage) {
@@ -280,24 +277,25 @@ export class WebhookController {
         WebhookControllerLogger.warn(
           `Mensagem não encontrada no cache nem no banco. Tentando criar registro básico para messageId: ${messageId}`
         );
-        
+
         if (phone && remoteJid) {
           try {
             const basicMessageLog = await prisma.messageLog.create({
               data: {
                 messageId: messageId,
                 messageDate: new Date(),
-                messageType: 'text',
-                content: '[Mensagem não sincronizada - apenas status]',
+                messageType: "text",
+                content: "[Mensagem não sincronizada - apenas status]",
                 status: this.mapWhatsAppStatus(status),
-                statusHistory: [{ status: this.mapWhatsAppStatus(status), timestamp: new Date() }],
-                campaign: {
-                  connect: { id: 'default-campaign-id' } // Usar um ID de campanha padrão
-                },
-                campaignLead: {
-                  connect: { id: 'default-lead-id' } // Usar um ID de lead padrão
-                }
-              }
+                statusHistory: [
+                  {
+                    status: this.mapWhatsAppStatus(status),
+                    timestamp: new Date(),
+                  },
+                ],
+                // Tentar buscar leadId através do telefone
+                leadId: await this.findLeadIdByPhone(phone),
+              },
             });
 
             WebhookControllerLogger.log(
@@ -348,116 +346,6 @@ export class WebhookController {
     } catch (error) {
       WebhookControllerLogger.error(
         "Erro ao processar atualização de mensagem:",
-        error
-      );
-    }
-  }
-
-  /**
-   * Atualiza ou cria uma conversa para um determinado contato
-   * @param phone Número do telefone do contato
-   * @param message Dados da mensagem recebida
-   */
-  private async updateConversationList(phone: string, message: any) {
-    try {
-      // Verificar se é um grupo e ignorar
-      if (phone.includes("@g.us")) {
-        WebhookControllerLogger.log("Mensagem de grupo ignorada");
-        return;
-      }
-
-      // Remover "@s.whatsapp.net" do número
-      const cleanPhone = phone.replace(/@.*$/, "");
-
-      // Validar entrada
-      if (!message || !message.instanceName) {
-        WebhookControllerLogger.error("Dados de mensagem inválidos");
-        return;
-      }
-
-      // Buscar a instância com seu usuário proprietário
-      const instance = await prisma.instance.findFirst({
-        where: {
-          instanceName: message.instanceName,
-        },
-        include: {
-          user: true,
-        },
-      });
-
-      if (!instance || !instance.user) {
-        WebhookControllerLogger.error(
-          `Instância não encontrada ou sem usuário: ${message.instanceName}`
-        );
-        return;
-      }
-
-      const instanceOwner = instance.user;
-
-      // Nome do contato com fallback
-      const contactName = message.pushName || cleanPhone;
-
-      // Criar ou atualizar contato
-      const contact = await prisma.contact.upsert({
-        where: {
-          Contact_phone_userId: {
-            phone: cleanPhone,
-            userId: instanceOwner.id,
-          },
-        },
-        update: {
-          name: contactName, // Atualizar nome se diferente
-          lastInteractionAt: new Date(),
-        },
-        create: {
-          phone: cleanPhone,
-          name: contactName,
-          userId: instanceOwner.id,
-          lastInteractionAt: new Date(),
-        },
-      });
-
-      // Determinar conteúdo da última mensagem
-      const lastMessageContent =
-        message.content ||
-        (message.messageType
-          ? `[${message.messageType}]`
-          : "Mensagem recebida");
-
-      // Atualizar ou criar conversa
-      await prisma.conversation.upsert({
-        where: {
-          Conversation_instanceName_contactPhone: {
-            instanceName: instance.instanceName,
-            contactPhone: cleanPhone,
-          },
-        },
-        update: {
-          lastMessageAt: new Date(),
-          lastMessage: lastMessageContent,
-          contactName: contactName, // Atualizar nome do contato
-          unreadCount: {
-            increment: message.fromMe ? 0 : 1, // Incrementar contagem de não lidas
-          },
-        },
-        create: {
-          contactPhone: cleanPhone,
-          instanceName: instance.instanceName,
-          userId: instanceOwner.id,
-          contactId: contact.id,
-          lastMessageAt: new Date(),
-          lastMessage: lastMessageContent,
-          contactName: contactName,
-          unreadCount: message.fromMe ? 0 : 1,
-        },
-      });
-
-      WebhookControllerLogger.log(
-        `Conversa atualizada para ${cleanPhone} na instância ${instance.instanceName}`
-      );
-    } catch (error) {
-      WebhookControllerLogger.error(
-        `Erro crítico ao processar conversa para ${phone}:`,
         error
       );
     }
@@ -548,6 +436,8 @@ export class WebhookController {
         status: data.status,
         campaignId: campaignLead.campaignId,
         campaignLeadId: campaignLead.id,
+        // Buscar leadId através do phone do CampaignLead
+        leadId: await this.findLeadIdByPhone(phone),
         sentAt: data.timestamp,
         statusHistory: [
           {
@@ -658,6 +548,25 @@ export class WebhookController {
         "Erro ao atualizar estatísticas da campanha:",
         error
       );
+    }
+  }
+
+  /**
+   * Busca leadId através do telefone
+   */
+  private async findLeadIdByPhone(phone: string): Promise<string | null> {
+    try {
+      const lead = await prisma.lead.findFirst({
+        where: { phone },
+        orderBy: { createdat: "desc" },
+      });
+      return lead?.id || null;
+    } catch (error) {
+      WebhookControllerLogger.warn(
+        `Erro ao buscar leadId para phone ${phone}:`,
+        error
+      );
+      return null;
     }
   }
 }

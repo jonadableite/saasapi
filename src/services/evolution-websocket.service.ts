@@ -1,7 +1,7 @@
 // src/services/evolution-websocket.service.ts
 import { io, Socket } from "socket.io-client";
 import { logger } from "@/utils/logger";
-import { crmMessagingService } from "./CRM/messaging.service";
+import { MessageLogService } from "./message-log.service";
 import { LeadSegmentationService } from "./lead-segmentation.service";
 import type {
   EvolutionWebSocketConfig,
@@ -114,8 +114,10 @@ export class EvolutionWebSocketService {
         await this.leadSegmentationService.processWebSocketMessage(data);
       }
 
-      // Processar mensagem com o serviço de CRM
-      await crmMessagingService.processMessage(data);
+      // Processar mensagem com o serviço de MessageLog
+      const messageLogService = new MessageLogService();
+      // TODO: Implementar processamento de mensagem no MessageLogService
+      // await messageLogService.processMessage(data);
 
     } catch (error) {
       websocketLogger.error('❌ Erro ao processar mensagem WebSocket:', error);

@@ -80,7 +80,6 @@ model User {
   role                     String         @default("user") // Valores: "admin", "affiliate", "manager", "user"
   // Relação para o campo affiliate
   affiliates               User[]         @relation("AffiliateReferral")
-  Conversation             Conversation[]
   contacts                 Contact[]
   contactNotes             ContactNote[]
   MessageReaction          MessageReaction[]
@@ -416,30 +415,28 @@ model CampaignStatistics {
 }
 
 model MessageLog {
-  id             String       @id @default(uuid())
-  campaignId     String
-  campaign       Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignLeadId String
-  campaignLead   CampaignLead @relation(fields: [campaignLeadId], references: [id])
-  leadId         String?
-  lead           Lead?        @relation(fields: [leadId], references: [id])
-  messageId      String
-  messageDate    DateTime
-  messageType    String
-  content        String
-  status         String
-  statusHistory  Json[]
-  sentAt         DateTime?
-  deliveredAt    DateTime?
-  readAt         DateTime?
-  failedAt       DateTime?
-  failureReason  String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @default(now())
-
-  @@unique([messageId, messageDate])
-  @@index([campaignId, messageDate])
-  @@index([campaignLeadId, messageDate])
+  id               String    @id @default(uuid())
+  messageId        String    @unique
+  messageDate      DateTime
+  messageType      String
+  content          String?
+  status           String
+  campaignId       String?
+  campaign         Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignLeadId   String?
+  campaignLead     CampaignLead? @relation(fields: [campaignLeadId], references: [id], onDelete: SetNull)
+  leadId           String?
+  sentAt           DateTime?
+  deliveredAt      DateTime?
+  readAt           DateTime?
+  statusHistory    Json      @default("[]")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  Lead             Lead[]   
+  @@index([campaignId])
+  @@index([campaignLeadId])
+  @@index([leadId])
+  @@index([messageId])
   @@index([status])
 }
 
@@ -458,78 +455,28 @@ model MessageAnalytics {
 }
 
 model Contact {
-  id                String         @id @default(uuid())
-  phone             String
-  name              String?
+  id                String        @id @default(uuid())
+  name              String
+  phone             String        @unique
   email             String?
-  company           String?
-  notes             String?
-  tags              String[]       @default([])
+  avatar            String?
+  tags              Json          @default("{}")
+  isActive          Boolean       @default(true)
+  lastInteraction   DateTime?
+  notes             ContactNote[]
   userId            String
-  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastInteractionAt DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  source            String?
-  campaigns         Campaign[]     @relation("ContactCampaigns")
-  conversations     Conversation[]
-  contactNotes      ContactNote[]
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  campaigns         Campaign[]    @relation("ContactCampaigns")
 
-  @@unique([phone, userId], name: "Contact_phone_userId")
+  @@index([userId, phone])
 }
 
-model Conversation {
-  id              String            @id @default(uuid())
-  instanceName    String
-  contactPhone    String
-  contactName     String?
-  contactAvatar   String?
-  lastMessageAt   DateTime          @default(now())
-  lastMessage     String?
-  unreadCount     Int               @default(0)
-  status          String            @default("OPEN")
-  tags            Json              @default("{}")
-  isActive        Boolean           @default(true)
-  messages        Message[]
-  contactId       String?
-  contact         Contact?          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isGroup         Boolean           @default(false)
-  groupMetadata   Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
 
-  @@unique([instanceName, contactPhone], name: "Conversation_instanceName_contactPhone")
-  @@index([userId, lastMessageAt])
-}
-
-model Message {
-  id             String        @id @default(uuid())
-  conversationId String
-  content        String
-  type           String        @default("text")
-  isFromUser     Boolean       @default(false)
-  timestamp      DateTime      @default(now())
-  status         MessageStatus @default(SENT)
-  messageId      String?       // Campo para compatibilidade com o código existente
-  sender         String?       // Campo para identificar o remetente
-  failureReason  String?       // Campo para armazenar motivo de falha
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  attachments  MessageAttachment[]
-  reactions    MessageReaction[]
-
-  @@index([conversationId])
-  @@index([timestamp])
-  @@map("whatlead_messages")
-}
 
 model MessageAttachment {
   id        String   @id @default(uuid())
-  messageId String
   filename  String
   url       String
   type      String
@@ -538,9 +485,6 @@ model MessageAttachment {
   mimeType  String?  // Campo para tipo MIME
   createdAt DateTime @default(now())
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
   @@map("whatlead_message_attachments")
 }
 
@@ -577,7 +521,6 @@ model MessageReaction {
   userId    String
   createdAt DateTime @default(now())
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
