@@ -577,6 +577,9 @@ export class WebhookController {
         },
       };
 
+      // Capturar o status anterior antes da atualização
+      const previousStatus = messageLog.status;
+
       // Adicionar timestamps específicos com base no status
       if (status === "DELIVERED") updateData.deliveredAt = timestamp;
       if (status === "READ") updateData.readAt = timestamp;
@@ -653,6 +656,7 @@ export class WebhookController {
       socketService.emitToAll("message_status_update", {
         messageId: messageLog.id,
         status: status,
+        previousStatus: previousStatus,
         timestamp: timestamp.toISOString(),
         leadId: messageLog.campaignLeadId,
         campaignId: messageLog.campaignId,
