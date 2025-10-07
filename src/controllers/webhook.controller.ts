@@ -282,73 +282,34 @@ export class WebhookController {
       });
 
       if (!messageLog && cachedMessage) {
-        return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
-          ...cachedMessage.data,
-          status: this.mapWhatsAppStatus(status),
-        });
+        // Tentar buscar novamente no banco com critérios mais amplos
+        messageLog = await this.findMessageLogByAlternativeCriteria(messageId, phone);
+        
+        if (!messageLog) {
+          return this.findOrCreateMessageLog(cacheKey, cachedMessage.data.phone, {
+            ...cachedMessage.data,
+            status: this.mapWhatsAppStatus(status),
+          });
+        }
       }
 
       if (!messageLog && !cachedMessage) {
-        // Tentar criar um messageLog básico se não existir
-        WebhookControllerLogger.warn(
-          `Mensagem não encontrada no cache nem no banco. Tentando criar registro básico para messageId: ${messageId}`
-        );
+        // Tentar buscar com critérios alternativos antes de criar
+        if (phone) {
+          messageLog = await this.findMessageLogByAlternativeCriteria(messageId, phone);
+        }
 
-        if (phone && remoteJid) {
-          try {
-            // Validação adicional dos dados antes de criar o registro
-            if (!messageId || typeof messageId !== "string") {
-              WebhookControllerLogger.error(`MessageId inválido: ${messageId}`);
-              return;
+        if (!messageLog) {
+          WebhookControllerLogger.warn(
+            `Mensagem ${messageId} não encontrada. Ignorando atualização de status para evitar duplicação.`,
+            {
+              messageId,
+              status,
+              phone,
+              remoteJid,
             }
-
-            const mappedStatus = this.mapWhatsAppStatus(status);
-            if (!mappedStatus) {
-              WebhookControllerLogger.error(
-                `Status inválido mapeado: ${status} -> ${mappedStatus}`
-              );
-              return;
-            }
-
-            const leadInfo = await this.findLeadIdByPhone(phone);
-
-            const basicMessageLog = await prisma.messageLog.create({
-              data: {
-                messageId: messageId,
-                messageDate: new Date(),
-                messageType: "text",
-                content: "[Mensagem não sincronizada - apenas status]",
-                status: mappedStatus,
-                statusHistory: [
-                  {
-                    status: mappedStatus,
-                    timestamp: new Date(),
-                  },
-                ],
-                // Tentar buscar leadId através do telefone
-                leadId: leadInfo.leadId,
-                campaignLeadId: leadInfo.campaignLeadId,
-              },
-            });
-
-            WebhookControllerLogger.log(
-              `MessageLog básico criado para messageId: ${messageId}`,
-              {
-                messageLogId: basicMessageLog.id,
-                leadId: leadInfo.leadId,
-                campaignLeadId: leadInfo.campaignLeadId,
-                status: mappedStatus,
-              }
-            );
-
-            return basicMessageLog;
-          } catch (createError) {
-            WebhookControllerLogger.error(
-              `Erro ao criar messageLog básico para messageId: ${messageId}`,
-              createError
-            );
-            return null;
-          }
+          );
+          return null;
         }
       }
 
@@ -404,6 +365,54 @@ export class WebhookController {
     }
 
     return { messageType, content };
+  }
+
+  private async findMessageLogByAlternativeCriteria(messageId: string, phone?: string) {
+    try {
+      // Primeiro, tentar buscar pelo messageId exato
+      let messageLog = await prisma.messageLog.findFirst({
+        where: {
+          messageId: messageId,
+        },
+      });
+
+      if (messageLog) {
+        return messageLog;
+      }
+
+      // Se não encontrar e tiver o telefone, buscar mensagens recentes deste telefone
+      if (phone) {
+        // Buscar pelo telefone através do campaignLead
+        const campaignLead = await prisma.campaignLead.findFirst({
+          where: {
+            phone: phone,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        if (campaignLead) {
+          // Buscar mensagens recentes deste campaignLead que ainda não têm status final
+          messageLog = await prisma.messageLog.findFirst({
+            where: {
+              campaignLeadId: campaignLead.id,
+              status: {
+                in: ["PENDING", "SENT"],
+              },
+            },
+            orderBy: {
+              messageDate: "desc",
+            },
+          });
+        }
+      }
+
+      return messageLog;
+    } catch (error) {
+      WebhookControllerLogger.error("Erro ao buscar messageLog com critérios alternativos:", error);
+      return null;
+    }
   }
 
   private async findOrCreateMessageLog(

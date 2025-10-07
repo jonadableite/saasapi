@@ -3,29 +3,69 @@ import { addDays, endOfDay, format, startOfDay, subDays } from "date-fns";
 import type { Response } from "express";
 import type { RequestWithUser } from "../interface";
 import { prisma } from "../lib/prisma";
+import type { MessageLog as PrismaMessageLog } from "@prisma/client";
 
-interface MessageLog {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-  status: string;
-  campaignId: string;
-  campaignLeadId: string;
-  leadId: string | null;
-  messageId: string;
-  messageDate: Date;
-  messageType: string;
-  content: string;
-  statusHistory: any;
-  sentAt: Date | null;
-  deliveredAt: Date | null;
-  readAt: Date | null;
-  failedAt: Date | null;
+// Interfaces específicas para este controller
+interface MessageLogWithRelations extends PrismaMessageLog {
   campaignLead: { phone: string; name: string } | null;
-  campaign: { name: string };
+  campaign: { name: string } | null;
 }
 
-const calculateStats = (messageLogs: Partial<MessageLog>[]) => {
+interface StatsResult {
+  total: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  pending: number;
+  deliveryRate: number;
+  readRate: number;
+}
+
+interface StatusDistribution {
+  [status: string]: number;
+}
+
+interface DailyStatsResponse {
+  stats: StatsResult;
+  messageLogs: MessageLogWithRelations[];
+  statusDistribution: StatusDistribution;
+  totalPages: number;
+  currentPage: number;
+  totalCount: number;
+}
+
+interface MessagesByDayResponse {
+  messagesByDay: Record<string, number>;
+}
+
+// Função utilitária para validar se o usuário tem acesso aos dados
+const validateUserAccess = (userId: string | undefined): string => {
+  if (!userId) {
+    throw new Error("Usuário não autenticado");
+  }
+  return userId;
+};
+
+// Função para criar filtro de usuário consistente
+const createUserFilter = (userId: string) => ({
+  OR: [
+    {
+      campaign: {
+        userId: userId,
+      },
+    },
+    {
+      campaignId: null, // Para mensagens sem campanha
+    },
+    {
+      campaignLead: {
+        userId: userId,
+      },
+    },
+  ],
+});
+
+const calculateStats = (messageLogs: Partial<PrismaMessageLog>[]): StatsResult => {
   const total = messageLogs.length;
 
   const delivered = messageLogs.filter((log) =>
@@ -34,6 +74,14 @@ const calculateStats = (messageLogs: Partial<MessageLog>[]) => {
 
   const read = messageLogs.filter((log) => log.status === "READ").length;
 
+  const failed = messageLogs.filter((log) =>
+    ["FAILED", "ERROR"].includes(log.status || ""),
+  ).length;
+
+  const pending = messageLogs.filter((log) =>
+    ["PENDING", "QUEUED"].includes(log.status || ""),
+  ).length;
+
   const deliveryRate = total > 0 ? (delivered / total) * 100 : 0;
   const readRate = total > 0 ? (read / total) * 100 : 0;
 
@@ -41,14 +89,16 @@ const calculateStats = (messageLogs: Partial<MessageLog>[]) => {
     total,
     delivered,
     read,
+    failed,
+    pending,
     deliveryRate: Number(deliveryRate.toFixed(2)),
     readRate: Number(readRate.toFixed(2)),
   };
 };
 
-const calculateStatusDistribution = (messageLogs: Partial<MessageLog>[]) => {
+const calculateStatusDistribution = (messageLogs: Partial<PrismaMessageLog>[]): StatusDistribution => {
   return messageLogs.reduce(
-    (acc: Record<string, number>, log: Partial<MessageLog>) => {
+    (acc: Record<string, number>, log: Partial<PrismaMessageLog>) => {
       if (log.status) {
         acc[log.status] = (acc[log.status] || 0) + 1;
       }
@@ -58,13 +108,9 @@ const calculateStatusDistribution = (messageLogs: Partial<MessageLog>[]) => {
   );
 };
 
-export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
+export const getMessageLogs = async (req: RequestWithUser, res: Response): Promise<Response> => {
   try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: "Usuário não autenticado" });
-    }
+    const userId = validateUserAccess(req.user?.id);
 
     const { page = 1, limit = 100, startDate, endDate } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
@@ -84,12 +130,12 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
       };
     }
 
+    const userFilter = createUserFilter(userId);
+
     const [messageLogs, totalCount] = await Promise.all([
       prisma.messageLog.findMany({
         where: {
-          campaign: {
-            userId: userId,
-          },
+          ...userFilter,
           ...dateFilter,
         },
         orderBy: {
@@ -110,101 +156,133 @@ export const getMessageLogs = async (req: RequestWithUser, res: Response) => {
             },
           },
         },
-      }) as Promise<MessageLog[]>,
+      }) as Promise<MessageLogWithRelations[]>,
       prisma.messageLog.count({
         where: {
-          campaign: {
-            userId: userId,
-          },
+          ...userFilter,
           ...dateFilter,
         },
       }),
     ]);
 
-    const stats = calculateStats(messageLogs);
+    const totalPages = Math.ceil(totalCount / Number(limit));
 
-    // Calcular mensagens por dia
-    const messagesByDay = messageLogs.reduce(
-      (acc, log) => {
-        const date = format(new Date(log.messageDate), "yyyy-MM-dd");
-        acc[date] = (acc[date] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
-
-    // Preencher dias sem mensagens
-    const startDateObj = startDate
-      ? new Date(startDate as string)
-      : subDays(new Date(), 7);
-    const endDateObj = endDate ? new Date(endDate as string) : new Date();
-    let currentDate = startDateObj;
-    while (currentDate <= endDateObj) {
-      const dateKey = format(currentDate, "yyyy-MM-dd");
-      if (!messagesByDay[dateKey]) {
-        messagesByDay[dateKey] = 0;
-      }
-      currentDate = new Date(currentDate.setDate(currentDate.getDate() + 1));
-    }
-
-    // Ordenar as chaves do objeto messagesByDay
-    const sortedMessagesByDay = Object.fromEntries(
-      Object.entries(messagesByDay).sort(([a], [b]) => a.localeCompare(b)),
-    );
-
-    const statusDistribution = messageLogs.reduce(
-      (acc: Record<string, number>, log: Partial<MessageLog>) => {
-        if (log.status) {
-          acc[log.status] = (acc[log.status] || 0) + 1;
-        }
-        return acc;
-      },
-      {},
-    );
-
-    res.json({
+    return res.json({
       messageLogs,
-      stats,
-      messagesByDay: sortedMessagesByDay,
-      statusDistribution,
-      pagination: {
-        currentPage: Number(page),
-        totalPages: Math.ceil(totalCount / Number(limit)),
-        totalItems: totalCount,
-      },
+      totalCount,
+      totalPages,
+      currentPage: Number(page),
     });
   } catch (error) {
     console.error("Erro ao buscar logs de mensagens:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
 
-export const getDailyMessageLogs = async (
-  req: RequestWithUser,
-  res: Response,
-) => {
+export const getDailyStats = async (req: RequestWithUser, res: Response): Promise<Response> => {
   try {
-    const userId = req.user?.id;
-    const { date } = req.query;
+    const userId = validateUserAccess(req.user?.id);
 
-    if (!userId) {
-      return res.status(401).json({ error: "Usuário não autenticado" });
-    }
-
+    const { date, page = 1, limit = 100 } = req.query;
     const targetDate = date ? new Date(date as string) : new Date();
-
     const startOfTargetDate = startOfDay(targetDate);
     const endOfTargetDate = endOfDay(targetDate);
 
+    const skip = (Number(page) - 1) * Number(limit);
+    const userFilter = createUserFilter(userId);
+
+    const [allMessageLogs, paginatedMessageLogs, totalCount] = await Promise.all([
+      // Buscar todos os logs para calcular estatísticas
+      prisma.messageLog.findMany({
+        where: {
+          ...userFilter,
+          messageDate: {
+            gte: startOfTargetDate,
+            lte: endOfTargetDate,
+          },
+        },
+      }),
+      // Buscar logs paginados para exibição
+      prisma.messageLog.findMany({
+        where: {
+          ...userFilter,
+          messageDate: {
+            gte: startOfTargetDate,
+            lte: endOfTargetDate,
+          },
+        },
+        orderBy: {
+          messageDate: "desc",
+        },
+        take: Number(limit),
+        skip: skip,
+        include: {
+          campaign: {
+            select: {
+              name: true,
+            },
+          },
+          campaignLead: {
+            select: {
+              phone: true,
+              name: true,
+            },
+          },
+        },
+      }) as Promise<MessageLogWithRelations[]>,
+      // Contar total para paginação
+      prisma.messageLog.count({
+        where: {
+          ...userFilter,
+          messageDate: {
+            gte: startOfTargetDate,
+            lte: endOfTargetDate,
+          },
+        },
+      }),
+    ]);
+
+    const stats = calculateStats(allMessageLogs);
+    const statusDistribution = calculateStatusDistribution(allMessageLogs);
+    const totalPages = Math.ceil(totalCount / Number(limit));
+
+    const response: DailyStatsResponse = {
+      stats,
+      messageLogs: paginatedMessageLogs,
+      statusDistribution,
+      totalPages,
+      currentPage: Number(page),
+      totalCount,
+    };
+
+    return res.json(response);
+  } catch (error) {
+    console.error("Erro ao buscar estatísticas diárias:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
+  }
+};
+
+export const getDailyMessageLogs = async (req: RequestWithUser, res: Response): Promise<Response> => {
+  try {
+    const userId = validateUserAccess(req.user?.id);
+
+    const { date } = req.query;
+    const targetDate = date ? new Date(date as string) : new Date();
+    const startOfTargetDate = startOfDay(targetDate);
+    const endOfTargetDate = endOfDay(targetDate);
+
+    const userFilter = createUserFilter(userId);
+
     const messageLogs = await prisma.messageLog.findMany({
       where: {
-        campaign: {
-          userId: userId,
-        },
+        ...userFilter,
         messageDate: {
           gte: startOfTargetDate,
           lte: endOfTargetDate,
         },
+      },
+      orderBy: {
+        messageDate: "desc",
       },
       include: {
         campaign: {
@@ -219,38 +297,40 @@ export const getDailyMessageLogs = async (
           },
         },
       },
-    });
+    }) as MessageLogWithRelations[];
 
+    // Calcular estatísticas
     const stats = calculateStats(messageLogs);
     const statusDistribution = calculateStatusDistribution(messageLogs);
 
-    res.json({
+    const response: DailyStatsResponse = {
       stats,
-      statusDistribution,
       messageLogs,
-    });
+      statusDistribution,
+      totalPages: 1,
+      currentPage: 1,
+      totalCount: messageLogs.length,
+    };
+
+    return res.json(response);
   } catch (error) {
-    console.error("Erro ao buscar logs de mensagens diários:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
+    console.error("Erro ao buscar logs de mensagens diárias:", error);
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
 
-export const getMessagesByDay = async (req: RequestWithUser, res: Response) => {
+export const getMessagesByDay = async (req: RequestWithUser, res: Response): Promise<Response> => {
   try {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: "Usuário não autenticado" });
-    }
+    const userId = validateUserAccess(req.user?.id);
 
     const end = endOfDay(new Date());
     const start = startOfDay(subDays(end, 6));
 
+    const userFilter = createUserFilter(userId);
+
     const messageLogs = await prisma.messageLog.findMany({
       where: {
-        campaign: {
-          userId: userId,
-        },
+        ...userFilter,
         messageDate: {
           gte: start,
           lte: end,
@@ -271,9 +351,10 @@ export const getMessagesByDay = async (req: RequestWithUser, res: Response) => {
       messagesByDay[date] = (messagesByDay[date] || 0) + 1;
     });
 
-    res.json({ messagesByDay });
+    const response: MessagesByDayResponse = { messagesByDay };
+    return res.json(response);
   } catch (error) {
     console.error("Erro ao buscar mensagens por dia:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
+    return res.status(500).json({ error: "Erro interno do servidor" });
   }
 };
